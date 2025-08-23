@@ -1,6 +1,6 @@
 # API Reference
 
-> **📖 Flix-Bridge Documentation**  
+> **📖 Flix-Bridge Documentation**
 > [← Usage](usage.md) | [Next: Multi-Instance →](multi-instance.md)
 
 Complete reference for all available Flix-Bridge tools with examples and response formats.
@@ -9,7 +9,7 @@ Complete reference for all available Flix-Bridge tools with examples and respons
 
 - [Core Operations](#core-operations)
   - [system_status](#system_status)
-  - [queue_list](#queue_list) 
+  - [queue_list](#queue_list)
   - [queue_grab](#queue_grab)
   - [root_folders](#root_folders)
 - [Media Management](#media-management)
@@ -247,7 +247,7 @@ Add new media (series/movies) to your library with intelligent quality profile s
 ```json
 {
   "service": "sonarr-4k",
-  "title": "Sample TV Series", 
+  "title": "Sample TV Series",
   "foreignId": 67890
 }
 ```
@@ -258,7 +258,7 @@ Add new media (series/movies) to your library with intelligent quality profile s
   "ok": true,
   "data": {
     "service": "sonarr-main",
-    "mediaKind": "series", 
+    "mediaKind": "series",
     "added": true,
     "id": 789,
     "title": "Breaking Bad",
@@ -274,7 +274,7 @@ Add new media (series/movies) to your library with intelligent quality profile s
 **Quality Profile Safety:**
 - If you don't specify `qualityProfileId`, the system intelligently chooses based on service name
 - Services with "4k", "uhd", "2160" prefer 4K quality profiles
-- Services with "hd", "1080" prefer HD quality profiles  
+- Services with "hd", "1080" prefer HD quality profiles
 - Services with "anime" prefer anime-specific profiles
 - Use the `Quality Profiles` tool to see available options
 

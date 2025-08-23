@@ -4,14 +4,17 @@
   "description": "Media Management MCP Server - Connect AI assistants to TV shows and movie management services",
   "type": "module",
   "main": "dist/index.js",
+  "bin": {
+    "flixbridge": "dist/index.js"
+  },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/thesammykins/arr_mcp.git"
+    "url": "https://github.com/thesammykins/FlixBridge.git"
   },
   "bugs": {
-    "url": "https://github.com/thesammykins/arr_mcp/issues"
+    "url": "https://github.com/thesammykins/FlixBridge/issues"
   },
-  "homepage": "https://github.com/thesammykins/arr_mcp#readme",
+  "homepage": "https://github.com/thesammykins/FlixBridge#readme",
   "publishConfig": {
     "access": "public"
   },

@@ -14,8 +14,8 @@ Thank you for your interest in contributing to FlixBridge! This document outline
 
 1. **Fork and Clone**
    ```bash
-   git clone https://github.com/yourusername/arr_mcp.git
-   cd arr_mcp
+   git clone https://github.com/yourusername/FlixBridge.git
+   cd FlixBridge
    ```
 
 2. **Install Dependencies**

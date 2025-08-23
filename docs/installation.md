@@ -29,8 +29,8 @@ npm install @thesammykins/flixbridge
 
 ```bash
 # Clone and setup
-git clone https://github.com/thesammykins/arr_mcp.git
-cd arr_mcp
+git clone https://github.com/thesammykins/FlixBridge.git
+cd FlixBridge
 npm install
 npm run build
 ```

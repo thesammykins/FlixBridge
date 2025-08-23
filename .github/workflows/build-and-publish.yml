@@ -248,14 +248,14 @@ jobs:
           This release was automatically generated from the latest commits to main.
           
           ### What's Changed
-          See the [CHANGELOG.md](https://github.com/thesammykins/arr_mcp/blob/main/CHANGELOG.md) for detailed changes.
+          See the [CHANGELOG.md](https://github.com/thesammykins/FlixBridge/blob/main/CHANGELOG.md) for detailed changes.
           
           ### NPM Package
           ```bash
           npm install @thesammykins/flixbridge@${{ steps.version.outputs.version_number }}
           ```
           
-          **Full Changelog**: https://github.com/thesammykins/arr_mcp/compare/v${{ steps.version.outputs.version_number }}...${{ steps.version.outputs.new_version }}
+          **Full Changelog**: https://github.com/thesammykins/FlixBridge/compare/v${{ steps.version.outputs.version_number }}...${{ steps.version.outputs.new_version }}
         draft: false
         prerelease: false
 
@@ -268,5 +268,5 @@ jobs:
       run: |
         curl -H "Content-Type: application/json" \
              -X POST \
-             -d "{\"content\":\"🚀 **New release published!**\\n\\n📦 **@thesammykins/flixbridge** v${{ needs.publish.outputs.version }}\\n\\n✅ Successfully built and published to npm\\n🔗 [View on GitHub](https://github.com/thesammykins/arr_mcp/releases/latest)\\n📋 [View on npm](https://www.npmjs.com/package/@thesammykins/flixbridge)\"}" \
+             -d "{\"content\":\"🚀 **New release published!**\\n\\n📦 **@thesammykins/flixbridge** v${{ needs.publish.outputs.version }}\\n\\n✅ Successfully built and published to npm\\n🔗 [View on GitHub](https://github.com/thesammykins/FlixBridge/releases/latest)\\n📋 [View on npm](https://www.npmjs.com/package/@thesammykins/flixbridge)\"}" \
              ${{ secrets.DISCORD_WEBHOOK_URL }} || echo "Discord notification failed (webhook not configured)"
