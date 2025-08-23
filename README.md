@@ -1,9 +1,14 @@
-# Flix-Bridge
+# FlixBridge
+
+[![Build and Publish](https://github.com/thesammykins/arr_mcp/actions/workflows/build-and-publish.yml/badge.svg)](https://github.com/thesammykins/arr_mcp/actions/workflows/build-and-publish.yml)
+[![npm version](https://badge.fury.io/js/@thesammykins%2Fflixbridge.svg)](https://badge.fury.io/js/@thesammykins%2Fflixbridge)
+[![npm downloads](https://img.shields.io/npm/dt/@thesammykins/flixbridge.svg)](https://www.npmjs.com/package/@thesammykins/flixbridge)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 > **Media Management MCP Server**  
 > Connect your AI assistant to TV shows and movie management services
 
-Flix-Bridge is a Model Context Protocol (MCP) server that bridges AI assistants with media management services. It provides a unified interface for monitoring downloads, managing libraries, and automating media workflows.
+FlixBridge is a Model Context Protocol (MCP) server that bridges AI assistants with media management services. It provides a unified interface for monitoring downloads, managing libraries, and automating media workflows.
 
 ## ✨ Key Features
 
@@ -16,20 +21,40 @@ Flix-Bridge is a Model Context Protocol (MCP) server that bridges AI assistants 
 - **🐛 Advanced Debugging** - Comprehensive logging and diagnostics
 - **⚡ High Performance** - Efficient, lightweight, TypeScript-first
 
+## 📦 Installation
+
+### From npm (Recommended)
+
+```bash
+# Install globally
+npm install -g @thesammykins/flixbridge
+
+# Or install locally in your project
+npm install @thesammykins/flixbridge
+```
+
+### From Source
+
+```bash
+# Clone the repository
+git clone https://github.com/thesammykins/arr_mcp.git
+cd arr_mcp
+
+# Install dependencies and build
+npm install && npm run build
+```
+
 ## 🚀 Quick Start
 
 ```bash
-# 1. Install and build
-npm install && npm run build
-
-# 2. Configure your services  
+# 1. Configure your services  
 cp config.sample.json config.json
 # Edit config.json with your API keys
 
-# 3. Test connectivity
+# 2. Test connectivity
 npm run smoke
 
-# 4. Run the server
+# 3. Run the server
 npm start
 ```
 

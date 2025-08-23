@@ -1,9 +1,20 @@
 {
-  "name": "flix-bridge",
+  "name": "@thesammykins/flixbridge",
   "version": "0.1.0",
   "description": "Media Management MCP Server - Connect AI assistants to TV shows and movie management services",
   "type": "module",
   "main": "dist/index.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thesammykins/arr_mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/thesammykins/arr_mcp/issues"
+  },
+  "homepage": "https://github.com/thesammykins/arr_mcp#readme",
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",
