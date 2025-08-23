@@ -6,7 +6,7 @@
   "main": "dist/index.js",
   "repository": {
     "type": "git",
-    "url": "https://github.com/thesammykins/arr_mcp.git"
+    "url": "git+https://github.com/thesammykins/arr_mcp.git"
   },
   "bugs": {
     "url": "https://github.com/thesammykins/arr_mcp/issues"
@@ -15,6 +15,11 @@
   "publishConfig": {
     "access": "public"
   },
+  "files": [
+    "dist/**/*",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",

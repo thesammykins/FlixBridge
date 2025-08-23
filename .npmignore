@@ -1,0 +1,49 @@
+# Development files
+src/
+scripts/
+example_configs/
+plans/
+docs/
+.github/
+*.md
+!README.md
+!LICENSE
+
+# Configuration files
+config*.json
+env-mapping*.json
+tsconfig.json
+.eslintrc.json
+
+# Development dependencies
+node_modules/
+npm-debug.log*
+.npm
+.eslintcache
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test files
+test/
+tests/
+*.test.js
+*.test.ts
+*.spec.js
+*.spec.ts
+
+# Coverage reports
+coverage/
+.nyc_output/
+
+# Temporary files
+*.tmp
+*.temp
+.tmp/
