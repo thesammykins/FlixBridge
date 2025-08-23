@@ -15,10 +15,22 @@ Get Flix-Bridge up and running in minutes.
 
 ## Quick Installation
 
+### From npm (Recommended)
+
+```bash
+# Install globally
+npm install -g @thesammykins/flixbridge
+
+# Or install locally in your project
+npm install @thesammykins/flixbridge
+```
+
+### From Source (Development)
+
 ```bash
 # Clone and setup
-git clone https://github.com/your-org/flix-bridge.git
-cd flix-bridge
+git clone https://github.com/thesammykins/arr_mcp.git
+cd arr_mcp
 npm install
 npm run build
 ```
@@ -72,11 +84,14 @@ Edit `config.json` with your service details:
 Test your setup:
 
 ```bash
-# Basic connectivity test
+# With npm installation
+FLIX_BRIDGE_CONFIG=./config.json npx @thesammykins/flixbridge --test
+
+# Or if installed from source
 npm run smoke
 
 # With detailed debug output
-FLIX_BRIDGE_DEBUG=1 npm run smoke
+FLIX_BRIDGE_DEBUG=1 FLIX_BRIDGE_CONFIG=./config.json npx @thesammykins/flixbridge --test
 ```
 
 You should see output like:
@@ -88,18 +103,24 @@ You should see output like:
 
 ## Running the Server
 
-### Development Mode
+### With npm Package
 ```bash
+# Basic run
+FLIX_BRIDGE_CONFIG=./config.json npx @thesammykins/flixbridge
+
+# Debug mode
+FLIX_BRIDGE_DEBUG=1 FLIX_BRIDGE_CONFIG=./config.json npx @thesammykins/flixbridge
+```
+
+### From Source (Development)
+```bash
+# Development mode
 npm run dev
-```
 
-### Production Mode  
-```bash
+# Production mode  
 npm start
-```
 
-### Debug Mode
-```bash
+# Debug mode
 FLIX_BRIDGE_DEBUG=1 npm run dev
 ```
 

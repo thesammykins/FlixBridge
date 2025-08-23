@@ -16,10 +16,10 @@ Add Flix-Bridge to your Claude Desktop `claude_desktop_config.json` file:
 {
   "mcpServers": {
     "flix-bridge": {
-      "command": "node",
-      "args": ["/path/to/flix-bridge/dist/index.js"],
+      "command": "npx",
+      "args": ["@thesammykins/flixbridge"],
       "env": {
-        "FLIX_BRIDGE_CONFIG": "/path/to/flix-bridge/config.json"
+        "FLIX_BRIDGE_CONFIG": "/path/to/your/config.json"
       }
     }
   }
@@ -31,8 +31,8 @@ Add Flix-Bridge to your Claude Desktop `claude_desktop_config.json` file:
 {
   "mcpServers": {
     "flix-bridge": {
-      "command": "node",
-      "args": ["path/to/flix-bridge/dist/index.js"],
+      "command": "npx",
+      "args": ["@thesammykins/flixbridge"],
       "env": {
         "SONARR_URL": "http://localhost:8989",
         "SONARR_API_KEY": "your-sonarr-api-key",
@@ -51,11 +51,10 @@ Add Flix-Bridge to your Claude Desktop `claude_desktop_config.json` file:
 {
   "mcpServers": {
     "flix-bridge-dev": {
-      "command": "npm",
-      "args": ["run", "dev"],
-      "cwd": "/path/to/flix-bridge",
+      "command": "npx",
+      "args": ["@thesammykins/flixbridge"],
       "env": {
-        "FLIX_BRIDGE_CONFIG": "/path/to/flix-bridge/config.json",
+        "FLIX_BRIDGE_CONFIG": "/path/to/your/config.json",
         "FLIX_BRIDGE_DEBUG": "1"
       }
     }
@@ -65,22 +64,33 @@ Add Flix-Bridge to your Claude Desktop `claude_desktop_config.json` file:
 
 ### Quick Setup for Claude Desktop
 
-1. **Build the server:**
+1. **Install the package:**
    ```bash
-   cd /path/to/flix-bridge
-   npm install
-   npm run build
+   npm install -g @thesammykins/flixbridge
    ```
 
 2. **Create your config file:**
    ```bash
-   cp config.sample.json config.json
-   # Edit config.json with your actual API keys
+   # Create config.json with your service details
+   cat > config.json << 'EOF'
+   {
+     "services": {
+       "sonarr": {
+         "baseUrl": "http://localhost:8989",
+         "apiKey": "your-sonarr-api-key"
+       },
+       "radarr": {
+         "baseUrl": "http://localhost:7878",
+         "apiKey": "your-radarr-api-key"
+       }
+     }
+   }
+   EOF
    ```
 
 3. **Test the configuration:**
    ```bash
-   npm run smoke
+   FLIX_BRIDGE_CONFIG=./config.json npx @thesammykins/flixbridge --test
    ```
 
 4. **Add to Claude Desktop config** (usually at `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS)
@@ -95,25 +105,26 @@ For other MCP-compatible applications:
 {
   "name": "flix-bridge",
   "description": "Media management MCP server for TV shows and movies",
-  "command": "node",
-  "args": ["/path/to/flix-bridge/dist/index.js"],
+  "command": "npx",
+  "args": ["@thesammykins/flixbridge"],
   "env": {
-    "FLIX_BRIDGE_CONFIG": "/path/to/flix-bridge/config.json"
+    "FLIX_BRIDGE_CONFIG": "/path/to/your/config.json"
   },
   "capabilities": ["tools"],
   "tools": [
-    "System Status",
-    "Queue List", 
-    "Queue Grab",
-    "Root Folders",
-    "History Detail",
-    "Search",
-    "Add New",
-    "Import Issues",
-    "Quality Profiles",
-    "Queue Diagnostics",
-    "All Services Diagnostics",
-    "Download Status"
+    "system_status",
+    "queue_list", 
+    "queue_grab",
+    "root_folders",
+    "history_detail",
+    "search",
+    "add_new",
+    "import_issues",
+    "quality_profiles",
+    "queue_diagnostics",
+    "all_services_diagnostics",
+    "download_status",
+    "server_metrics"
   ]
 }
 ```

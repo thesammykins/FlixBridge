@@ -102,22 +102,22 @@ Create a `config.json` file:
 ## 🛠️ Available Tools
 
 ### Core Operations
-- **System Status** - Health and version information
-- **Queue List** - Download queue with progress tracking
-- **Queue Grab** - Force retry/grab specific downloads  
-- **Queue Diagnostics** - Auto-detect and fix stuck items
-- **Root Folders** - Storage locations and free space
+- **system_status** - Health and version information
+- **queue_list** - Download queue with progress tracking
+- **queue_grab** - Force retry/grab specific downloads  
+- **queue_diagnostics** - Auto-detect and fix stuck items
+- **root_folders** - Storage locations and free space
 
 ### Media Management
-- **Search** - Find new series/movies to add
-- **Add New** - Add media with intelligent quality profiles
-- **Quality Profiles** - List available quality configurations
-- **History Detail** - Download and import history
-- **Import Issues** - Detect stuck downloads and import problems
+- **search** - Find new series/movies to add
+- **add_new** - Add media with intelligent quality profiles
+- **quality_profiles** - List available quality configurations
+- **history_detail** - Download and import history
+- **import_issues** - Detect stuck downloads and import problems
 
 ### Multi-Service Tools
-- **All Services Diagnostics** - Run diagnostics across all instances
-- **Download Status** - Unified status across services and downloaders
+- **all_services_diagnostics** - Run diagnostics across all instances
+- **download_status** - Unified status across services and downloaders
 
 ## 🔧 MCP Client Setup
 
@@ -129,10 +129,10 @@ Add to `claude_desktop_config.json`:
 {
   "mcpServers": {
     "flix-bridge": {
-      "command": "node",
-      "args": ["/path/to/flix-bridge/dist/index.js"],
+      "command": "npx",
+      "args": ["@thesammykins/flixbridge"],
       "env": {
-        "FLIX_BRIDGE_CONFIG": "/path/to/flix-bridge/config.json"
+        "FLIX_BRIDGE_CONFIG": "/path/to/your/config.json"
       }
     }
   }

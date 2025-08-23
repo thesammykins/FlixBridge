@@ -17,7 +17,7 @@ import { metricsCollector } from "./metrics.js";
 
 const tools = [
   {
-    name: "System Status",
+    name: "system_status",
     description: "Get system status and health information",
     inputSchema: {
       type: "object",
@@ -26,7 +26,7 @@ const tools = [
     },
   },
   {
-    name: "Queue List",
+    name: "queue_list",
     description: "List items in download queue with status and progress",
     inputSchema: {
       type: "object",
@@ -39,7 +39,7 @@ const tools = [
     },
   },
   {
-    name: "Queue Grab",
+    name: "queue_grab",
     description: "Force grab/retry download of queued items",
     inputSchema: {
       type: "object",
@@ -51,7 +51,7 @@ const tools = [
     },
   },
   {
-    name: "Root Folders",
+    name: "root_folders",
     description: "List configured root folders and storage information",
     inputSchema: {
       type: "object",
@@ -60,7 +60,7 @@ const tools = [
     },
   },
   {
-    name: "History Detail",
+    name: "history_detail",
     description: "Get download/import history details",
     inputSchema: {
       type: "object",
@@ -74,7 +74,7 @@ const tools = [
     },
   },
   {
-    name: "Search",
+    name: "search",
     description: "Search for media (series/movies) to add",
     inputSchema: {
       type: "object",
@@ -87,7 +87,7 @@ const tools = [
     },
   },
   {
-    name: "Add New",
+    name: "add_new",
     description: "Add new media to library",
     inputSchema: {
       type: "object",
@@ -103,7 +103,7 @@ const tools = [
     },
   },
   {
-    name: "Import Issues",
+    name: "import_issues",
     description: "Check for import issues and stuck downloads",
     inputSchema: {
       type: "object",
@@ -112,7 +112,7 @@ const tools = [
     },
   },
   {
-    name: "Quality Profiles",
+    name: "quality_profiles",
     description: "List available quality profiles with recommendations",
     inputSchema: {
       type: "object",
@@ -121,7 +121,7 @@ const tools = [
     },
   },
   {
-    name: "Queue Diagnostics",
+    name: "queue_diagnostics",
     description: "Analyze and auto-fix stuck queue items",
     inputSchema: {
       type: "object",
@@ -133,7 +133,7 @@ const tools = [
     },
   },
   {
-    name: "All Services Diagnostics",
+    name: "all_services_diagnostics",
     description: "Analyze and auto-fix stuck queue items across all services",
     inputSchema: {
       type: "object",
@@ -144,7 +144,7 @@ const tools = [
     },
   },
   {
-    name: "Download Status",
+    name: "download_status",
     description:
       "Get unified download status across arr services and downloaders",
     inputSchema: {
@@ -158,7 +158,7 @@ const tools = [
     },
   },
   {
-    name: "Server Metrics",
+    name: "server_metrics",
     description: "Get server performance metrics and health status",
     inputSchema: {
       type: "object",
@@ -210,11 +210,11 @@ class ArrMcpServer {
       let result;
 
       // Handle multi-service tools
-      if (name === "All Services Diagnostics") {
+      if (name === "all_services_diagnostics") {
         result = await debugToolTiming(name, "multi", () =>
           this.runAllServicesDiagnostics(input.autoFix ?? true),
         );
-      } else if (name === "Download Status") {
+      } else if (name === "download_status") {
         result = await debugToolTiming(name, "multi", () =>
           this.runDownloadStatus(input),
         );
@@ -232,14 +232,14 @@ class ArrMcpServer {
           input.service || "unknown",
           async () => {
             switch (name) {
-              case "System Status":
+              case "system_status":
                 return await service.systemStatus();
-              case "Queue List":
+              case "queue_list":
                 return await service.queueList({
                   page: input.page,
                   pageSize: input.pageSize,
                 });
-              case "Queue Grab":
+              case "queue_grab":
                 if (!input.ids || input.ids.length === 0) {
                   throw new McpError(
                     ErrorCode.InvalidParams,
@@ -247,15 +247,15 @@ class ArrMcpServer {
                   );
                 }
                 return await service.queueGrab(input.ids);
-              case "Root Folders":
+              case "root_folders":
                 return await service.rootFolderList();
-              case "History Detail":
+              case "history_detail":
                 return await service.historyDetail({
                   page: input.page,
                   pageSize: input.pageSize,
                   since: input.since,
                 });
-              case "Search":
+              case "search":
                 if (!input.query) {
                   throw new McpError(
                     ErrorCode.InvalidParams,
@@ -265,7 +265,7 @@ class ArrMcpServer {
                 return await service.search(input.query, {
                   limit: input.limit,
                 });
-              case "Add New":
+              case "add_new":
                 if (!input.title || !input.foreignId) {
                   throw new McpError(
                     ErrorCode.InvalidParams,
@@ -279,13 +279,13 @@ class ArrMcpServer {
                   qualityProfileId: input.qualityProfileId,
                   monitored: input.monitored,
                 });
-              case "Import Issues":
+              case "import_issues":
                 return await service.importIssues();
-              case "Quality Profiles":
+              case "quality_profiles":
                 return await service.listQualityProfiles();
-              case "Queue Diagnostics":
+              case "queue_diagnostics":
                 return await service.queueDiagnostics(input.autoFix);
-              case "Server Metrics":
+              case "server_metrics":
                 if (input.service) {
                   const serviceMetrics = metricsCollector.getServiceMetrics(
                     input.service,

@@ -8,24 +8,24 @@ Complete reference for all available Flix-Bridge tools with examples and respons
 ## Table of Contents
 
 - [Core Operations](#core-operations)
-  - [System Status](#system-status)
-  - [Queue List](#queue-list) 
-  - [Queue Grab](#queue-grab)
-  - [Root Folders](#root-folders)
+  - [system_status](#system_status)
+  - [queue_list](#queue_list) 
+  - [queue_grab](#queue_grab)
+  - [root_folders](#root_folders)
 - [Media Management](#media-management)
-  - [Search](#search)
-  - [Add New](#add-new)
-  - [Quality Profiles](#quality-profiles)
-  - [History Detail](#history-detail)
-  - [Import Issues](#import-issues)
+  - [search](#search)
+  - [add_new](#add_new)
+  - [quality_profiles](#quality_profiles)
+  - [history_detail](#history_detail)
+  - [import_issues](#import_issues)
 - [Diagnostics & Monitoring](#diagnostics--monitoring)
-  - [Queue Diagnostics](#queue-diagnostics)
-  - [All Services Diagnostics](#all-services-diagnostics)
-  - [Download Status](#download-status)
+  - [queue_diagnostics](#queue_diagnostics)
+  - [all_services_diagnostics](#all_services_diagnostics)
+  - [download_status](#download_status)
 
 ## Core Operations
 
-### System Status
+### system_status
 
 Get system status and health information for a specific service.
 
@@ -59,7 +59,7 @@ Get system status and health information for a specific service.
 {"service": "sonarr-anime"}
 ```
 
-### Queue List
+### queue_list
 
 List items in the download queue with status and progress information.
 
@@ -105,7 +105,7 @@ List items in the download queue with status and progress information.
 - `sortKey` (optional): Sort by field (progress, title, status)
 - `sortDirection` (optional): "ascending" or "descending"
 
-### Queue Grab
+### queue_grab
 
 Force grab/retry download of specific queued items.
 
@@ -146,7 +146,7 @@ Force grab/retry download of specific queued items.
 }
 ```
 
-### Root Folders
+### root_folders
 
 List configured root folders and storage information.
 
@@ -186,7 +186,7 @@ List configured root folders and storage information.
 
 ## Media Management
 
-### Search
+### search
 
 Search for media (series/movies) to add to your library.
 
@@ -228,7 +228,7 @@ Search for media (series/movies) to add to your library.
 - `query` (required): Search term
 - `limit` (optional): Maximum results to return
 
-### Add New
+### add_new
 
 Add new media (series/movies) to your library with intelligent quality profile selection.
 
@@ -286,7 +286,7 @@ Add new media (series/movies) to your library with intelligent quality profile s
 - `monitored` (optional): Whether to monitor for downloads (default: true)
 - `rootFolderPath` (optional): Storage location (uses default if not specified)
 
-### Quality Profiles
+### quality_profiles
 
 List available quality profiles with intelligent recommendations.
 
@@ -329,7 +329,7 @@ List available quality profiles with intelligent recommendations.
 
 The `recommended` field suggests the best quality profile based on your service name.
 
-### History Detail
+### history_detail
 
 Get download and import history with optional filtering.
 
@@ -371,7 +371,7 @@ Get download and import history with optional filtering.
 - `pageSize` (optional): Items per page
 - `since` (optional): Only show history after this date (ISO format)
 
-### Import Issues
+### import_issues
 
 Check for import issues and stuck downloads.
 
@@ -404,7 +404,7 @@ Check for import issues and stuck downloads.
 
 ## Diagnostics & Monitoring
 
-### Queue Diagnostics
+### queue_diagnostics
 
 Analyze and automatically fix stuck queue items for a specific service.
 
@@ -462,7 +462,7 @@ Analyze and automatically fix stuck queue items for a specific service.
 - **Network Errors**: Connectivity issues → retries downloads
 - **Unknown Issues**: Provides analysis but requires manual intervention
 
-### All Services Diagnostics
+### all_services_diagnostics
 
 Run queue diagnostics across all configured services simultaneously.
 
@@ -507,7 +507,7 @@ Run queue diagnostics across all configured services simultaneously.
 **Parameters:**
 - `autoFix` (optional): Whether to automatically fix detected issues (default: true)
 
-### Download Status
+### download_status
 
 Get unified download status across multiple services and download clients.
 

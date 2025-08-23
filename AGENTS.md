@@ -221,7 +221,7 @@ If/when introducing a test runner: prefer `vitest` (lightweight, ESM-friendly) b
 ## 10. MCP Tool Design
 
 - Each MCP tool is coarse enough to cover a *semantic operation* (not every REST endpoint).
-- Tool naming: English-style names (e.g. `System Status`, `Queue List`, `History Detail`).
+- Tool naming: underscore_lowercase names (e.g. `system_status`, `queue_list`, `history_detail`).
 - Input shape includes:
   - `service: string`
   - Additional parameters (e.g. `ids?: number[]`)
@@ -239,7 +239,7 @@ This section adds MCP‑specific (Model Context Protocol) implementation mechani
 Core runtime shape (request → response):
 1. Receive JSON-RPC style MCP request (method = tool name, params = input object).
 2. Validate:
-   - Tool name matches registered English-style names (e.g. `System Status`, `Queue List`)
+   - Tool name matches registered underscore_lowercase names (e.g. `system_status`, `queue_list`)
    - Params schema via lightweight manual checks + optional `zod` (only for fields we actually branch on).
 3. Lookup service adapter (`mapping.ts`). If missing: return structured `InternalError` (not generic string).
 4. Invoke normalized operation in `ops/*` (pure, side-effect limited to HTTP).
@@ -434,7 +434,7 @@ const services = [
 ];
 ```
 2. Register tools exposing operations referencing `services` registry.
-3. Run MCP host; call `System Status` with `{ service: 'sonarr' }`.
+3. Run MCP host; call `system_status` with `{ service: 'sonarr' }`.
 
 ---
 

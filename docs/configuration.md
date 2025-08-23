@@ -131,8 +131,8 @@ In your MCP server configuration:
 {
   "mcpServers": {
     "flix-bridge": {
-      "command": "node",
-      "args": ["path/to/flix-bridge/dist/index.js"],
+      "command": "npx",
+      "args": ["@thesammykins/flixbridge"],
       "env": {
         "FLIX_BRIDGE_ENV_MAPPING": "{\"services\":{\"sonarr\":{\"baseUrl\":\"CUSTOM_SONARR_URL\",\"apiKey\":\"CUSTOM_SONARR_KEY\"},\"radarr\":{\"baseUrl\":\"CUSTOM_RADARR_URL\",\"apiKey\":\"CUSTOM_RADARR_KEY\"}}}",
         "CUSTOM_SONARR_URL": "http://localhost:8989",

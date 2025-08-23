@@ -208,16 +208,16 @@ Service names must contain "sonarr" or "radarr" for proper type detection.
 ## Available Operations (12+ Tools)
 
 ### Core Operations
-- **System Status**: Health and version information
-- **Queue List**: Download queue with status and progress
-- **Queue Grab**: Force grab/retry queued items (single or bulk)
-- **Root Folders**: Storage locations and free space monitoring
+- **system_status**: Health and version information
+- **queue_list**: Download queue with status and progress
+- **queue_grab**: Force grab/retry queued items (single or bulk)
+- **root_folders**: Storage locations and free space monitoring
 
 ### Extended Operations
 - **History Detail**: Download and import history with filtering
 - **Search**: Media lookup (series/movies) for adding to library
-- **Add New**: Add new media to library with quality profiles
-- **Import Issues**: Check for stuck downloads and import problems
+- **add_new**: Add new media to library with quality profiles
+- **import_issues**: Check for stuck downloads and import problems
 - **Quality Profiles**: List available quality configurations with recommendations
 
 ### Diagnostic & Monitoring Tools (Phase 2/3)
@@ -231,13 +231,13 @@ Service names must contain "sonarr" or "radarr" for proper type detection.
 ```json
 // System status for 4K Sonarr instance
 {
-  "tool": "System Status",
+  "tool": "system_status",
   "arguments": { "service": "sonarr-4k" }
 }
 
 // Queue list with pagination
 {
-  "tool": "Queue List",
+  "tool": "queue_list",
   "arguments": { "service": "radarr-main", "pageSize": 25 }
 }
 
@@ -430,10 +430,10 @@ Add to `claude_desktop_config.json`:
 {
   "mcpServers": {
     "flix-bridge": {
-      "command": "node",
-      "args": ["/full/path/to/arr_mcp/dist/index.js"],
+      "command": "npx",
+      "args": ["@thesammykins/flixbridge"],
       "env": {
-        "FLIX_BRIDGE_CONFIG": "/full/path/to/arr_mcp/config.json"
+        "FLIX_BRIDGE_CONFIG": "/path/to/your/config.json"
       }
     }
   }
