@@ -41,7 +41,7 @@ interface EnvVarMapping {
 }
 
 function loadEnvVarMapping(): EnvVarMapping | null {
-  const mappingJson = process.env.ARR_MCP_ENV_MAPPING;
+  const mappingJson = process.env.FLIX_BRIDGE_ENV_MAPPING;
   if (!mappingJson) {
     return null;
   }
@@ -50,7 +50,7 @@ function loadEnvVarMapping(): EnvVarMapping | null {
     return JSON.parse(mappingJson) as EnvVarMapping;
   } catch {
     console.error(
-      "Failed to parse ARR_MCP_ENV_MAPPING, falling back to hardcoded env vars",
+      "Failed to parse FLIX_BRIDGE_ENV_MAPPING, falling back to hardcoded env vars",
     );
     return null;
   }
@@ -165,7 +165,7 @@ function buildConfigFromHardcodedEnvVars() {
 }
 
 async function loadConfig() {
-  const configPath = process.env.ARR_MCP_CONFIG || "config.json";
+  const configPath = process.env.FLIX_BRIDGE_CONFIG || "config.json";
 
   try {
     const fs = await import("fs/promises");
@@ -185,8 +185,8 @@ async function loadConfig() {
 
 // Test utilities
 function clearEnv() {
-  delete process.env.ARR_MCP_CONFIG;
-  delete process.env.ARR_MCP_ENV_MAPPING;
+  delete process.env.FLIX_BRIDGE_CONFIG;
+  delete process.env.FLIX_BRIDGE_ENV_MAPPING;
   delete process.env.SONARR_URL;
   delete process.env.SONARR_API_KEY;
   delete process.env.RADARR_URL;
@@ -207,7 +207,7 @@ function clearEnv() {
 }
 
 function setNonExistentConfigPath() {
-  process.env.ARR_MCP_CONFIG = "non-existent-config.json";
+  process.env.FLIX_BRIDGE_CONFIG = "non-existent-config.json";
 }
 
 function cleanupTestFiles() {
@@ -244,7 +244,7 @@ async function testConfigFile() {
   };
 
   writeFileSync("test-config.json", JSON.stringify(testConfig, null, 2));
-  process.env.ARR_MCP_CONFIG = "test-config.json";
+  process.env.FLIX_BRIDGE_CONFIG = "test-config.json";
 
   try {
     const config = await loadConfig();
@@ -286,7 +286,7 @@ async function testEnvMapping() {
     },
   };
 
-  process.env.ARR_MCP_ENV_MAPPING = JSON.stringify(mapping);
+  process.env.FLIX_BRIDGE_ENV_MAPPING = JSON.stringify(mapping);
   process.env.MCP_SONARR_BASE_URL = "http://mapped-sonarr:8989";
   process.env.MCP_SONARR_API_KEY = "mapped-sonarr-key";
   process.env.MCP_RADARR_BASE_URL = "http://mapped-radarr:7878";
@@ -360,7 +360,7 @@ async function testPriorityOrder() {
   };
 
   writeFileSync("test-config.json", JSON.stringify(testConfig, null, 2));
-  process.env.ARR_MCP_CONFIG = "test-config.json";
+  process.env.FLIX_BRIDGE_CONFIG = "test-config.json";
 
   const mapping = {
     services: {
@@ -371,7 +371,7 @@ async function testPriorityOrder() {
     },
   };
 
-  process.env.ARR_MCP_ENV_MAPPING = JSON.stringify(mapping);
+  process.env.FLIX_BRIDGE_ENV_MAPPING = JSON.stringify(mapping);
   process.env.MCP_SONARR_BASE_URL = "http://mapped-sonarr:8989";
   process.env.MCP_SONARR_API_KEY = "mapped-sonarr-key";
   process.env.SONARR_URL = "http://hardcoded-sonarr:8989";
@@ -417,7 +417,7 @@ async function testCustomEnvVarNames() {
     },
   };
 
-  process.env.ARR_MCP_ENV_MAPPING = JSON.stringify(mapping);
+  process.env.FLIX_BRIDGE_ENV_MAPPING = JSON.stringify(mapping);
   process.env.CUSTOM_SONARR_URL = "http://custom-sonarr:8989";
   process.env.CUSTOM_SONARR_KEY = "custom-sonarr-key";
   process.env.CUSTOM_SAB_URL = "http://custom-sab:8080";
@@ -449,7 +449,7 @@ async function testInvalidMapping() {
   setNonExistentConfigPath();
 
   // Set invalid JSON
-  process.env.ARR_MCP_ENV_MAPPING = "invalid-json";
+  process.env.FLIX_BRIDGE_ENV_MAPPING = "invalid-json";
   process.env.SONARR_URL = "http://fallback-sonarr:8989";
   process.env.SONARR_API_KEY = "fallback-sonarr-key";
 
@@ -487,7 +487,7 @@ async function testPartialMapping() {
     },
   };
 
-  process.env.ARR_MCP_ENV_MAPPING = JSON.stringify(mapping);
+  process.env.FLIX_BRIDGE_ENV_MAPPING = JSON.stringify(mapping);
   process.env.PARTIAL_SONARR_URL = "http://partial-sonarr:8989";
   process.env.PARTIAL_SONARR_KEY = "partial-sonarr-key";
   // Don't set radarr env vars

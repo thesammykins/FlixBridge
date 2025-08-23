@@ -4,7 +4,7 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 
 ## Project Overview
 
-**arr_mcp** is a Model Context Protocol (MCP) server that provides LLMs with unified access to Sonarr (TV series) and Radarr (movie) media management applications. The server normalizes the different APIs into consistent operations and supports multi-instance configurations.
+**Flix-Bridge** is a Model Context Protocol (MCP) server that provides LLMs with unified access to Sonarr (TV series) and Radarr (movie) media management applications. The server normalizes the different APIs into consistent operations and supports multi-instance configurations.
 
 **Core Capabilities:**
 - System status monitoring for Sonarr/Radarr instances
@@ -35,7 +35,7 @@ npm run smoke
 npm run lint
 
 # Enable debug logging
-ARR_MCP_DEBUG=1 npm run dev
+FLIX_BRIDGE_DEBUG=1 npm run dev
 
 # Test Phase 2 features (SABnzbd integration, diagnostics)
 npm run test:phase2
@@ -56,7 +56,7 @@ cp config.sample.json config.json
 # Find API keys at: Settings → General → Security → API Key
 
 # Test specific instance configuration
-ARR_MCP_CONFIG=config.json npm run smoke
+FLIX_BRIDGE_CONFIG=config.json npm run smoke
 ```
 
 ## Architecture Overview
@@ -81,7 +81,7 @@ ARR_MCP_CONFIG=config.json npm run smoke
 - Consistent response formatting for all operations
 
 **Debug & Observability (`src/debug.ts`, `src/metrics.ts`)**
-- `debug.ts`: Debug logging system with `ARR_MCP_DEBUG=1` environment flag
+- `debug.ts`: Debug logging system with `FLIX_BRIDGE_DEBUG=1` environment flag
 - `metrics.ts`: Performance monitoring and server metrics collection
 - Comprehensive request/response logging and timing information
 
@@ -297,17 +297,17 @@ Service names must contain "sonarr" or "radarr" for proper type detection.
 
 ### Debug Logging
 
-Enable comprehensive debug logging with the `ARR_MCP_DEBUG=1` environment variable:
+Enable comprehensive debug logging with the `FLIX_BRIDGE_DEBUG=1` environment variable:
 
 ```bash
 # Development with debug logging
-ARR_MCP_DEBUG=1 npm run dev
+FLIX_BRIDGE_DEBUG=1 npm run dev
 
 # Production with debug logging
-ARR_MCP_DEBUG=1 npm start
+FLIX_BRIDGE_DEBUG=1 npm start
 
 # Smoke tests with debug logging
-ARR_MCP_DEBUG=1 npm run smoke
+FLIX_BRIDGE_DEBUG=1 npm run smoke
 ```
 
 **Debug Features:**
@@ -378,7 +378,7 @@ export SABNZBD_URL="http://localhost:8080"
 export SABNZBD_API_KEY="your-sabnzbd-key"
 
 # Optional custom config file path
-export ARR_MCP_CONFIG="/path/to/config.json"
+export FLIX_BRIDGE_CONFIG="/path/to/config.json"
 ```
 
 ### Multi-Downloader Configuration
@@ -418,7 +418,7 @@ For multiple SABnzbd instances or different downloader types:
 2. **API Connection**: Check baseUrl accessibility and API key permissions
 3. **Multi-Instance Issues**: Ensure service names contain "sonarr" or "radarr"
 4. **Response Validation**: Check that API responses match expected schemas
-5. **Debug Logging**: Use `ARR_MCP_DEBUG=1` for detailed request/response logs
+5. **Debug Logging**: Use `FLIX_BRIDGE_DEBUG=1` for detailed request/response logs
 
 Run `npm run smoke` to validate all configured services.
 
@@ -429,11 +429,11 @@ Add to `claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
-    "arr-mcp": {
+    "flix-bridge": {
       "command": "node",
       "args": ["/full/path/to/arr_mcp/dist/index.js"],
       "env": {
-        "ARR_MCP_CONFIG": "/full/path/to/arr_mcp/config.json"
+        "FLIX_BRIDGE_CONFIG": "/full/path/to/arr_mcp/config.json"
       }
     }
   }
@@ -471,6 +471,6 @@ The `scripts/smoke.ts` file provides comprehensive testing:
 - Validates all configured service instances
 - Tests core operations (status, queue, folders)
 - Reports detailed pass/fail results
-- Can test specific instances: `ARR_MCP_CONFIG=test-config.json npm run smoke`
+- Can test specific instances: `FLIX_BRIDGE_CONFIG=test-config.json npm run smoke`
 
 ⚠️ **Important**: Do not modify `AGENTS.md` without explicit permission - it contains the project's core architectural decisions and constraints.

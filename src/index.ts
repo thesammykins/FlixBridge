@@ -566,7 +566,7 @@ interface EnvVarMapping {
 }
 
 async function loadConfig() {
-  const configPath = process.env.ARR_MCP_CONFIG || "config.json";
+  const configPath = process.env.FLIX_BRIDGE_CONFIG || "config.json";
 
   try {
     const fs = await import("fs/promises");
@@ -585,7 +585,7 @@ async function loadConfig() {
 }
 
 function loadEnvVarMapping(): EnvVarMapping | null {
-  const mappingJson = process.env.ARR_MCP_ENV_MAPPING;
+  const mappingJson = process.env.FLIX_BRIDGE_ENV_MAPPING;
   if (!mappingJson) {
     return null;
   }
@@ -594,7 +594,7 @@ function loadEnvVarMapping(): EnvVarMapping | null {
     return JSON.parse(mappingJson) as EnvVarMapping;
   } catch {
     console.error(
-      "Failed to parse ARR_MCP_ENV_MAPPING, falling back to hardcoded env vars",
+      "Failed to parse FLIX_BRIDGE_ENV_MAPPING, falling back to hardcoded env vars",
     );
     return null;
   }

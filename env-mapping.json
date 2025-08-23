@@ -1,19 +1,19 @@
 {
   "services": {
     "sonarr": {
-      "baseUrl": "ARR_MCP_SONARR_URL",
-      "apiKey": "ARR_MCP_SONARR_KEY"
+      "baseUrl": "FLIX_BRIDGE_SONARR_URL",
+      "apiKey": "FLIX_BRIDGE_SONARR_KEY"
     },
     "radarr": {
-      "baseUrl": "ARR_MCP_RADARR_URL",
-      "apiKey": "ARR_MCP_RADARR_KEY"
+      "baseUrl": "FLIX_BRIDGE_RADARR_URL",
+      "apiKey": "FLIX_BRIDGE_RADARR_KEY"
     }
   },
   "downloaders": {
     "sabnzbd": {
-      "baseUrl": "ARR_MCP_SABNZBD_URL",
-      "apiKey": "ARR_MCP_SABNZBD_KEY",
-      "name": "ARR_MCP_SABNZBD_NAME"
+      "baseUrl": "FLIX_BRIDGE_SABNZBD_URL",
+      "apiKey": "FLIX_BRIDGE_SABNZBD_KEY",
+      "name": "FLIX_BRIDGE_SABNZBD_NAME"
     }
   }
 }

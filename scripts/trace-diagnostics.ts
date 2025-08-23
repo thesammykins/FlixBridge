@@ -9,7 +9,7 @@ import type { ServiceConfig } from "../src/services/base.js";
 import { fetchJson } from "../src/core.js";
 
 async function loadConfig() {
-  const configPath = process.env.ARR_MCP_CONFIG || "config.json";
+  const configPath = process.env.FLIX_BRIDGE_CONFIG || "config.json";
 
   try {
     const fs = await import("fs/promises");
@@ -36,7 +36,7 @@ function traceAnalyzeQueueItem(item: any): any {
   if (statusMessages.length > 0) {
     console.log(`   StatusMessages details:`);
     statusMessages.forEach((msg: any, index: number) => {
-      console.log(`     ${index + 1}. Title: "${msg.title || 'No title'}"`);
+      console.log(`     ${index + 1}. Title: "${msg.title || "No title"}"`);
       if (msg.messages && msg.messages.length > 0) {
         msg.messages.forEach((submsg: string, subIndex: number) => {
           console.log(`        Message ${subIndex + 1}: "${submsg}"`);
@@ -62,7 +62,8 @@ function traceAnalyzeQueueItem(item: any): any {
   console.log(`   Condition checks:`);
 
   // TheXEM mapping issues
-  const hasThexemMapping = allMessages.includes("thexem") && allMessages.includes("mapping");
+  const hasThexemMapping =
+    allMessages.includes("thexem") && allMessages.includes("mapping");
   console.log(`     TheXEM mapping: ${hasThexemMapping}`);
 
   if (hasThexemMapping) {
@@ -79,7 +80,9 @@ function traceAnalyzeQueueItem(item: any): any {
   }
 
   // Quality downgrade issues
-  const hasCustomFormatUpgrade = allMessages.includes("not a custom format upgrade");
+  const hasCustomFormatUpgrade = allMessages.includes(
+    "not a custom format upgrade",
+  );
   const hasDoNotImprove = allMessages.includes("do not improve on existing");
   console.log(`     "not a custom format upgrade": ${hasCustomFormatUpgrade}`);
   console.log(`     "do not improve on existing": ${hasDoNotImprove}`);
@@ -185,7 +188,8 @@ function traceAnalyzeQueueItem(item: any): any {
   console.log(`     status includes "error": ${statusIncludesError}`);
   console.log(`     has status messages: ${hasStatusMessages}`);
 
-  const isStuck = statusIncludesWarning || statusIncludesError || hasStatusMessages;
+  const isStuck =
+    statusIncludesWarning || statusIncludesError || hasStatusMessages;
   console.log(`     isStuck: ${isStuck}`);
 
   if (isStuck) {
@@ -251,7 +255,7 @@ async function traceQueueDiagnostics() {
     const apiKey = (service as any).apiKey;
 
     console.log(`   Base URL: ${baseUrl}`);
-    console.log(`   API Key: ${apiKey ? '***' : 'Missing'}`);
+    console.log(`   API Key: ${apiKey ? "***" : "Missing"}`);
 
     // Build the queue API URL
     const queueUrl = `${baseUrl}/api/v3/queue`;
@@ -260,13 +264,17 @@ async function traceQueueDiagnostics() {
     // Fetch raw queue data
     const queueResponse = await fetchJson(queueUrl, {
       headers: {
-        'X-Api-Key': apiKey
-      }
+        "X-Api-Key": apiKey,
+      },
     });
 
-    console.log(`   Raw response keys: ${Object.keys(queueResponse).join(", ")}`);
-    console.log(`   Total records: ${queueResponse.totalRecords || 'Unknown'}`);
-    console.log(`   Records array length: ${queueResponse.records?.length || 0}`);
+    console.log(
+      `   Raw response keys: ${Object.keys(queueResponse).join(", ")}`,
+    );
+    console.log(`   Total records: ${queueResponse.totalRecords || "Unknown"}`);
+    console.log(
+      `   Records array length: ${queueResponse.records?.length || 0}`,
+    );
 
     const allItems = queueResponse.records || [];
     console.log(`\n📋 TRACE: Processing ${allItems.length} queue items`);
@@ -309,7 +317,7 @@ async function traceQueueDiagnostics() {
             action: "remove_from_queue",
             attempted: false,
             success: false,
-            reason: "Trace mode - not actually executing"
+            reason: "Trace mode - not actually executing",
           });
         } else {
           console.log(`   ⚠️  Requires manual intervention`);
@@ -327,12 +335,13 @@ async function traceQueueDiagnostics() {
     if (issuesAnalyzed.length > 0) {
       console.log(`\n✅ SUCCESS: Issues were detected!`);
       issuesAnalyzed.forEach((issue, index) => {
-        console.log(`   Issue ${index + 1}: ${issue.category.type} (${issue.category.severity})`);
+        console.log(
+          `   Issue ${index + 1}: ${issue.category.type} (${issue.category.severity})`,
+        );
       });
     } else {
       console.log(`\n❌ PROBLEM: No issues detected when there should be`);
     }
-
   } catch (error) {
     console.error("❌ TRACE failed:", error);
     if (error instanceof Error) {

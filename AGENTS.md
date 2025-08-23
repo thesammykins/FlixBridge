@@ -304,7 +304,7 @@ Security & validation (MCP specific):
 - Defensive JSON parsing: wrap parse in try/catch; if parse fails on error body, still emit structured `ServiceError` with `raw` omitted.
 
 Observability (lightweight):
-- Optional `ARR_MCP_DEBUG=1` environment flag triggers console debug lines:
+- Optional `FLIX_BRIDGE_DEBUG=1` environment flag triggers console debug lines:
   - `tool.invoke start { tool, service, t0 }`
   - `tool.invoke end { tool, service, ms, ok }`
 - Keep logging under 10 LOC; do not import logging libraries.

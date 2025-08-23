@@ -11,7 +11,7 @@ interface TestConfig {
 }
 
 async function loadConfig(): Promise<TestConfig> {
-  const configPath = process.env.ARR_MCP_CONFIG || "config.json";
+  const configPath = process.env.FLIX_BRIDGE_CONFIG || "config.json";
 
   try {
     const fs = await import("fs/promises");
@@ -27,7 +27,7 @@ async function testServerMetrics(): Promise<void> {
   console.log("==============================\n");
 
   // Enable debug mode for detailed logging
-  process.env.ARR_MCP_DEBUG = "1";
+  process.env.FLIX_BRIDGE_DEBUG = "1";
 
   try {
     const config = await loadConfig();

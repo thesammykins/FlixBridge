@@ -152,7 +152,7 @@ Acceptance:
 - ⚠️ `Add New` path triggers (optionally) SAB status check to provide immediate feedback (non-blocking fallback if service unreachable) - *Deferred to Phase 3*
 
 ### Phase 3: Polishing & Observability ✅ COMPLETED
-- ✅ Add `ARR_MCP_DEBUG` logs with debug.ts module
+- ✅ Add `FLIX_BRIDGE_DEBUG` logs with debug.ts module
 - ✅ Improve zod validation for queue status fields (union types)
 - ✅ Enhanced smoke script with diagnostic capabilities
 - ✅ Add metrics collection and observability
@@ -463,7 +463,7 @@ Output example:
 ## 15. Metrics / Debug (Optional Phase 3)
 
 - Add simple timing around each tool invocation.
-- Produce debug lines only when `ARR_MCP_DEBUG=1`.
+- Produce debug lines only when `FLIX_BRIDGE_DEBUG=1`.
 - Potential future addition: `debugId` UUID on internal errors.
 
 ---
@@ -474,14 +474,14 @@ Output example:
   - Iterates configured services.
   - Calls `systemStatus`, `queueList`, `search (dummy query)`.
   - Reports failures with succinct summary.
-- Inline assertions (e.g., ensure queue item sort order) inside development-only block guarded by `if (process.env.ARR_MCP_DEBUG)`; remove if LOC pressure arises.
+- Inline assertions (e.g., ensure queue item sort order) inside development-only block guarded by `if (process.env.FLIX_BRIDGE_DEBUG)`; remove if LOC pressure arises.
 
 ---
 
 ## 17. Configuration
 
 Configuration loading (in `index.ts`):
-- Prefer environment variables for API keys / base URLs (e.g. `SONARR_BASE_URL`, `SONARR_API_KEY`, etc.) OR a JSON file path given via `ARR_MCP_CONFIG`.
+- Prefer environment variables for API keys / base URLs (e.g. `SONARR_BASE_URL`, `SONARR_API_KEY`, etc.) OR a JSON file path given via `FLIX_BRIDGE_CONFIG`.
 - Create service instances and populate a `Map<string, BaseService>` exported from `mapping.ts`.
 - Optional configuration keys:
   - `SONARR_DEFAULT_ROOT_FOLDER_ID` / `RADARR_DEFAULT_ROOT_FOLDER_ID`
@@ -732,7 +732,7 @@ npm run smoke
 #### ✅ Implemented Components
 
 1. **Debug Logging System (`src/debug.ts`)**
-   - `ARR_MCP_DEBUG=1` environment flag support
+   - `FLIX_BRIDGE_DEBUG=1` environment flag support
    - Tool execution timing wrapper (`debugToolTiming`)
    - HTTP request logging (`debugHttp`)
    - Service operation logging (`debugOperation`)
@@ -781,7 +781,7 @@ npm run smoke
 
 #### 🎯 Acceptance Criteria Met
 
-- ✅ `ARR_MCP_DEBUG=1` enables comprehensive debug logging
+- ✅ `FLIX_BRIDGE_DEBUG=1` enables comprehensive debug logging
 - ✅ Enhanced Zod validation for better type safety
 - ✅ Smoke script provides detailed service diagnostics
 - ✅ Metrics collection tracks all service operations
@@ -790,7 +790,7 @@ npm run smoke
 
 #### 🏗️ Architectural Notes
 
-- Debug logging has zero overhead when disabled (`ARR_MCP_DEBUG=1` opt-in)
+- Debug logging has zero overhead when disabled (`FLIX_BRIDGE_DEBUG=1` opt-in)
 - Metrics collection uses lightweight in-memory storage (bounded)
 - Recent operation history limited to 100 entries (memory-bounded)
 - All observability features designed for minimal performance impact
@@ -799,7 +799,7 @@ npm run smoke
 
 #### 🧪 Testing Instructions
 
-1. **Enable Debug Mode**: `export ARR_MCP_DEBUG=1`
+1. **Enable Debug Mode**: `export FLIX_BRIDGE_DEBUG=1`
 2. **Run Enhanced Smoke Tests**: `npm run smoke`
 3. **Test Server Metrics**: `npx tsx scripts/test-server-metrics.ts`
 4. **Check Server Metrics Tool**: Call "Server Metrics" tool via MCP
@@ -809,10 +809,10 @@ npm run smoke
 Example commands:
 ```bash
 # Debug mode smoke test
-ARR_MCP_DEBUG=1 npm run smoke
+FLIX_BRIDGE_DEBUG=1 npm run smoke
 
 # Comprehensive metrics test
-ARR_MCP_DEBUG=1 npx tsx scripts/test-server-metrics.ts
+FLIX_BRIDGE_DEBUG=1 npx tsx scripts/test-server-metrics.ts
 
 # Build verification
 npm run build

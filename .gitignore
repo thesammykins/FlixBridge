@@ -172,3 +172,8 @@ Thumbs.db
 beep
 boop
 .beep-boop-inbox/
+
+#Internal Doc
+/docs/radarrapi.txt
+/docs/sonarrapi.txt
+/docs/sabnzbdapi.txt

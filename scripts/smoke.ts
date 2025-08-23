@@ -10,7 +10,7 @@ interface SmokeTestConfig {
 }
 
 async function loadConfig(): Promise<SmokeTestConfig> {
-  const configPath = process.env.ARR_MCP_CONFIG || "config.json";
+  const configPath = process.env.FLIX_BRIDGE_CONFIG || "config.json";
 
   try {
     const fs = await import("fs/promises");
@@ -124,7 +124,7 @@ async function main(): Promise<void> {
   console.log("🚀 Starting ARR MCP Server smoke tests...");
 
   // Enable debug mode for smoke tests
-  process.env.ARR_MCP_DEBUG = "1";
+  process.env.FLIX_BRIDGE_DEBUG = "1";
   debug("Smoke test session started");
 
   try {

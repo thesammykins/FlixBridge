@@ -9,7 +9,7 @@ import { serviceRegistry } from "../src/services/registry.js";
 import type { ServiceConfig } from "../src/services/base.js";
 
 async function loadConfig() {
-  const configPath = process.env.ARR_MCP_CONFIG || "config.json";
+  const configPath = process.env.FLIX_BRIDGE_CONFIG || "config.json";
 
   try {
     const fs = await import("fs/promises");
@@ -42,7 +42,9 @@ async function testQueueDiagnosticsTool() {
     }
   }
 
-  console.log(`\nAvailable services: ${serviceRegistry.getAllNames().join(", ")}\n`);
+  console.log(
+    `\nAvailable services: ${serviceRegistry.getAllNames().join(", ")}\n`,
+  );
 
   // Test the Queue Diagnostics tool directly
   const serviceName = "radarr-uhd";
@@ -78,7 +80,9 @@ async function testQueueDiagnosticsTool() {
           console.log(`     ID: ${issue.id}`);
           console.log(`     Title: ${issue.title}`);
           console.log(`     Status: ${issue.status}`);
-          console.log(`     Category: ${issue.category.type} (${issue.category.severity})`);
+          console.log(
+            `     Category: ${issue.category.type} (${issue.category.severity})`,
+          );
           console.log(`     Auto-fixable: ${issue.category.autoFixable}`);
           console.log(`     Message: ${issue.message}`);
           console.log(`     Suggested Action: ${issue.suggestedAction}`);
@@ -120,13 +124,11 @@ async function testQueueDiagnosticsTool() {
         console.log("   Issues found and fixes attempted");
         console.log("   Queue Diagnostics is working correctly");
       }
-
     } else if (result.error) {
       console.error("❌ Queue Diagnostics failed:", result.error);
     } else {
       console.error("❌ Unexpected result structure");
     }
-
   } catch (error) {
     console.error("❌ Test failed:", error);
     if (error instanceof Error) {

@@ -9,7 +9,7 @@ import { serviceRegistry } from "../src/services/registry.js";
 import type { ServiceConfig } from "../src/services/base.js";
 
 async function loadConfig() {
-  const configPath = process.env.ARR_MCP_CONFIG || "config.json";
+  const configPath = process.env.FLIX_BRIDGE_CONFIG || "config.json";
 
   try {
     const fs = await import("fs/promises");
@@ -226,7 +226,9 @@ async function main() {
   const serviceName = process.argv[2] || "radarr-uhd";
 
   console.log(`Target service: ${serviceName}`);
-  console.log(`Config file: ${process.env.ARR_MCP_CONFIG || "config.json"}`);
+  console.log(
+    `Config file: ${process.env.FLIX_BRIDGE_CONFIG || "config.json"}`,
+  );
 
   // Load configuration
   const config = await loadConfig();

@@ -1,9 +1,9 @@
 /**
- * Debug logging utility for ARR MCP Server
- * Lightweight logging controlled by ARR_MCP_DEBUG environment variable
+ * Debug logging utility for Flix-Bridge MCP Server
+ * Lightweight logging controlled by FLIX_BRIDGE_DEBUG environment variable
  */
 
-const DEBUG_ENABLED = process.env.ARR_MCP_DEBUG === "1";
+const DEBUG_ENABLED = process.env.FLIX_BRIDGE_DEBUG === "1";
 
 interface DebugContext {
   tool?: string;
@@ -13,14 +13,14 @@ interface DebugContext {
 }
 
 /**
- * Debug log function - only outputs when ARR_MCP_DEBUG=1
+ * Debug log function - only outputs when FLIX_BRIDGE_DEBUG=1
  */
 export function debug(message: string, context?: DebugContext): void {
   if (!DEBUG_ENABLED) return;
 
   const timestamp = new Date().toISOString();
   const contextStr = context ? ` ${JSON.stringify(context)}` : "";
-  console.debug(`[${timestamp}] ARR_MCP: ${message}${contextStr}`);
+  console.debug(`[${timestamp}] FLIX_BRIDGE: ${message}${contextStr}`);
 }
 
 /**

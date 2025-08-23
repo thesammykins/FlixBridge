@@ -76,7 +76,7 @@ Test your setup:
 npm run smoke
 
 # With detailed debug output
-ARR_MCP_DEBUG=1 npm run smoke
+FLIX_BRIDGE_DEBUG=1 npm run smoke
 ```
 
 You should see output like:
@@ -100,7 +100,7 @@ npm start
 
 ### Debug Mode
 ```bash
-ARR_MCP_DEBUG=1 npm run dev
+FLIX_BRIDGE_DEBUG=1 npm run dev
 ```
 
 ## Next Steps
