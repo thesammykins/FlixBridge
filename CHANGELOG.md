@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.2.10] - 2025-08-23
+
+- fix: support both flat and nested env mapping formats
+
 ## [0.2.9] - 2025-08-23
 
 - fixing github actions AGAIN
