@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.2.6] - 2025-08-23
+
+- docs: add global installation option and fix npx usage examples
+
 ## [0.2.5] - 2025-08-23
 
 - fixing npm package lacking a  variable in it's json
