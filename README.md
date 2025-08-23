@@ -1,6 +1,6 @@
 # FlixBridge
 
-[![Build and Publish](https://github.com/thesammykins/arr_mcp/actions/workflows/build-and-publish.yml/badge.svg)](https://github.com/thesammykins/arr_mcp/actions/workflows/build-and-publish.yml)
+[![Build and Publish](https://github.com/thesammykins/FlixBridge/.github/workflows/build-and-publish.yml/badge.svg)](https://github.com/thesammykins/FlixBridge/.github//workflows/build-and-publish.yml)
 [![npm version](https://badge.fury.io/js/@thesammykins%2Fflixbridge.svg)](https://badge.fury.io/js/@thesammykins%2Fflixbridge)
 [![npm downloads](https://img.shields.io/npm/dt/@thesammykins/flixbridge.svg)](https://www.npmjs.com/package/@thesammykins/flixbridge)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
