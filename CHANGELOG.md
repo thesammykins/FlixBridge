@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.7] - 2025-08-23
+
+- fix: correct MCP server initialization and capabilities declaration
+- fix: server now properly responds to initialize requests from MCP clients
+- verify: both config.json and FLIX_BRIDGE_ENV_MAPPING configurations work correctly
+
 ## [0.2.6] - 2025-08-23
 
 - docs: add global installation option and fix npx usage examples

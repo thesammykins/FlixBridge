@@ -192,7 +192,10 @@ const InputSchema = z.object({
 });
 
 class ArrMcpServer {
-  private server = new Server({ name: "arr-mcp", version: "0.2.0" });
+  private server = new Server({
+    name: "arr-mcp",
+    version: "0.2.7",
+  });
   private config?: {
     services: Record<string, ServiceConfig>;
     downloaders?: Record<string, SabnzbdConfig>;
