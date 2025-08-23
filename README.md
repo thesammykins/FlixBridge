@@ -32,6 +32,8 @@ npm install -g @thesammykins/flixbridge
 npm install @thesammykins/flixbridge
 ```
 
+📦 **[View on npm](https://www.npmjs.com/package/@thesammykins/flixbridge)**
+
 ### From Source
 
 ```bash
@@ -128,7 +130,7 @@ Add to `claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
-    "flix-bridge": {
+    "flixbridge": {
       "command": "npx",
       "args": ["@thesammykins/flixbridge"],
       "env": {
