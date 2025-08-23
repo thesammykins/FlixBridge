@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.2.8] - 2025-08-23
+
+- fixing env vars not importing
+
 ## [0.2.7] - 2025-08-23
 
 - fix: correct MCP server initialization and capabilities declaration
