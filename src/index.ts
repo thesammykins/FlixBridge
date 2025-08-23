@@ -546,23 +546,21 @@ class ArrMcpServer {
 }
 
 interface EnvVarMapping {
-  services?: {
-    sonarr?: {
+  services?: Record<
+    string,
+    {
       baseUrl?: string;
       apiKey?: string;
-    };
-    radarr?: {
-      baseUrl?: string;
-      apiKey?: string;
-    };
-  };
-  downloaders?: {
-    sabnzbd?: {
+    }
+  >;
+  downloaders?: Record<
+    string,
+    {
       baseUrl?: string;
       apiKey?: string;
       name?: string;
-    };
-  };
+    }
+  >;
 }
 
 async function loadConfig() {
@@ -604,57 +602,49 @@ function buildConfigFromEnvMapping(mapping: EnvVarMapping) {
   const services: Record<string, ServiceConfig> = {};
   const downloaders: Record<string, SabnzbdConfig> = {};
 
-  // Map services from custom env vars
-  if (mapping.services?.sonarr) {
-    const sonarrBaseUrl = mapping.services.sonarr.baseUrl
-      ? process.env[mapping.services.sonarr.baseUrl]
-      : undefined;
-    const sonarrApiKey = mapping.services.sonarr.apiKey
-      ? process.env[mapping.services.sonarr.apiKey]
-      : undefined;
+  // Map services from custom env vars - support any service name
+  if (mapping.services) {
+    for (const [serviceName, serviceMapping] of Object.entries(
+      mapping.services,
+    )) {
+      const baseUrl = serviceMapping.baseUrl
+        ? process.env[serviceMapping.baseUrl]
+        : undefined;
+      const apiKey = serviceMapping.apiKey
+        ? process.env[serviceMapping.apiKey]
+        : undefined;
 
-    if (sonarrBaseUrl && sonarrApiKey) {
-      services.sonarr = {
-        baseUrl: sonarrBaseUrl,
-        apiKey: sonarrApiKey,
-      };
+      if (baseUrl && apiKey) {
+        services[serviceName] = {
+          baseUrl: baseUrl,
+          apiKey: apiKey,
+        };
+      }
     }
   }
 
-  if (mapping.services?.radarr) {
-    const radarrBaseUrl = mapping.services.radarr.baseUrl
-      ? process.env[mapping.services.radarr.baseUrl]
-      : undefined;
-    const radarrApiKey = mapping.services.radarr.apiKey
-      ? process.env[mapping.services.radarr.apiKey]
-      : undefined;
+  // Map downloaders from custom env vars - support any downloader name
+  if (mapping.downloaders) {
+    for (const [downloaderName, downloaderMapping] of Object.entries(
+      mapping.downloaders,
+    )) {
+      const baseUrl = downloaderMapping.baseUrl
+        ? process.env[downloaderMapping.baseUrl]
+        : undefined;
+      const apiKey = downloaderMapping.apiKey
+        ? process.env[downloaderMapping.apiKey]
+        : undefined;
+      const name = downloaderMapping.name
+        ? process.env[downloaderMapping.name]
+        : undefined;
 
-    if (radarrBaseUrl && radarrApiKey) {
-      services.radarr = {
-        baseUrl: radarrBaseUrl,
-        apiKey: radarrApiKey,
-      };
-    }
-  }
-
-  // Map downloaders from custom env vars
-  if (mapping.downloaders?.sabnzbd) {
-    const sabnzbdBaseUrl = mapping.downloaders.sabnzbd.baseUrl
-      ? process.env[mapping.downloaders.sabnzbd.baseUrl]
-      : undefined;
-    const sabnzbdApiKey = mapping.downloaders.sabnzbd.apiKey
-      ? process.env[mapping.downloaders.sabnzbd.apiKey]
-      : undefined;
-    const sabnzbdName = mapping.downloaders.sabnzbd.name
-      ? process.env[mapping.downloaders.sabnzbd.name]
-      : undefined;
-
-    if (sabnzbdBaseUrl && sabnzbdApiKey) {
-      downloaders.sabnzbd = {
-        baseUrl: sabnzbdBaseUrl,
-        apiKey: sabnzbdApiKey,
-        name: sabnzbdName || "SABnzbd",
-      };
+      if (baseUrl && apiKey) {
+        downloaders[downloaderName] = {
+          baseUrl: baseUrl,
+          apiKey: apiKey,
+          name: name || downloaderName,
+        };
+      }
     }
   }
 

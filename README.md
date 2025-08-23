@@ -141,6 +141,28 @@ Add to `claude_desktop_config.json`:
 }
 ```
 
+### Alternative: Global Installation
+
+```bash
+# Install globally for easier usage
+npm install -g @thesammykins/flixbridge
+```
+
+Then use with Claude Desktop:
+
+```json
+{
+  "mcpServers": {
+    "flixbridge": {
+      "command": "flixbridge",
+      "env": {
+        "FLIX_BRIDGE_CONFIG": "/path/to/your/config.json"
+      }
+    }
+  }
+}
+```
+
 ### Environment Variables (Alternative)
 
 ```bash
