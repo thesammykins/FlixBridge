@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.2.4] - 2025-08-23
+
+- docs: improve README with npm package links and usage examples
+
 ## [0.2.3] - 2025-08-23
 
 - updating tool calls and documentation
