@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.2.3] - 2025-08-23
+
+- updating tool calls and documentation
+
 ## [0.2.2] - 2025-08-23
 
 - Update README.md
