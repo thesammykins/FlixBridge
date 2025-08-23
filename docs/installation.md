@@ -37,34 +37,35 @@ npm run build
 
 ## Configuration
 
-Create a `config.json` file:
+Configure via environment variables (v0.3.x+):
 
 ```bash
-cp config.sample.json config.json
+# Slug-based configuration for multiple instances (recommended)
+export SONARR_MAIN_URL="http://localhost:8989"
+export SONARR_MAIN_API_KEY="your-main-sonarr-api-key"
+export SONARR_4K_URL="http://localhost:8990"
+export SONARR_4K_API_KEY="your-4k-sonarr-api-key"
+
+export RADARR_HD_URL="http://localhost:7878"
+export RADARR_HD_API_KEY="your-hd-radarr-api-key"
+export RADARR_UHD_URL="http://localhost:7879"
+export RADARR_UHD_API_KEY="your-uhd-radarr-api-key"
+
+# Optional downloader
+export SABNZBD_MAIN_URL="http://localhost:8080"
+export SABNZBD_MAIN_API_KEY="your-sabnzbd-api-key"
 ```
 
-Edit `config.json` with your service details:
+Or use single-instance fallback for simple setups:
 
-```json
-{
-  "services": {
-    "sonarr": {
-      "baseUrl": "http://localhost:8989",
-      "apiKey": "your-sonarr-api-key-here"
-    },
-    "radarr": {
-      "baseUrl": "http://localhost:7878", 
-      "apiKey": "your-radarr-api-key-here"
-    }
-  },
-  "downloaders": {
-    "sabnzbd": {
-      "baseUrl": "http://localhost:8080",
-      "apiKey": "your-sabnzbd-api-key-here",
-      "name": "SABnzbd"
-    }
-  }
-}
+```bash
+# Single instance fallback
+export SONARR_URL="http://localhost:8989"
+export SONARR_API_KEY="your-sonarr-api-key"
+export RADARR_URL="http://localhost:7878"
+export RADARR_API_KEY="your-radarr-api-key"
+export SABNZBD_URL="http://localhost:8080"
+export SABNZBD_API_KEY="your-sabnzbd-api-key"
 ```
 
 ## Finding Your API Keys
@@ -84,32 +85,40 @@ Edit `config.json` with your service details:
 Test your setup:
 
 ```bash
-# With npm installation
-FLIX_BRIDGE_CONFIG=./config.json npx @thesammykins/flixbridge --test
-
-# Or if installed from source
+# If installed from source
+SONARR_MAIN_URL=http://localhost:8989 SONARR_MAIN_API_KEY=... \
+RADARR_HD_URL=http://localhost:7878 RADARR_HD_API_KEY=... \
 npm run smoke
 
 # With detailed debug output
-FLIX_BRIDGE_DEBUG=1 FLIX_BRIDGE_CONFIG=./config.json npx @thesammykins/flixbridge --test
+FLIX_BRIDGE_DEBUG=1 SONARR_MAIN_URL=... SONARR_MAIN_API_KEY=... \
+RADARR_HD_URL=... RADARR_HD_API_KEY=... npm run dev
 ```
 
 You should see output like:
 ```
-✅ sonarr: System Status - OK (v4.0.0.746)
-✅ radarr: System Status - OK (v5.3.6.8612) 
-✅ sabnzbd: Connection test - OK
+✅ sonarr-main: System Status - OK (v4.0.0.746)
+✅ radarr-hd: System Status - OK (v5.3.6.8612) 
+✅ sabnzbd-main: Connection test - OK
 ```
 
 ## Running the Server
 
 ### With npm Package
 ```bash
-# Basic run
-FLIX_BRIDGE_CONFIG=./config.json npx @thesammykins/flixbridge
+# Basic run with slug-based env vars
+SONARR_MAIN_URL=http://localhost:8989 SONARR_MAIN_API_KEY=... \
+RADARR_HD_URL=http://localhost:7878 RADARR_HD_API_KEY=... \
+SABNZBD_MAIN_URL=http://localhost:8080 SABNZBD_MAIN_API_KEY=... \
+ npx @thesammykins/flixbridge
+
+# Or single-instance fallback
+SONARR_URL=http://localhost:8989 SONARR_API_KEY=... \
+RADARR_URL=http://localhost:7878 RADARR_API_KEY=... \
+ npx @thesammykins/flixbridge
 
 # Debug mode
-FLIX_BRIDGE_DEBUG=1 FLIX_BRIDGE_CONFIG=./config.json npx @thesammykins/flixbridge
+FLIX_BRIDGE_DEBUG=1 npx @thesammykins/flixbridge
 ```
 
 ### From Source (Development)

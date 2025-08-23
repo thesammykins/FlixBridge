@@ -46,17 +46,15 @@ jobs:
       - name: Check for valid configuration
         id: config-check
         run: |
-          if [ -f config.json ]; then
-            if grep -q "your-.*-api-key" config.json; then
-              echo "has_real_config=false" >> $GITHUB_OUTPUT
-              echo "⚠️ Placeholder configuration detected - skipping smoke tests"
-            else
-              echo "has_real_config=true" >> $GITHUB_OUTPUT
-              echo "✅ Real configuration detected - running smoke tests"
-            fi
+          if [ -n "${SONARR_URL}" ] && [ -n "${SONARR_API_KEY}" ]; then
+            echo "has_real_config=true" >> $GITHUB_OUTPUT
+            echo "✅ Found SONARR_URL and SONARR_API_KEY - running smoke tests"
+          elif [ -n "${FLIX_BRIDGE_ENV_MAPPING}" ]; then
+            echo "has_real_config=true" >> $GITHUB_OUTPUT
+            echo "✅ Found FLIX_BRIDGE_ENV_MAPPING - running smoke tests"
           else
             echo "has_real_config=false" >> $GITHUB_OUTPUT
-            echo "⚠️ No configuration file found - skipping smoke tests"
+            echo "⚠️ No environment configuration detected - skipping smoke tests"
           fi
 
       - name: Run smoke tests

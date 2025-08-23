@@ -48,60 +48,78 @@ npm install && npm run build
 ## 🚀 Quick Start
 
 ```bash
-# 1. Configure your services  
-cp config.sample.json config.json
-# Edit config.json with your API keys
+# 1. Configure your services via environment variables
+export SONARR_URL="http://localhost:8989"
+export SONARR_API_KEY="your-sonarr-api-key"
+export RADARR_URL="http://localhost:7878"
+export RADARR_API_KEY="your-radarr-api-key"
+# Optional downloader
+export SABNZBD_URL="http://localhost:8080"
+export SABNZBD_API_KEY="your-sabnzbd-api-key"
 
-# 2. Test connectivity
-npm run smoke
+# 2. Build and run
+npm run build
+npm start
+```
 
-# 3. Run the server
+Or with slug-based configuration for multiple instances:
+
+```bash
+# Multiple Sonarr instances
+export SONARR_HD_URL="http://localhost:8989"
+export SONARR_HD_API_KEY="your-hd-sonarr-key"
+export SONARR_4K_URL="http://localhost:8990"
+export SONARR_4K_API_KEY="your-4k-sonarr-key"
+
+# Multiple Radarr instances  
+export RADARR_MAIN_URL="http://localhost:7878"
+export RADARR_MAIN_API_KEY="your-main-radarr-key"
+export RADARR_UHD_URL="http://localhost:7879"
+export RADARR_UHD_API_KEY="your-uhd-radarr-key"
+
 npm start
 ```
 
 ## ⚙️ Configuration
 
-### Basic Setup
+FlixBridge v0.3.x uses environment-only configuration with slug-based discovery. No config files and no JSON-in-env mapping required.
 
-Create a `config.json` file:
-
-```json
-{
-  "services": {
-    "sonarr": {
-      "baseUrl": "http://localhost:8989",
-      "apiKey": "your-sonarr-api-key"
-    },
-    "radarr": {
-      "baseUrl": "http://localhost:7878", 
-      "apiKey": "your-radarr-api-key"
-    }
-  },
-  "downloaders": {
-    "sabnzbd": {
-      "baseUrl": "http://localhost:8080",
-      "apiKey": "your-sabnzbd-api-key",
-      "name": "SABnzbd"
-    }
-  }
-}
-```
+### Slug-based multiple instances
+- Sonarr: `SONARR_<SLUG>_URL`, `SONARR_<SLUG>_API_KEY`, optional `SONARR_<SLUG>_NAME`
+- Radarr: `RADARR_<SLUG>_URL`, `RADARR_<SLUG>_API_KEY`, optional `RADARR_<SLUG>_NAME`
+- SABnzbd: `SABNZBD_<SLUG>_URL`, `SABNZBD_<SLUG>_API_KEY`, optional `SABNZBD_<SLUG>_NAME`
 
 ### Multi-Instance Example
 
-```json
-{
-  "services": {
-    "sonarr-hd": {"baseUrl": "http://localhost:8989", "apiKey": "key1"},
-    "sonarr-4k": {"baseUrl": "http://localhost:8990", "apiKey": "key2"},
-    "radarr-main": {"baseUrl": "http://localhost:7878", "apiKey": "key3"}
-  }
-}
+```bash
+# Sonarr
+export SONARR_MAIN_URL="http://sonarr-main:8989"
+export SONARR_MAIN_API_KEY="{{SONARR_MAIN_KEY}}"
+export SONARR_4K_URL="http://sonarr-4k:8989"
+export SONARR_4K_API_KEY="{{SONARR_4K_KEY}}"
+
+# Radarr
+export RADARR_MAIN_URL="http://radarr-main:7878"
+export RADARR_MAIN_API_KEY="{{RADARR_MAIN_KEY}}"
+export RADARR_UHD_URL="http://radarr-uhd:7878"
+export RADARR_UHD_API_KEY="{{RADARR_UHD_KEY}}"
+
+# SABnzbd (optional)
+export SABNZBD_MAIN_URL="http://sab-main:8080"
+export SABNZBD_MAIN_API_KEY="{{SAB_MAIN_KEY}}"
 ```
 
-**Service Naming:** Names must contain "sonarr" or "radarr" for automatic detection.
+**Notes:**
+- Service names default to `sonarr-<slug>` / `radarr-<slug>` (slug lowercased, `_` → `-`).
+- If you set `<KIND>_<SLUG>_NAME`, that overrides the final name (ensure it contains "sonarr"/"radarr" to pass current detection).
+- Single-instance fallback (SONARR_URL/RADARR_URL/SABNZBD_URL) still works for simple setups.
 
 ## 🛠️ Available Tools
+
+> **⚠️ Important**: Always call `list_services` first to discover available services before using any other tools.
+
+### Service Discovery
+- **list_services** - Discover all configured services and downloaders
 
 ### Core Operations
 - **system_status** - Health and version information
@@ -134,7 +152,10 @@ Add to `claude_desktop_config.json`:
       "command": "npx",
       "args": ["@thesammykins/flixbridge"],
       "env": {
-        "FLIX_BRIDGE_CONFIG": "/path/to/your/config.json"
+        "SONARR_URL": "http://localhost:8989",
+        "SONARR_API_KEY": "your-sonarr-api-key",
+        "RADARR_URL": "http://localhost:7878",
+        "RADARR_API_KEY": "your-radarr-api-key"
       }
     }
   }
@@ -148,7 +169,7 @@ Add to `claude_desktop_config.json`:
 npm install -g @thesammykins/flixbridge
 ```
 
-Then use with Claude Desktop:
+Then use with Claude Desktop by providing environment variables (standard or via mapping):
 
 ```json
 {
@@ -156,20 +177,27 @@ Then use with Claude Desktop:
     "flixbridge": {
       "command": "flixbridge",
       "env": {
-        "FLIX_BRIDGE_CONFIG": "/path/to/your/config.json"
+        "SONARR_URL": "http://localhost:8989",
+        "SONARR_API_KEY": "your-sonarr-api-key",
+        "RADARR_URL": "http://localhost:7878",
+        "RADARR_API_KEY": "your-radarr-api-key",
+        "SABNZBD_URL": "http://localhost:8080",
+        "SABNZBD_API_KEY": "your-sabnzbd-api-key"
       }
     }
   }
 }
 ```
 
-### Environment Variables (Alternative)
+### Single Instance Setup (Alternative)
 
 ```bash
 export SONARR_URL="http://localhost:8989"
 export SONARR_API_KEY="your-sonarr-api-key"
 export RADARR_URL="http://localhost:7878" 
 export RADARR_API_KEY="your-radarr-api-key"
+export SABNZBD_URL="http://localhost:8080"
+export SABNZBD_API_KEY="your-sabnzbd-api-key"
 ```
 
 ## 🐛 Debugging

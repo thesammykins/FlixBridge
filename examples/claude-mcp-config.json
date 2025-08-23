@@ -1,0 +1,23 @@
+{
+	"mcpServers": {
+		"flixbridge": {
+			"command": "npx",
+			"args": ["@thesammykins/flixbridge"],
+			"env": {
+				"FLIX_BRIDGE_DEBUG": "1",
+				"SONARR_HD_URL": "http://sonarr-hd:8989",
+				"SONARR_HD_API_KEY": "your-sonarr-hd-api-key-here",
+				"SONARR_UHD_URL": "http://sonarr-uhd:8989",
+				"SONARR_UHD_API_KEY": "your-sonarr-uhd-api-key-here",
+				"SONARR_ANIME_URL": "http://sonarr-anime:8989",
+				"SONARR_ANIME_API_KEY": "your-sonarr-anime-api-key-here",
+				"RADARR_HD_URL": "http://radarr-hd:7878",
+				"RADARR_HD_API_KEY": "your-radarr-hd-api-key-here",
+				"RADARR_UHD_URL": "http://radarr-uhd:7878",
+				"RADARR_UHD_API_KEY": "your-radarr-uhd-api-key-here",
+				"SABNZBD_MAIN_URL": "http://sabnzbd-main:8080",
+				"SABNZBD_MAIN_API_KEY": "your-sabnzbd-main-api-key-here"
+			}
+		}
+	}
+}

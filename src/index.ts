@@ -14,8 +14,19 @@ import type { ServiceConfig } from "./services/base.js";
 import type { SabnzbdConfig } from "./services/downloaders/sabnzbd.js";
 import { debugToolTiming } from "./debug.js";
 import { metricsCollector } from "./metrics.js";
+import { loadConfigFromEnvOnly } from "./config.js";
 
 const tools = [
+  {
+    name: "list_services",
+    description:
+      "List all configured services and downloaders. Call this first to see available services.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+  },
   {
     name: "system_status",
     description: "Get system status and health information",
@@ -194,7 +205,7 @@ const InputSchema = z.object({
 class ArrMcpServer {
   private server = new Server({
     name: "arr-mcp",
-    version: "0.2.7",
+    version: "0.3.2",
   });
   private config?: {
     services: Record<string, ServiceConfig>;
@@ -210,10 +221,36 @@ class ArrMcpServer {
       const { name, arguments: args } = request.params;
       const input = InputSchema.parse(args);
 
-      let result;
+      let result: unknown;
 
       // Handle multi-service tools
-      if (name === "all_services_diagnostics") {
+      if (name === "list_services") {
+        result = await debugToolTiming(name, "info", async () => {
+          const services = serviceRegistry.getAllNames();
+          const downloaders = serviceRegistry.getAllDownloaderNames();
+          return {
+            ok: true,
+            data: {
+              services: services.map((name) => ({
+                name,
+                type:
+                  serviceRegistry
+                    .get(name)
+                    ?.constructor.name?.replace("Service", "")
+                    .toLowerCase() || "unknown",
+              })),
+              downloaders: downloaders.map((name) => ({
+                name,
+                type: "sabnzbd",
+              })),
+              summary: {
+                totalServices: services.length,
+                totalDownloaders: downloaders.length,
+              },
+            },
+          };
+        });
+      } else if (name === "all_services_diagnostics") {
         result = await debugToolTiming(name, "multi", () =>
           this.runAllServicesDiagnostics(input.autoFix ?? true),
         );
@@ -222,7 +259,7 @@ class ArrMcpServer {
           this.runDownloadStatus(input),
         );
       } else {
-        const service = serviceRegistry.get(input.service!);
+        const service = serviceRegistry.get(input.service || "");
         if (!service) {
           throw new McpError(
             ErrorCode.InvalidParams,
@@ -288,26 +325,27 @@ class ArrMcpServer {
                 return await service.listQualityProfiles();
               case "queue_diagnostics":
                 return await service.queueDiagnostics(input.autoFix);
-              case "server_metrics":
-                if (input.service) {
-                  const serviceMetrics = metricsCollector.getServiceMetrics(
-                    input.service,
-                  );
-                  if (!serviceMetrics) {
-                    throw new McpError(
-                      ErrorCode.InvalidParams,
-                      `No metrics found for service: ${input.service}`,
+              case "server_metrics": {
+                {
+                  if (input.service) {
+                    const serviceMetrics = metricsCollector.getServiceMetrics(
+                      input.service,
                     );
+                    if (!serviceMetrics) {
+                      throw new McpError(
+                        ErrorCode.InvalidParams,
+                        `No metrics found for service: ${input.service}`,
+                      );
+                    }
+                    return {
+                      ok: true,
+                      data: {
+                        service: input.service,
+                        ...serviceMetrics,
+                        health: metricsCollector.getHealthStatus(),
+                      },
+                    };
                   }
-                  return {
-                    ok: true,
-                    data: {
-                      service: input.service,
-                      ...serviceMetrics,
-                      health: metricsCollector.getHealthStatus(),
-                    },
-                  };
-                } else {
                   const summary = metricsCollector.getSummary();
                   const health = metricsCollector.getHealthStatus();
                   return {
@@ -323,6 +361,7 @@ class ArrMcpServer {
                     },
                   };
                 }
+              }
               default:
                 throw new McpError(
                   ErrorCode.MethodNotFound,
@@ -339,7 +378,7 @@ class ArrMcpServer {
     });
   }
 
-  private async runAllServicesDiagnostics(autoFix: boolean = true) {
+  private async runAllServicesDiagnostics(autoFix = true) {
     const allServices = serviceRegistry.getAll();
     const serviceResults = [];
 
@@ -548,208 +587,15 @@ class ArrMcpServer {
   }
 }
 
-interface EnvVarMapping {
-  services?: Record<
-    string,
-    {
-      baseUrl?: string;
-      apiKey?: string;
-    }
-  >;
-  downloaders?: Record<
-    string,
-    {
-      baseUrl?: string;
-      apiKey?: string;
-      name?: string;
-    }
-  >;
-}
-
-async function loadConfig() {
-  const configPath = process.env.FLIX_BRIDGE_CONFIG || "config.json";
-
-  try {
-    const fs = await import("fs/promises");
-    const content = await fs.readFile(configPath, "utf-8");
-    return JSON.parse(content);
-  } catch {
-    // Try to load env var mapping configuration
-    const envMapping = loadEnvVarMapping();
-    if (envMapping) {
-      return buildConfigFromEnvMapping(envMapping);
-    }
-
-    // Fall back to hardcoded env var names
-    return buildConfigFromHardcodedEnvVars();
-  }
-}
-
-function loadEnvVarMapping(): EnvVarMapping | null {
-  const mappingJson = process.env.FLIX_BRIDGE_ENV_MAPPING;
-  if (!mappingJson) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(mappingJson) as EnvVarMapping;
-  } catch {
-    console.error(
-      "Failed to parse FLIX_BRIDGE_ENV_MAPPING, falling back to hardcoded env vars",
-    );
-    return null;
-  }
-}
-
-function buildConfigFromEnvMapping(mapping: EnvVarMapping) {
-  const services: Record<string, ServiceConfig> = {};
-  const downloaders: Record<string, SabnzbdConfig> = {};
-
-  // Check if this is the new nested format or old flat format
-  if (mapping.services || mapping.downloaders) {
-    // New nested format: { services: {...}, downloaders: {...} }
-
-    // Map services from custom env vars - support any service name
-    if (mapping.services) {
-      for (const [serviceName, serviceMapping] of Object.entries(
-        mapping.services,
-      )) {
-        const baseUrl = serviceMapping.baseUrl
-          ? process.env[serviceMapping.baseUrl]
-          : undefined;
-        const apiKey = serviceMapping.apiKey
-          ? process.env[serviceMapping.apiKey]
-          : undefined;
-
-        if (baseUrl && apiKey) {
-          services[serviceName] = {
-            baseUrl: baseUrl,
-            apiKey: apiKey,
-          };
-        }
-      }
-    }
-
-    // Map downloaders from custom env vars - support any downloader name
-    if (mapping.downloaders) {
-      for (const [downloaderName, downloaderMapping] of Object.entries(
-        mapping.downloaders,
-      )) {
-        const baseUrl = downloaderMapping.baseUrl
-          ? process.env[downloaderMapping.baseUrl]
-          : undefined;
-        const apiKey = downloaderMapping.apiKey
-          ? process.env[downloaderMapping.apiKey]
-          : undefined;
-        const name = downloaderMapping.name
-          ? process.env[downloaderMapping.name]
-          : undefined;
-
-        if (baseUrl && apiKey) {
-          downloaders[downloaderName] = {
-            baseUrl: baseUrl,
-            apiKey: apiKey,
-            name: name || downloaderName,
-          };
-        }
-      }
-    }
-  } else {
-    // Old flat format: { "sonarr-hd": "SONARR_HD", "sabnzbd": "SABNZBD" }
-    for (const [serviceName, envVarName] of Object.entries(
-      mapping as Record<string, string>,
-    )) {
-      const envValue = process.env[envVarName];
-      if (envValue) {
-        try {
-          const config = JSON.parse(envValue);
-          if (config.url && config.apiKey) {
-            if (
-              serviceName.toLowerCase().includes("sabnzbd") ||
-              serviceName.toLowerCase().includes("downloader")
-            ) {
-              downloaders[serviceName] = {
-                baseUrl: config.url,
-                apiKey: config.apiKey,
-                name: config.name || serviceName,
-              };
-            } else {
-              services[serviceName] = {
-                baseUrl: config.url,
-                apiKey: config.apiKey,
-              };
-            }
-          }
-        } catch (error) {
-          console.error(
-            `Failed to parse environment variable ${envVarName}:`,
-            error,
-          );
-        }
-      }
-    }
-  }
-
-  if (Object.keys(services).length === 0) {
-    throw new Error(
-      "No services configured. Please check your env var mapping or set environment variables directly",
-    );
-  }
-
-  const config: any = { services };
-  if (Object.keys(downloaders).length > 0) {
-    config.downloaders = downloaders;
-  }
-  return config;
-}
-
-function buildConfigFromHardcodedEnvVars() {
-  const services: Record<string, ServiceConfig> = {};
-  const downloaders: Record<string, SabnzbdConfig> = {};
-
-  if (process.env.SONARR_URL && process.env.SONARR_API_KEY) {
-    services.sonarr = {
-      baseUrl: process.env.SONARR_URL,
-      apiKey: process.env.SONARR_API_KEY,
-    };
-  }
-  if (process.env.RADARR_URL && process.env.RADARR_API_KEY) {
-    services.radarr = {
-      baseUrl: process.env.RADARR_URL,
-      apiKey: process.env.RADARR_API_KEY,
-    };
-  }
-  if (process.env.SABNZBD_URL && process.env.SABNZBD_API_KEY) {
-    downloaders.sabnzbd = {
-      baseUrl: process.env.SABNZBD_URL,
-      apiKey: process.env.SABNZBD_API_KEY,
-      name: "SABnzbd",
-    };
-  }
-
-  if (Object.keys(services).length === 0) {
-    throw new Error(
-      "No services configured. Please set environment variables or create config.json",
-    );
-  }
-
-  const config: any = { services };
-  if (Object.keys(downloaders).length > 0) {
-    config.downloaders = downloaders;
-  }
-  return config;
-}
-
 async function main() {
   const server = new ArrMcpServer();
-  const config = await loadConfig();
+  const config = await loadConfigFromEnvOnly();
   server.initialize(config);
   await server.run();
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
-  main().catch((error) => {
-    console.error("💥 Failed to start ARR MCP Server:", error);
-    process.exit(1);
-  });
-}
+// Always execute main() - this is an MCP server meant to be run directly
+main().catch((error) => {
+  console.error("💥 Failed to start ARR MCP Server:", error);
+  process.exit(1);
+});

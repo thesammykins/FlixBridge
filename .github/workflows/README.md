@@ -156,7 +156,7 @@ The workflow automatically detects your configuration type:
   - ✅ Tests actual service connectivity
   - ✅ Validates all functionality
 
-- **No Configuration**: Missing `config.json`
+- **No Configuration**: No environment configuration detected
   - ⚠️ Skips smoke tests
   - ✅ Validates build artifacts
   - ✅ Package can still be published

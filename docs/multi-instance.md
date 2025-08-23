@@ -30,31 +30,20 @@ Flix-Bridge supports multiple instances of the same service type, enabling sophi
 
 Separate instances for different quality tiers to optimize storage and performance.
 
-```json
-{
-  "services": {
-    "sonarr-main": {
-      "baseUrl": "http://localhost:8989",
-      "apiKey": "your-main-sonarr-api-key",
-      "description": "Main Sonarr for 1080p TV shows"
-    },
-    "sonarr-4k": {
-      "baseUrl": "http://localhost:8990",
-      "apiKey": "your-4k-sonarr-api-key",
-      "description": "4K Sonarr for UHD TV shows"
-    },
-    "radarr-hd": {
-      "baseUrl": "http://localhost:7878",
-      "apiKey": "your-hd-radarr-api-key",
-      "description": "HD Radarr for 1080p movies"
-    },
-    "radarr-uhd": {
-      "baseUrl": "http://localhost:7879",
-      "apiKey": "your-uhd-radarr-api-key",
-      "description": "UHD Radarr for 4K movies"
-    }
-  }
-}
+```bash
+# Sonarr instances for different quality tiers
+export SONARR_MAIN_URL="http://localhost:8989"
+export SONARR_MAIN_API_KEY="your-main-sonarr-api-key"
+export SONARR_4K_URL="http://localhost:8990"
+export SONARR_4K_API_KEY="your-4k-sonarr-api-key"
+
+# Radarr instances for different quality tiers
+export RADARR_HD_URL="http://localhost:7878"
+export RADARR_HD_API_KEY="your-hd-radarr-api-key"
+export RADARR_UHD_URL="http://localhost:7879"
+export RADARR_UHD_API_KEY="your-uhd-radarr-api-key"
+
+# Service names: sonarr-main, sonarr-4k, radarr-hd, radarr-uhd
 ```
 
 **Benefits:**
@@ -76,31 +65,22 @@ Check storage for both radarr-hd and radarr-uhd
 
 Different instances for specific content categories.
 
-```json
-{
-  "services": {
-    "sonarr-general": {
-      "baseUrl": "http://localhost:8989",
-      "apiKey": "your-general-key"
-    },
-    "sonarr-anime": {
-      "baseUrl": "http://localhost:8991",
-      "apiKey": "your-anime-key"
-    },
-    "sonarr-kids": {
-      "baseUrl": "http://localhost:8992",
-      "apiKey": "your-kids-key"
-    },
-    "radarr-mainstream": {
-      "baseUrl": "http://localhost:7878",
-      "apiKey": "your-mainstream-key"
-    },
-    "radarr-foreign": {
-      "baseUrl": "http://localhost:7880",
-      "apiKey": "your-foreign-key"
-    }
-  }
-}
+```bash
+# Content-specific Sonarr instances
+export SONARR_GENERAL_URL="http://localhost:8989"
+export SONARR_GENERAL_API_KEY="your-general-key"
+export SONARR_ANIME_URL="http://localhost:8991"
+export SONARR_ANIME_API_KEY="your-anime-key"
+export SONARR_KIDS_URL="http://localhost:8992"
+export SONARR_KIDS_API_KEY="your-kids-key"
+
+# Content-specific Radarr instances
+export RADARR_MAINSTREAM_URL="http://localhost:7878"
+export RADARR_MAINSTREAM_API_KEY="your-mainstream-key"
+export RADARR_FOREIGN_URL="http://localhost:7880"
+export RADARR_FOREIGN_API_KEY="your-foreign-key"
+
+# Service names: sonarr-general, sonarr-anime, sonarr-kids, radarr-mainstream, radarr-foreign
 ```
 
 **Benefits:**
@@ -113,23 +93,16 @@ Different instances for specific content categories.
 
 Separate instances for different environments or purposes.
 
-```json
-{
-  "services": {
-    "sonarr-prod": {
-      "baseUrl": "http://production:8989",
-      "apiKey": "production-key"
-    },
-    "sonarr-test": {
-      "baseUrl": "http://testing:8989",
-      "apiKey": "testing-key"
-    },
-    "sonarr-dev": {
-      "baseUrl": "http://localhost:8989",
-      "apiKey": "development-key"
-    }
-  }
-}
+```bash
+# Environment-specific instances
+export SONARR_PROD_URL="http://production:8989"
+export SONARR_PROD_API_KEY="production-key"
+export SONARR_TEST_URL="http://testing:8989"
+export SONARR_TEST_API_KEY="testing-key"
+export SONARR_DEV_URL="http://localhost:8989"
+export SONARR_DEV_API_KEY="development-key"
+
+# Service names: sonarr-prod, sonarr-test, sonarr-dev
 ```
 
 **Benefits:**
@@ -141,23 +114,16 @@ Separate instances for different environments or purposes.
 
 Different instances for different locations or network segments.
 
-```json
-{
-  "services": {
-    "sonarr-local": {
-      "baseUrl": "http://local-server:8989",
-      "apiKey": "local-key"
-    },
-    "sonarr-remote": {
-      "baseUrl": "http://remote-server:8989",
-      "apiKey": "remote-key"
-    },
-    "sonarr-cloud": {
-      "baseUrl": "https://cloud-instance:8989",
-      "apiKey": "cloud-key"
-    }
-  }
-}
+```bash
+# Geographic/network separation
+export SONARR_LOCAL_URL="http://local-server:8989"
+export SONARR_LOCAL_API_KEY="local-key"
+export SONARR_REMOTE_URL="http://remote-server:8989"
+export SONARR_REMOTE_API_KEY="remote-key"
+export SONARR_CLOUD_URL="https://cloud-instance:8989"
+export SONARR_CLOUD_API_KEY="cloud-key"
+
+# Service names: sonarr-local, sonarr-remote, sonarr-cloud
 ```
 
 **Benefits:**
@@ -239,26 +205,24 @@ Add "Demon Slayer" to sonarr-anime with monitoring enabled
 
 Multiple service instances can share download clients:
 
-```json
-{
-  "services": {
-    "sonarr-hd": {"baseUrl": "...", "apiKey": "..."},
-    "sonarr-4k": {"baseUrl": "...", "apiKey": "..."},
-    "radarr-main": {"baseUrl": "...", "apiKey": "..."}
-  },
-  "downloaders": {
-    "sabnzbd-main": {
-      "baseUrl": "http://localhost:8080",
-      "apiKey": "your-sabnzbd-key",
-      "name": "Main SABnzbd"
-    },
-    "sabnzbd-4k": {
-      "baseUrl": "http://localhost:8081",
-      "apiKey": "your-4k-sabnzbd-key",
-      "name": "4K SABnzbd"
-    }
-  }
-}
+```bash
+# Multiple arr services
+export SONARR_HD_URL="http://localhost:8989"
+export SONARR_HD_API_KEY="your-hd-key"
+export SONARR_4K_URL="http://localhost:8990"
+export SONARR_4K_API_KEY="your-4k-key"
+export RADARR_MAIN_URL="http://localhost:7878"
+export RADARR_MAIN_API_KEY="your-radarr-key"
+
+# Multiple downloaders
+export SABNZBD_MAIN_URL="http://localhost:8080"
+export SABNZBD_MAIN_API_KEY="your-sabnzbd-key"
+export SABNZBD_MAIN_NAME="Main SABnzbd"
+export SABNZBD_4K_URL="http://localhost:8081"
+export SABNZBD_4K_API_KEY="your-4k-sabnzbd-key"
+export SABNZBD_4K_NAME="4K SABnzbd"
+
+# Service names: sonarr-hd, sonarr-4k, radarr-main, sabnzbd-main, sabnzbd-4k
 ```
 
 ## Best Practices
@@ -267,12 +231,12 @@ Multiple service instances can share download clients:
 
 Use clear, descriptive naming patterns:
 
-```json
-// Good: Indicates quality and content type
-"sonarr-4k", "sonarr-hd-anime", "radarr-uhd-movies"
+```bash
+# Good: Indicates quality and content type
+SONARR_4K_*, SONARR_HD_ANIME_*, RADARR_UHD_*
 
-// Better: More specific
-"sonarr-4k-series", "sonarr-1080p-anime", "radarr-2160p-films"
+# Better: More specific
+SONARR_4K_SERIES_*, SONARR_1080P_ANIME_*, RADARR_2160P_*
 ```
 
 ### 2. Configuration Management
@@ -288,17 +252,12 @@ Keep configurations synchronized:
 
 Plan storage allocation carefully:
 
-```json
-{
-  "sonarr-hd": {
-    "root_folders": ["/media/tv-hd"],
-    "estimated_storage": "4TB"
-  },
-  "sonarr-4k": {
-    "root_folders": ["/media/tv-4k"],
-    "estimated_storage": "12TB"
-  }
-}
+```bash
+# Plan storage allocation per instance
+# sonarr-hd: /media/tv-hd (4TB)
+# sonarr-4k: /media/tv-4k (12TB)
+# radarr-main: /media/movies (8TB)
+# radarr-uhd: /media/movies-4k (16TB)
 ```
 
 ### 4. Performance Monitoring
@@ -333,13 +292,13 @@ Implement consistent backup strategies:
 
 2. **Wrong Instance Responding**
    - Each response includes a "service" field showing which instance responded
-   - Use exact service names from your configuration
+   - Use exact service names (derived from slug: `SONARR_HD_*` → `sonarr-hd`)
    - Verify network connectivity to the intended instance
 
 3. **Configuration Conflicts**
-   - Check for port conflicts between instances
-   - Verify unique API keys for each instance
-   - Ensure separate database files and directories
+   - Check for port conflicts between instances (each needs unique ports)
+   - Verify unique API keys for each instance (don't reuse keys)
+   - Ensure separate database files and directories (different paths)
 
 ### Debug Multi-Instance Issues
 
@@ -360,9 +319,11 @@ This shows:
 Test individual instances:
 
 ```bash
-# Modify config.json to test one service at a time
-# Run smoke tests for validation
-npm run smoke
+# Test individual instances with slug-based vars
+SONARR_MAIN_URL=http://localhost:8989 SONARR_MAIN_API_KEY=... npm run smoke
+
+# Or single-instance fallback
+SONARR_URL=http://localhost:8989 SONARR_API_KEY=... npm run smoke
 ```
 
 ## Migration Strategies

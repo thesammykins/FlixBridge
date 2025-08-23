@@ -134,9 +134,10 @@ dist/
 !webpack.config.js
 !vite.config.js
 
-# Configuration files with sensitive data
+# Configuration files with sensitive data (kept ignored to prevent accidental commits)
 config.json
 *.local.json
+example_configs/
 
 # Logs
 logs

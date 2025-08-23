@@ -154,22 +154,26 @@ All operations return consistent response structure:
 ## Service Organization Structure
 
 As of Phase 3, services are organized in a dedicated subdirectory structure:
+Services are organized in a dedicated subdirectory structure with environment-based configuration:
 
-### Before (Phase 2)
+### Current Structure (Phase 3+)
 ```
 /src/services/
-  sonarr.ts          # Direct in services/
-  radarr.ts          # Direct in services/
+  arr/               # Media management services
+    sonarr.ts        # TV series service
+    radarr.ts        # Movie service
+  downloaders/       # Download client services
+    sabnzbd.ts       # SABnzbd downloader
+  base.ts           # Service contracts and types
+  shared.ts         # BaseArrService implementation
+  registry.ts       # Service registry with auto-discovery
 ```
 
-### After (Phase 3)
+### Configuration System
 ```
-/src/services/
-  arr/               # New dedicated arr subdirectory
-    sonarr.ts        # Moved here
-    radarr.ts        # Moved here
-  downloaders/
-    sabnzbd.ts
+/src/
+  config.ts         # Slug-based environment variable discovery
+                   # Replaces JSON config with pure env var detection
 ```
 
 **Benefits:**
@@ -181,17 +185,19 @@ As of Phase 3, services are organized in a dedicated subdirectory structure:
 
 Service names containing "sonarr" are treated as Sonarr instances, "radarr" as Radarr instances:
 
-```json
-{
-  "services": {
-    "sonarr-main": { "baseUrl": "http://localhost:8989", "apiKey": "..." },
-    "sonarr-4k": { "baseUrl": "http://localhost:8990", "apiKey": "..." },
-    "radarr-main": { "baseUrl": "http://localhost:7878", "apiKey": "..." }
-  }
-}
+```bash
+# Environment variables with slug-based discovery
+export SONARR_MAIN_URL="http://localhost:8989"
+export SONARR_MAIN_API_KEY="your-main-key"
+export SONARR_4K_URL="http://localhost:8990"
+export SONARR_4K_API_KEY="your-4k-key"
+export RADARR_HD_URL="http://localhost:7878"
+export RADARR_HD_API_KEY="your-hd-key"
+
+# Results in discovered services: sonarr-main, sonarr-4k, radarr-hd
 ```
 
-Each service instance gets its own adapter while sharing the common BaseArrService implementation.
+Each service instance gets its own adapter while sharing the common BaseArrService implementation. Services are auto-discovered from environment variables following the pattern `<SERVICE>_<SLUG>_<FIELD>`.
 
 ## Operation Normalization
 

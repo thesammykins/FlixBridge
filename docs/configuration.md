@@ -7,147 +7,60 @@ Comprehensive guide to configuring Flix-Bridge for your environment.
 
 ## Overview
 
-Flix-Bridge supports three configuration methods, tried in this order:
+Flix-Bridge v0.3.x uses environment-only configuration with slug-based discovery, tried in this order:
 
-1. **Configuration File** (recommended for most users)
-2. **Custom Environment Variable Mapping** (for MCP hosts with custom env vars)
-3. **Standard Environment Variables** (fallback option)
+1. Slug-based Environment Variables: `SONARR_<SLUG>_URL`, `RADARR_<SLUG>_URL`, etc.
+2. Single-instance fallback: `SONARR_URL`, `RADARR_URL`, etc.
 
-## Method 1: Configuration File
+No file-based configuration or JSON mapping is required.
 
-### Basic Setup
+## Method 1: Slug-based Environment Variables (Recommended)
 
-Create a `config.json` file:
+Define multiple instances using slug-based patterns. Each service type uses a pattern like `<SERVICE>_<SLUG>_<FIELD>`:
 
-```json
-{
-  "services": {
-    "sonarr": {
-      "baseUrl": "http://localhost:8989",
-      "apiKey": "your-sonarr-api-key-here"
-    },
-    "radarr": {
-      "baseUrl": "http://localhost:7878",
-      "apiKey": "your-radarr-api-key-here"
-    }
-  },
-  "downloaders": {
-    "sabnzbd": {
-      "baseUrl": "http://localhost:8080",
-      "apiKey": "your-sabnzbd-api-key-here",
-      "name": "SABnzbd"
-    }
-  }
-}
-```
-
-### Multi-Instance Setup
-
-For multiple instances of the same service:
-
-```json
-{
-  "services": {
-    "sonarr-hd": {
-      "baseUrl": "http://sonarr-hd:8989",
-      "apiKey": "your-hd-api-key"
-    },
-    "sonarr-4k": {
-      "baseUrl": "http://sonarr-4k:8989",
-      "apiKey": "your-4k-api-key"
-    },
-    "radarr-main": {
-      "baseUrl": "http://radarr-main:7878",
-      "apiKey": "your-main-radarr-key"
-    },
-    "radarr-4k": {
-      "baseUrl": "http://radarr-4k:7878",
-      "apiKey": "your-4k-radarr-key"
-    }
-  }
-}
-```
-
-### Custom Configuration Path
-
-Use the `FLIX_BRIDGE_CONFIG` environment variable to specify a custom config file location:
+### Basic Slug Configuration
 
 ```bash
-export FLIX_BRIDGE_CONFIG=/path/to/your/custom-config.json
+# Sonarr instances
+export SONARR_MAIN_URL="http://localhost:8989"
+export SONARR_MAIN_API_KEY="your-main-sonarr-key"
+export SONARR_4K_URL="http://localhost:8990"
+export SONARR_4K_API_KEY="your-4k-sonarr-key"
+
+# Radarr instances
+export RADARR_HD_URL="http://localhost:7878"
+export RADARR_HD_API_KEY="your-hd-radarr-key"
+export RADARR_UHD_URL="http://localhost:7879"
+export RADARR_UHD_API_KEY="your-uhd-radarr-key"
+
+# SABnzbd downloaders (optional)
+export SABNZBD_MAIN_URL="http://localhost:8080"
+export SABNZBD_MAIN_API_KEY="your-sabnzbd-key"
+export SABNZBD_MAIN_NAME="SABnzbd Main"
 ```
 
-## Method 2: Custom Environment Variable Mapping
+### Service Naming Rules
 
-This method is useful when your MCP host provides environment variables with custom names that don't match the standard Flix-Bridge convention.
+- Service names are derived as `<service>-<slug>` (slug lowercased, `_` → `-`)
+- `SONARR_MAIN_URL` → service name: `sonarr-main`
+- `RADARR_4K_URL` → service name: `radarr-4k`
+- `SABNZBD_MAIN_URL` → downloader name: `sabnzbd-main`
 
-### How It Works
+### Custom Service Names
 
-1. Create a mapping structure that tells Flix-Bridge which environment variables to use
-2. Set the `FLIX_BRIDGE_ENV_MAPPING` environment variable with the JSON mapping
-3. Set the actual configuration values in the mapped environment variables
-
-### Mapping Structure
-
-```json
-{
-  "services": {
-    "sonarr": {
-      "baseUrl": "ENV_VAR_NAME_FOR_SONARR_URL",
-      "apiKey": "ENV_VAR_NAME_FOR_SONARR_KEY"
-    },
-    "radarr": {
-      "baseUrl": "ENV_VAR_NAME_FOR_RADARR_URL",
-      "apiKey": "ENV_VAR_NAME_FOR_RADARR_KEY"
-    }
-  },
-  "downloaders": {
-    "sabnzbd": {
-      "baseUrl": "ENV_VAR_NAME_FOR_SABNZBD_URL",
-      "apiKey": "ENV_VAR_NAME_FOR_SABNZBD_KEY",
-      "name": "ENV_VAR_NAME_FOR_SABNZBD_NAME"
-    }
-  }
-}
-```
-
-### Example Setup
+Override the derived name with the `_NAME` variable:
 
 ```bash
-# Set the mapping (compact JSON)
-export FLIX_BRIDGE_ENV_MAPPING='{"services":{"sonarr":{"baseUrl":"MCP_SONARR_BASE_URL","apiKey":"MCP_SONARR_API_KEY"},"radarr":{"baseUrl":"MCP_RADARR_BASE_URL","apiKey":"MCP_RADARR_API_KEY"}}}'
-
-# Set the actual configuration values
-export MCP_SONARR_BASE_URL="http://localhost:8989"
-export MCP_SONARR_API_KEY="your-sonarr-api-key"
-export MCP_RADARR_BASE_URL="http://localhost:7878"
-export MCP_RADARR_API_KEY="your-radarr-api-key"
+export SONARR_ANIME_URL="http://localhost:8991"
+export SONARR_ANIME_API_KEY="your-anime-key"
+export SONARR_ANIME_NAME="sonarr-japanese-content"  # Custom name
 ```
 
-### MCP Configuration Example
+**Important**: Custom names must still contain "sonarr" or "radarr" for proper service detection.
 
-In your MCP server configuration:
+## Method 2: Single-Instance Fallback
 
-```json
-{
-  "mcpServers": {
-    "flix-bridge": {
-      "command": "npx",
-      "args": ["@thesammykins/flixbridge"],
-      "env": {
-        "FLIX_BRIDGE_ENV_MAPPING": "{\"services\":{\"sonarr\":{\"baseUrl\":\"CUSTOM_SONARR_URL\",\"apiKey\":\"CUSTOM_SONARR_KEY\"},\"radarr\":{\"baseUrl\":\"CUSTOM_RADARR_URL\",\"apiKey\":\"CUSTOM_RADARR_KEY\"}}}",
-        "CUSTOM_SONARR_URL": "http://localhost:8989",
-        "CUSTOM_SONARR_KEY": "your-sonarr-api-key",
-        "CUSTOM_RADARR_URL": "http://localhost:7878",
-        "CUSTOM_RADARR_KEY": "your-radarr-api-key"
-      }
-    }
-  }
-}
-```
-
-## Method 3: Standard Environment Variables
-
-If no config file exists and no custom mapping is provided, Flix-Bridge falls back to these standard environment variables:
+For simple setups with one instance of each service, use these standard variables:
 
 ```bash
 export SONARR_URL="http://localhost:8989"
@@ -158,20 +71,12 @@ export SABNZBD_URL="http://localhost:8080"
 export SABNZBD_API_KEY="your-sabnzbd-api-key"
 ```
 
-## Configuration Priority
-
-The configuration methods are tried in this order:
-
-1. **Config file** (specified by `FLIX_BRIDGE_CONFIG` or default `config.json`)
-2. **Custom env mapping** (if `FLIX_BRIDGE_ENV_MAPPING` is set)
-3. **Standard env variables** (fallback)
-
 ## Service Naming Rules
 
-**Important**: Service names must contain specific keywords for proper detection:
+Important: Service names must contain keywords for proper detection:
 
-- Names containing **"sonarr"** → treated as TV series management instances
-- Names containing **"radarr"** → treated as movie management instances
+- Names containing "sonarr" → TV series management instances
+- Names containing "radarr" → Movie management instances
 
 Examples:
 - `sonarr-main`, `sonarr-4k`, `sonarr-anime` ✅
@@ -180,83 +85,62 @@ Examples:
 
 ## Common Use Cases
 
-### Use Case 1: Simple Local Development
+### Simple Local Development
 
-Use a config file:
+Use single-instance fallback variables:
 
-```json
-{
-  "services": {
-    "sonarr": {
-      "baseUrl": "http://localhost:8989",
-      "apiKey": "development-key"
-    }
-  }
-}
+```bash
+export SONARR_URL="http://localhost:8989"
+export SONARR_API_KEY="development-key"
+export RADARR_URL="http://localhost:7878"
+export RADARR_API_KEY="development-key"
 ```
 
-### Use Case 2: Docker Compose
-
-Use standard environment variables:
+### Docker Compose
 
 ```yaml
 services:
   flix-bridge:
     image: flix-bridge
     environment:
+      # Single instance setup
       - SONARR_URL=http://sonarr:8989
       - SONARR_API_KEY=${SONARR_API_KEY}
       - RADARR_URL=http://radarr:7878
       - RADARR_API_KEY=${RADARR_API_KEY}
+      # Or multi-instance setup
+      - SONARR_HD_URL=http://sonarr-hd:8989
+      - SONARR_HD_API_KEY=${SONARR_HD_KEY}
+      - SONARR_4K_URL=http://sonarr-4k:8990
+      - SONARR_4K_API_KEY=${SONARR_4K_KEY}
 ```
 
-### Use Case 3: MCP Host with Custom Variables
+### Multi-Instance Setup
 
-Use custom environment variable mapping when your MCP host provides variables like `SERVICE_SONARR_ENDPOINT` instead of `SONARR_URL`:
+Use slug-based variables for multiple service instances:
 
-```json
-{
-  "env": {
-    "FLIX_BRIDGE_ENV_MAPPING": "{\"services\":{\"sonarr\":{\"baseUrl\":\"SERVICE_SONARR_ENDPOINT\",\"apiKey\":\"SERVICE_SONARR_TOKEN\"}}}",
-    "SERVICE_SONARR_ENDPOINT": "http://localhost:8989",
-    "SERVICE_SONARR_TOKEN": "your-api-key"
-  }
-}
-```
+```bash
+# Multiple quality tiers
+export SONARR_HD_URL="http://sonarr-hd:8989"
+export SONARR_HD_API_KEY="hd-key"
+export SONARR_4K_URL="http://sonarr-4k:8990"
+export SONARR_4K_API_KEY="4k-key"
 
-### Use Case 4: Multi-Tenant Setup
-
-Use config file with multiple instances:
-
-```json
-{
-  "services": {
-    "sonarr-tenant-a": {
-      "baseUrl": "http://sonarr-a:8989",
-      "apiKey": "tenant-a-key"
-    },
-    "sonarr-tenant-b": {
-      "baseUrl": "http://sonarr-b:8989",
-      "apiKey": "tenant-b-key"
-    }
-  }
-}
+# Multiple content types
+export SONARR_ANIME_URL="http://sonarr-anime:8991"
+export SONARR_ANIME_API_KEY="anime-key"
+export RADARR_KIDS_URL="http://radarr-kids:7879"
+export RADARR_KIDS_API_KEY="kids-key"
 ```
 
 ## Troubleshooting Configuration
 
 ### Configuration Not Loading
 
-1. Check that your config file path is correct
-2. Verify JSON syntax is valid
-3. Ensure environment variables are set correctly
-4. Check file permissions
-
-### Environment Variable Mapping Issues
-
-1. Ensure the mapping is properly escaped in your MCP config
-2. Check that all referenced environment variables are set
-3. Verify JSON syntax in the mapping string
+1. Ensure environment variables follow the correct pattern: `<SERVICE>_<SLUG>_<FIELD>`
+2. For single instances, use: `SONARR_URL`, `RADARR_URL`, `SABNZBD_URL`
+3. Check that both URL and API_KEY are set for each service
+4. Verify slugs use only uppercase letters, numbers, and underscores
 
 ### Service Connection Issues
 
@@ -269,13 +153,19 @@ Use config file with multiple instances:
 
 ### Debug Configuration Loading
 
-Enable debug logging to see which configuration method was used:
+Enable debug logging to see service discovery:
 
 ```bash
 export FLIX_BRIDGE_DEBUG=1
+npm run dev
 ```
 
-This will show configuration loading details and which services were detected.
+You'll see output like:
+```
+[Config] Discovered Sonarr service: sonarr-hd (slug: HD)
+[Config] Discovered Radarr service: radarr-uhd (slug: UHD)
+[Config] Total discovered services: 2
+```
 
 ---
 

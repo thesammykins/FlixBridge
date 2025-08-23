@@ -9,9 +9,10 @@ docs/
 !README.md
 !LICENSE
 
-# Configuration files
+# Configuration files (not published)
 config*.json
 env-mapping*.json
+example_configs/**
 tsconfig.json
 .eslintrc.json
 

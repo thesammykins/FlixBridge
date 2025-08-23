@@ -1,5 +1,18 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- `list_services` tool for discovering all configured services and downloaders
+- Service discovery workflow that must be called before using other tools
+- Enhanced documentation with service discovery requirements
+- Test script for validating list_services functionality
+
+### Updated
+- All documentation now emphasizes calling `list_services` first
+- API reference includes comprehensive service discovery section
+- Usage guide updated with service discovery workflow
+
 ## [0.2.10] - 2025-08-23
 
 - fix: support both flat and nested env mapping formats

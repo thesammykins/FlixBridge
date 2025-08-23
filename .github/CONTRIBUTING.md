@@ -2,7 +2,49 @@
 
 Thank you for your interest in contributing to FlixBridge! This document outlines the development process, coding standards, and contribution guidelines.
 
+# Contributing to FlixBridge
+
+Thank you for your interest in contributing to FlixBridge! This document outlines the development process, coding standards, and contribution guidelines.
+
 ## Development Setup
+
+### Prerequisites
+
+- **Node.js**: Version 20 or higher (recommended LTS version)
+- **npm**: Version 8 or higher (comes with Node.js)
+- **Git**: Latest version
+
+### Getting Started
+
+1. **Fork and Clone**
+   ```bash
+   git clone https://github.com/yourusername/FlixBridge.git
+   cd FlixBridge
+   ```
+
+2. **Install Dependencies**
+   ```bash
+   npm install
+   ```
+
+3. **Build and Test**
+   ```bash
+   npm run build
+   npm run lint
+   npm run smoke  # Requires configuration - see below
+   ```
+
+4. **Configuration Setup**
+   ```bash
+   # Configure via environment variables only (v0.3.0+)
+   export SONARR_URL="http://localhost:8989"
+   export SONARR_API_KEY="your-sonarr-api-key"
+   export RADARR_URL="http://localhost:7878"
+   export RADARR_API_KEY="your-radarr-api-key"
+   # Optional downloader
+   export SABNZBD_URL="http://localhost:8080"
+   export SABNZBD_API_KEY="your-sabnzbd-api-key"
+   ```
 
 ### Prerequisites
 

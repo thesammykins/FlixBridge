@@ -7,6 +7,8 @@ Complete reference for all available Flix-Bridge tools with examples and respons
 
 ## Table of Contents
 
+- [Service Discovery](#service-discovery)
+  - [list_services](#list_services)
 - [Core Operations](#core-operations)
   - [system_status](#system_status)
   - [queue_list](#queue_list)
@@ -22,6 +24,61 @@ Complete reference for all available Flix-Bridge tools with examples and respons
   - [queue_diagnostics](#queue_diagnostics)
   - [all_services_diagnostics](#all_services_diagnostics)
   - [download_status](#download_status)
+
+## Service Discovery
+
+> **⚠️ Important**: Always call `list_services` first to discover available services before using any other tools.
+
+### list_services
+
+List all configured services and downloaders. This tool provides discovery of available services and must be called before using any service-specific operations.
+
+**Input:**
+```json
+{}
+```
+
+**Output:**
+```json
+{
+  "ok": true,
+  "data": {
+    "services": [
+      {
+        "name": "sonarr-hd",
+        "type": "sonarr"
+      },
+      {
+        "name": "sonarr-4k",
+        "type": "sonarr"
+      },
+      {
+        "name": "radarr-main",
+        "type": "radarr"
+      }
+    ],
+    "downloaders": [
+      {
+        "name": "sabnzbd-main",
+        "type": "sabnzbd"
+      }
+    ],
+    "summary": {
+      "totalServices": 3,
+      "totalDownloaders": 1
+    }
+  }
+}
+```
+
+**Parameters:**
+- None required
+
+**Usage Notes:**
+- This tool requires no service parameter unlike all other tools
+- Use the service names returned here for all subsequent tool calls
+- Service names are determined by your environment variable configuration
+- Service types help identify whether a service is Sonarr or Radarr
 
 ## Core Operations
 

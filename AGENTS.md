@@ -11,8 +11,8 @@ This document defines engineering principles, architectural constraints, and con
 3. Minimal dependencies (target set):
    - `typescript@^5.9.x`
    - `zod` (runtime validation, narrow usage)
-   - `eslint` + lightweight config (no bulky style plugins)
-   - `tsx` (optional dev runner) OR plain `node --loader ts-node/esm` if needed
+   - `@biomejs/biome` (formatter + linter; replaces ESLint/Prettier)
+   - `tsx` (optional dev runner) OR plain `node` as appropriate
 4. No class hierarchies unless polymorphism **cannot** be expressed more simply (object literals + functions preferred).
 5. Strict TypeScript (`"strict": true`, include `noUncheckedIndexedAccess`, `useUnknownInCatchVariables`).
 6. All external I/O (HTTP) funneled through one tiny helper to enforce:
@@ -201,10 +201,15 @@ If/when introducing a test runner: prefer `vitest` (lightweight, ESM-friendly) b
 
 ## 9. Style & Tooling
 
-- `eslint`: enable recommended + typescript-recommended; custom rules:
-  - Enforce explicit return types on exported functions
-  - Disallow `any` except in precisely documented escape hatches
-- `tsconfig`:
+- Biome: use formatter + linter with recommended rules.
+  - Commands:
+    - Format: `npm run format` (or `format:fix`)
+    - Lint: `npm run lint` (or `lint:fix`)
+    - Check all: `npm run check`
+  - Conventions:
+    - Avoid `any`; prefer `unknown` + narrowing.
+    - Prefer for...of over Array.prototype.forEach for clarity/perf where flagged.
+- tsconfig:
   - `"target": "ES2022"`
   - `"module": "ES2022"`
   - `"moduleResolution": "node16"`
@@ -221,15 +226,21 @@ If/when introducing a test runner: prefer `vitest` (lightweight, ESM-friendly) b
 ## 10. MCP Tool Design
 
 - Each MCP tool is coarse enough to cover a *semantic operation* (not every REST endpoint).
-- Tool naming: underscore_lowercase names (e.g. `system_status`, `queue_list`, `history_detail`).
+- Tool naming: underscore_lowercase names (e.g. `list_services`, `system_status`, `queue_list`, `history_detail`).
+- **Service Discovery**: The `list_services` tool MUST be called first to discover available services and downloaders before using any other tools.
 - Input shape includes:
-  - `service: string`
+  - `service: string` (for service-specific tools)
   - Additional parameters (e.g. `ids?: number[]`)
 - Output shape:
   - `ok: boolean`
   - `data?: T`
   - `error?: ServiceError | InternalError`
 - Guarantee stable output contract to support LLM reasoning.
+
+### Available Tools
+
+- `list_services`: Discover all configured services and downloaders (no parameters required)
+- Service-specific tools: All other tools require a valid `service` parameter obtained from `list_services`
 
 ---
 ## 10.1 MCP Server Implementation Details
@@ -375,7 +386,7 @@ This section is intentionally prescriptive to keep the surface stable for LLM an
 ## 12. Security & Configuration
 
 - API keys read once at service creation; never logged.
-- Provide configuration via environment or a small JSON consumed by `index.ts` (not part of exported library).
+- Provide configuration via environment variables (slug-based discovery); no JSON config files or JSON-in-env mappings.
 - Do not embed secrets in code or commit sample keys.
 - If any user-supplied URL: validate with URL constructor and enforce allowed protocols (`http:`, `https:`).
 

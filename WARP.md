@@ -31,8 +31,9 @@ npm start
 # Verify configuration and connectivity
 npm run smoke
 
-# Lint TypeScript code
+# Lint & format TypeScript with Biome
 npm run lint
+npm run format
 
 # Enable debug logging
 FLIX_BRIDGE_DEBUG=1 npm run dev
@@ -49,14 +50,17 @@ npm run debug:queue
 
 ### Configuration Setup
 ```bash
-# Copy sample configuration
-cp config.sample.json config.json
+# Configure environment variables (standard names)
+export SONARR_URL="http://localhost:8989"
+export SONARR_API_KEY="your-sonarr-api-key"
+export RADARR_URL="http://localhost:7878"
+export RADARR_API_KEY="your-radarr-api-key"
+# Optional downloader
+export SABNZBD_URL="http://localhost:8080"
+export SABNZBD_API_KEY="your-sabnzbd-api-key"
 
-# Edit with your actual API keys
-# Find API keys at: Settings → General → Security → API Key
-
-# Test specific instance configuration
-FLIX_BRIDGE_CONFIG=config.json npm run smoke
+# Validate configuration and connectivity
+npm run smoke
 ```
 
 ## Architecture Overview
@@ -181,7 +185,7 @@ Always use the `handleError()` function to normalize errors:
 ⚠️ **These constraints guide the project architecture (see AGENTS.md):**
 
 - **LOC Budget**: Originally 400 lines, evolved to 700 lines for handwritten runtime TypeScript (AGENTS.md), currently ~2,705 lines due to expanded feature set with Phase 2 (SABnzbd integration) and Phase 3 (debug/metrics) capabilities
-- **Minimal Dependencies**: Only essential packages (MCP SDK, zod, TypeScript tooling)
+- **Minimal Dependencies**: Only essential packages (MCP SDK, zod, TypeScript tooling, Biome)
 - **No Heavy Frameworks**: Prefer native Node.js APIs (fetch, etc.)
 - **Strict TypeScript**: All strict settings enabled, no `any` types
 - **Single HTTP Helper**: All external requests through `fetchJson()` function
@@ -339,78 +343,38 @@ npx tsx scripts/test-server-metrics.ts
 npx tsx scripts/trace-diagnostics.ts
 ```
 
-## Configuration Methods
+## Configuration
 
-### Option 1: JSON Configuration (Recommended)
+Flix-Bridge v0.3.x uses environment-only configuration with slug-based discovery. No config files and no JSON-in-env mapping required.
+
+### Slug-based multiple instances
+- Sonarr: `SONARR_<SLUG>_URL`, `SONARR_<SLUG>_API_KEY`, optional `SONARR_<SLUG>_NAME`
+- Radarr: `RADARR_<SLUG>_URL`, `RADARR_<SLUG>_API_KEY`, optional `RADARR_<SLUG>_NAME`
+- SABnzbd: `SABNZBD_<SLUG>_URL`, `SABNZBD_<SLUG>_API_KEY`, optional `SABNZBD_<SLUG>_NAME`
+
+Example:
 ```bash
-# config.json - Complete example with arr services and downloaders
-{
-  "services": {
-    "sonarr-main": {
-      "baseUrl": "http://localhost:8989",
-      "apiKey": "your-sonarr-api-key"
-    },
-    "radarr-main": {
-      "baseUrl": "http://localhost:7878",
-      "apiKey": "your-radarr-api-key"
-    }
-  },
-  "downloaders": {
-    "sabnzbd": {
-      "baseUrl": "http://localhost:8080",
-      "apiKey": "your-sabnzbd-api-key",
-      "name": "SABnzbd Main"
-    }
-  }
-}
+# Sonarr
+export SONARR_MAIN_URL="http://sonarr-main:8989"
+export SONARR_MAIN_API_KEY="{{SONARR_MAIN_KEY}}"
+export SONARR_4K_URL="http://sonarr-4k:8989"
+export SONARR_4K_API_KEY="{{SONARR_4K_KEY}}"
+
+# Radarr
+export RADARR_MAIN_URL="http://radarr-main:7878"
+export RADARR_MAIN_API_KEY="{{RADARR_MAIN_KEY}}"
+export RADARR_UHD_URL="http://radarr-uhd:7878"
+export RADARR_UHD_API_KEY="{{RADARR_UHD_KEY}}"
+
+# SABnzbd (optional)
+export SABNZBD_MAIN_URL="http://sab-main:8080"
+export SABNZBD_MAIN_API_KEY="{{SAB_MAIN_KEY}}"
 ```
 
-### Option 2: Environment Variables
-```bash
-# Arr service configuration
-export SONARR_URL="http://localhost:8989"
-export SONARR_API_KEY="your-key"
-export RADARR_URL="http://localhost:7878"
-export RADARR_API_KEY="your-key"
-
-# SABnzbd downloader configuration
-export SABNZBD_URL="http://localhost:8080"
-export SABNZBD_API_KEY="your-sabnzbd-key"
-
-# Optional custom config file path
-export FLIX_BRIDGE_CONFIG="/path/to/config.json"
-```
-
-### Multi-Downloader Configuration
-
-For multiple SABnzbd instances or different downloader types:
-
-```json
-{
-  "services": {
-    "sonarr-hd": {
-      "baseUrl": "http://localhost:8989",
-      "apiKey": "your-hd-sonarr-key"
-    },
-    "sonarr-4k": {
-      "baseUrl": "http://localhost:8990", 
-      "apiKey": "your-4k-sonarr-key"
-    }
-  },
-  "downloaders": {
-    "sabnzbd-main": {
-      "baseUrl": "http://localhost:8080",
-      "apiKey": "your-main-sabnzbd-key",
-      "name": "Main SABnzbd"
-    },
-    "sabnzbd-4k": {
-      "baseUrl": "http://localhost:8081",
-      "apiKey": "your-4k-sabnzbd-key",
-      "name": "4K SABnzbd"
-    }
-  }
-}
-```
+Notes:
+- Service names default to `sonarr-<slug>` / `radarr-<slug>` (slug lowercased, `_` → `-`).
+- If you set `<KIND>_<SLUG>_NAME`, that overrides the final name (ensure it contains "sonarr"/"radarr" to pass current detection).
+- Single-instance fallback (SONARR_URL/RADARR_URL/SABNZBD_URL) still works for simple setups.
 
 ## Troubleshooting Checklist
 
@@ -433,7 +397,10 @@ Add to `claude_desktop_config.json`:
       "command": "npx",
       "args": ["@thesammykins/flixbridge"],
       "env": {
-        "FLIX_BRIDGE_CONFIG": "/path/to/your/config.json"
+        "SONARR_URL": "http://localhost:8989",
+        "SONARR_API_KEY": "your-sonarr-api-key",
+        "RADARR_URL": "http://localhost:7878",
+        "RADARR_API_KEY": "your-radarr-api-key"
       }
     }
   }
@@ -471,6 +438,6 @@ The `scripts/smoke.ts` file provides comprehensive testing:
 - Validates all configured service instances
 - Tests core operations (status, queue, folders)
 - Reports detailed pass/fail results
-- Can test specific instances: `FLIX_BRIDGE_CONFIG=test-config.json npm run smoke`
+- Can test specific instances by exporting only the env vars for one service and running `npm run smoke`
 
 ⚠️ **Important**: Do not modify `AGENTS.md` without explicit permission - it contains the project's core architectural decisions and constraints.
