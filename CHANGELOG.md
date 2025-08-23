@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.2.9] - 2025-08-23
+
+- fixing github actions AGAIN
+
 ## [0.2.8] - 2025-08-23
 
 - fixing env vars not importing

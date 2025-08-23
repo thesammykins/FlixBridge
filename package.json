@@ -1,6 +1,6 @@
 {
   "name": "@thesammykins/flixbridge",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "description": "Media Management MCP Server - Connect AI assistants to TV shows and movie management services",
   "type": "module",
   "main": "dist/index.js",
