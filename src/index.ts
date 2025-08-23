@@ -605,48 +605,87 @@ function buildConfigFromEnvMapping(mapping: EnvVarMapping) {
   const services: Record<string, ServiceConfig> = {};
   const downloaders: Record<string, SabnzbdConfig> = {};
 
-  // Map services from custom env vars - support any service name
-  if (mapping.services) {
-    for (const [serviceName, serviceMapping] of Object.entries(
-      mapping.services,
-    )) {
-      const baseUrl = serviceMapping.baseUrl
-        ? process.env[serviceMapping.baseUrl]
-        : undefined;
-      const apiKey = serviceMapping.apiKey
-        ? process.env[serviceMapping.apiKey]
-        : undefined;
+  // Check if this is the new nested format or old flat format
+  if (mapping.services || mapping.downloaders) {
+    // New nested format: { services: {...}, downloaders: {...} }
 
-      if (baseUrl && apiKey) {
-        services[serviceName] = {
-          baseUrl: baseUrl,
-          apiKey: apiKey,
-        };
+    // Map services from custom env vars - support any service name
+    if (mapping.services) {
+      for (const [serviceName, serviceMapping] of Object.entries(
+        mapping.services,
+      )) {
+        const baseUrl = serviceMapping.baseUrl
+          ? process.env[serviceMapping.baseUrl]
+          : undefined;
+        const apiKey = serviceMapping.apiKey
+          ? process.env[serviceMapping.apiKey]
+          : undefined;
+
+        if (baseUrl && apiKey) {
+          services[serviceName] = {
+            baseUrl: baseUrl,
+            apiKey: apiKey,
+          };
+        }
       }
     }
-  }
 
-  // Map downloaders from custom env vars - support any downloader name
-  if (mapping.downloaders) {
-    for (const [downloaderName, downloaderMapping] of Object.entries(
-      mapping.downloaders,
+    // Map downloaders from custom env vars - support any downloader name
+    if (mapping.downloaders) {
+      for (const [downloaderName, downloaderMapping] of Object.entries(
+        mapping.downloaders,
+      )) {
+        const baseUrl = downloaderMapping.baseUrl
+          ? process.env[downloaderMapping.baseUrl]
+          : undefined;
+        const apiKey = downloaderMapping.apiKey
+          ? process.env[downloaderMapping.apiKey]
+          : undefined;
+        const name = downloaderMapping.name
+          ? process.env[downloaderMapping.name]
+          : undefined;
+
+        if (baseUrl && apiKey) {
+          downloaders[downloaderName] = {
+            baseUrl: baseUrl,
+            apiKey: apiKey,
+            name: name || downloaderName,
+          };
+        }
+      }
+    }
+  } else {
+    // Old flat format: { "sonarr-hd": "SONARR_HD", "sabnzbd": "SABNZBD" }
+    for (const [serviceName, envVarName] of Object.entries(
+      mapping as Record<string, string>,
     )) {
-      const baseUrl = downloaderMapping.baseUrl
-        ? process.env[downloaderMapping.baseUrl]
-        : undefined;
-      const apiKey = downloaderMapping.apiKey
-        ? process.env[downloaderMapping.apiKey]
-        : undefined;
-      const name = downloaderMapping.name
-        ? process.env[downloaderMapping.name]
-        : undefined;
-
-      if (baseUrl && apiKey) {
-        downloaders[downloaderName] = {
-          baseUrl: baseUrl,
-          apiKey: apiKey,
-          name: name || downloaderName,
-        };
+      const envValue = process.env[envVarName];
+      if (envValue) {
+        try {
+          const config = JSON.parse(envValue);
+          if (config.url && config.apiKey) {
+            if (
+              serviceName.toLowerCase().includes("sabnzbd") ||
+              serviceName.toLowerCase().includes("downloader")
+            ) {
+              downloaders[serviceName] = {
+                baseUrl: config.url,
+                apiKey: config.apiKey,
+                name: config.name || serviceName,
+              };
+            } else {
+              services[serviceName] = {
+                baseUrl: config.url,
+                apiKey: config.apiKey,
+              };
+            }
+          }
+        } catch (error) {
+          console.error(
+            `Failed to parse environment variable ${envVarName}:`,
+            error,
+          );
+        }
       }
     }
   }
