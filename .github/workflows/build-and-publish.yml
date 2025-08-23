@@ -42,11 +42,41 @@ jobs:
     - name: Check TypeScript compilation
       run: npx tsc --noEmit
 
-    # Use smoke tests as primary test suite since there's no dedicated test script
+    # Run smoke tests if valid configuration is available
+    - name: Check for valid configuration
+      id: config-check
+      run: |
+        if [ -f config.json ]; then
+          if grep -q "your-.*-api-key" config.json; then
+            echo "has_real_config=false" >> $GITHUB_OUTPUT
+            echo "⚠️ Placeholder configuration detected - skipping smoke tests"
+          else
+            echo "has_real_config=true" >> $GITHUB_OUTPUT
+            echo "✅ Real configuration detected - running smoke tests"
+          fi
+        else
+          echo "has_real_config=false" >> $GITHUB_OUTPUT
+          echo "⚠️ No configuration file found - skipping smoke tests"
+        fi
+
     - name: Run smoke tests
+      if: steps.config-check.outputs.has_real_config == 'true'
       run: npm run smoke
       env:
         FLIX_BRIDGE_DEBUG: 1
+        
+    - name: Validate build artifacts
+      run: |
+        echo "✅ Validating build artifacts..."
+        if [ ! -f dist/index.js ]; then
+          echo "❌ Main entry point missing: dist/index.js"
+          exit 1
+        fi
+        if [ ! -d dist/services ]; then
+          echo "❌ Services directory missing: dist/services"
+          exit 1
+        fi
+        echo "✅ All required build artifacts present"
 
   security:
     runs-on: ubuntu-latest

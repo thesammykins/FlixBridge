@@ -24,7 +24,11 @@ The CI/CD pipeline consists of three main workflows:
   4. Lint code (`npm run lint`)
   5. Build project (`npm run build`)
   6. Check TypeScript compilation (`npx tsc --noEmit`)
-  7. Run smoke tests (`npm run smoke`) with debug logging
+  7. **Smart Testing**: 
+     - Detects if real API keys or placeholders are in config
+     - Runs smoke tests (`npm run smoke`) only with valid configuration
+     - Validates build artifacts for all configurations
+  8. Build artifact validation ensures package integrity
 
 #### Security Job
 - Runs npm security audit (`npm audit --audit-level=moderate`)
@@ -133,6 +137,50 @@ You can manually trigger the workflow:
 - **Registry**: https://www.npmjs.com/package/@thesammykins/flixbridge
 - **Install Command**: `npm install @thesammykins/flixbridge`
 - **Scope**: `@thesammykins` (public access)
+
+## Smart Testing Behavior
+
+The workflow includes intelligent testing that adapts to your configuration:
+
+### Configuration Detection
+
+The workflow automatically detects your configuration type:
+
+- **Placeholder Configuration**: Contains `your-*-api-key` placeholders
+  - ⚠️ Skips smoke tests (no real services to test)
+  - ✅ Validates build artifacts instead
+  - ✅ Continues with build and publish pipeline
+
+- **Real Configuration**: Contains actual API keys
+  - ✅ Runs full smoke test suite
+  - ✅ Tests actual service connectivity
+  - ✅ Validates all functionality
+
+- **No Configuration**: Missing `config.json`
+  - ⚠️ Skips smoke tests
+  - ✅ Validates build artifacts
+  - ✅ Package can still be published
+
+### Build Artifact Validation
+
+When smoke tests are skipped, the workflow performs comprehensive build validation:
+
+```bash
+# Validates these essential files exist:
+✅ dist/index.js        # Main entry point
+✅ dist/services/       # Service implementations
+✅ TypeScript compilation # No compilation errors
+✅ ESLint passes        # Code quality maintained
+```
+
+This ensures the package is properly built and ready for distribution even without live service testing.
+
+### Why This Design?
+
+- **Security**: Prevents exposure of real API keys in public repositories
+- **Reliability**: CI/CD doesn't depend on external service availability  
+- **Flexibility**: Supports both development and production configurations
+- **Quality**: Maintains high standards with appropriate testing for each scenario
 
 ## Troubleshooting
 
