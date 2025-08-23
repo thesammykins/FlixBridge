@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.2.5] - 2025-08-23
+
+- fixing npm package lacking a  variable in it's json
+
 ## [0.2.4] - 2025-08-23
 
 - docs: improve README with npm package links and usage examples
