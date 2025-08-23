@@ -1,0 +1,28 @@
+{
+  "services": {
+    "sonarr-main": {
+      "baseUrl": "http://localhost:8989",
+      "apiKey": "your-main-sonarr-api-key"
+    },
+    "sonarr-4k": {
+      "baseUrl": "http://localhost:8990",
+      "apiKey": "your-4k-sonarr-api-key"
+    },
+    "sonarr-anime": {
+      "baseUrl": "http://anime-server:8989",
+      "apiKey": "your-anime-sonarr-api-key"
+    },
+    "radarr-main": {
+      "baseUrl": "http://localhost:7878",
+      "apiKey": "your-main-radarr-api-key"
+    },
+    "radarr-4k": {
+      "baseUrl": "http://localhost:7879",
+      "apiKey": "your-4k-radarr-api-key"
+    },
+    "radarr-foreign": {
+      "baseUrl": "http://media-server:7878",
+      "apiKey": "your-foreign-radarr-api-key"
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "services": {
+    "sonarr": {
+      "baseUrl": "http://localhost:8989",
+      "apiKey": "your-sonarr-api-key-here"
+    },
+    "radarr": {
+      "baseUrl": "http://localhost:7878",
+      "apiKey": "your-radarr-api-key-here"
+    }
+  },
+  "downloaders": {
+    "sabnzbd": {
+      "baseUrl": "http://localhost:8080",
+      "apiKey": "your-sabnzbd-api-key-here",
+      "name": "SABnzbd"
+    }
+  }
+}

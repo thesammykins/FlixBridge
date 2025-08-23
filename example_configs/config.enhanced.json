@@ -1,0 +1,100 @@
+{
+  "services": {
+    "sonarr-main": {
+      "baseUrl": "http://localhost:8989",
+      "apiKey": "your-main-sonarr-api-key",
+      "description": "Main Sonarr instance for 1080p TV shows",
+      "tags": ["main", "tv", "1080p"]
+    },
+    "sonarr-4k": {
+      "baseUrl": "http://localhost:8990",
+      "apiKey": "your-4k-sonarr-api-key",
+      "description": "4K Sonarr instance for UHD TV shows",
+      "tags": ["4k", "tv", "uhd"]
+    },
+    "sonarr-anime": {
+      "baseUrl": "http://anime-server:8989",
+      "apiKey": "your-anime-sonarr-api-key",
+      "description": "Dedicated Sonarr for anime content",
+      "tags": ["anime", "tv", "specialized"]
+    },
+    "sonarr-kids": {
+      "baseUrl": "http://family-server:8989",
+      "apiKey": "your-kids-sonarr-api-key",
+      "description": "Family-safe Sonarr for children's shows",
+      "tags": ["kids", "family", "tv"]
+    },
+    "radarr-main": {
+      "baseUrl": "http://localhost:7878",
+      "apiKey": "your-main-radarr-api-key",
+      "description": "Main Radarr instance for 1080p movies",
+      "tags": ["main", "movies", "1080p"]
+    },
+    "radarr-4k": {
+      "baseUrl": "http://localhost:7879",
+      "apiKey": "your-4k-radarr-api-key",
+      "description": "4K Radarr instance for UHD movies",
+      "tags": ["4k", "movies", "uhd"]
+    },
+    "radarr-foreign": {
+      "baseUrl": "http://media-server:7878",
+      "apiKey": "your-foreign-radarr-api-key",
+      "description": "Radarr for foreign and art house films",
+      "tags": ["foreign", "movies", "arthouse"]
+    },
+    "radarr-kids": {
+      "baseUrl": "http://family-server:7878",
+      "apiKey": "your-kids-radarr-api-key",
+      "description": "Family-safe Radarr for children's movies",
+      "tags": ["kids", "family", "movies"]
+    },
+    "radarr-archive": {
+      "baseUrl": "http://archive-server:7878",
+      "apiKey": "your-archive-radarr-api-key",
+      "description": "Archive Radarr for classic and rare films",
+      "tags": ["archive", "classic", "movies", "rare"]
+    }
+  },
+  "downloaders": {
+    "sabnzbd-main": {
+      "baseUrl": "http://localhost:8080",
+      "apiKey": "your-main-sabnzbd-api-key",
+      "name": "Main SABnzbd"
+    },
+    "sabnzbd-4k": {
+      "baseUrl": "http://localhost:8081",
+      "apiKey": "your-4k-sabnzbd-api-key",
+      "name": "4K SABnzbd"
+    }
+  },
+  "groups": {
+    "tv": ["sonarr-main", "sonarr-4k", "sonarr-anime", "sonarr-kids"],
+    "movies": [
+      "radarr-main",
+      "radarr-4k",
+      "radarr-foreign",
+      "radarr-kids",
+      "radarr-archive"
+    ],
+    "4k": ["sonarr-4k", "radarr-4k"],
+    "family": ["sonarr-kids", "radarr-kids"],
+    "main": ["sonarr-main", "radarr-main"],
+    "specialized": ["sonarr-anime", "radarr-foreign", "radarr-archive"]
+  },
+  "downloaderGroups": {
+    "main": ["sabnzbd-main"],
+    "4k": ["sabnzbd-4k"],
+    "all": ["sabnzbd-main", "sabnzbd-4k"]
+  },
+  "defaults": {
+    "sonarr": "sonarr-main",
+    "radarr": "radarr-main",
+    "downloader": "sabnzbd-main"
+  },
+  "environment": "production",
+  "globalSettings": {
+    "timeout": 10000,
+    "retries": 2,
+    "parallelRequests": 4
+  }
+}

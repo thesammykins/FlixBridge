@@ -1,0 +1,1000 @@
+========================
+CODE SNIPPETS
+========================
+TITLE: Radarr Naming Configuration API Endpoints
+DESCRIPTION: Manages naming configurations, including retrieval, updates, and examples.
+
+SOURCE: https://radarr.video/docs/api
+
+LANGUAGE: APIDOC
+CODE:
+```
+GET/api/v3/config/naming
+PUT/api/v3/config/naming/{id}
+GET/api/v3/config/naming/{id}
+GET/api/v3/config/naming/examples
+```
+
+----------------------------------------
+
+TITLE: Radarr API Endpoints
+DESCRIPTION: This section lists the available API endpoints for Radarr v3. It includes GET, POST, PUT, and DELETE methods for various resources like movies, downloads, indexers, and system configurations.
+
+SOURCE: https://radarr.video/docs/api
+
+LANGUAGE: APIDOC
+CODE:
+```
+### AlternativeTitle
+GET/api/v3/alttitle
+GET/api/v3/alttitle/{id}
+```
+
+LANGUAGE: APIDOC
+CODE:
+```
+### ApiInfo
+GET/api
+```
+
+LANGUAGE: APIDOC
+CODE:
+```
+### Authentication
+POST/login
+GET/logout
+```
+
+LANGUAGE: APIDOC
+CODE:
+```
+### StaticResource
+GET/login
+GET/content/{path}
+GET/
+GET/{path}
+```
+
+LANGUAGE: APIDOC
+CODE:
+```
+### AutoTagging
+POST/api/v3/autotagging
+GET/api/v3/autotagging
+PUT/api/v3/autotagging/{id}
+DELETE/api/v3/autotagging/{id}
+GET/api/v3/autotagging/{id}
+GET/api/v3/autotagging/schema
+```
+
+LANGUAGE: APIDOC
+CODE:
+```
+### Backup
+GET/api/v3/system/backup
+DELETE/api/v3/system/backup/{id}
+POST/api/v3/system/backup/restore/{id}
+POST/api/v3/system/backup/restore/upload
+```
+
+LANGUAGE: APIDOC
+CODE:
+```
+### Blocklist
+GET/api/v3/blocklist
+GET/api/v3/blocklist/movie
+DELETE/api/v3/blocklist/{id}
+DELETE/api/v3/blocklist/bulk
+```
+
+LANGUAGE: APIDOC
+CODE:
+```
+### Calendar
+GET/api/v3/calendar
+```
+
+LANGUAGE: APIDOC
+CODE:
+```
+### CalendarFeed
+GET/feed/v3/calendar/radarr.ics
+```
+
+LANGUAGE: APIDOC
+CODE:
+```
+### Collection
+GET/api/v3/collection
+PUT/api/v3/collection
+PUT/api/v3/collection/{id}
+GET/api/v3/collection/{id}
+```
+
+LANGUAGE: APIDOC
+CODE:
+```
+### Command
+POST/api/v3/command
+GET/api/v3/command
+DELETE/api/v3/command/{id}
+GET/api/v3/command/{id}
+```
+
+LANGUAGE: APIDOC
+CODE:
+```
+### Credit
+GET/api/v3/credit
+GET/api/v3/credit/{id}
+```
+
+LANGUAGE: APIDOC
+CODE:
+```
+### CustomFilter
+GET/api/v3/customfilter
+POST/api/v3/customfilter
+PUT/api/v3/customfilter/{id}
+DELETE/api/v3/customfilter/{id}
+GET/api/v3/customfilter/{id}
+```
+
+LANGUAGE: APIDOC
+CODE:
+```
+### CustomFormat
+GET/api/v3/customformat
+POST/api/v3/customformat
+PUT/api/v3/customformat/{id}
+DELETE/api/v3/customformat/{id}
+GET/api/v3/customformat/{id}
+PUT/api/v3/customformat/bulk
+DELETE/api/v3/customformat/bulk
+GET/api/v3/customformat/schema
+```
+
+LANGUAGE: APIDOC
+CODE:
+```
+### Cutoff
+GET/api/v3/wanted/cutoff
+```
+
+LANGUAGE: APIDOC
+CODE:
+```
+### DelayProfile
+POST/api/v3/delayprofile
+GET/api/v3/delayprofile
+DELETE/api/v3/delayprofile/{id}
+PUT/api/v3/delayprofile/{id}
+GET/api/v3/delayprofile/{id}
+PUT/api/v3/delayprofile/reorder/{id}
+```
+
+LANGUAGE: APIDOC
+CODE:
+```
+### DiskSpace
+GET/api/v3/diskspace
+```
+
+LANGUAGE: APIDOC
+CODE:
+```
+### DownloadClient
+GET/api/v3/downloadclient
+POST/api/v3/downloadclient
+PUT/api/v3/downloadclient/{id}
+DELETE/api/v3/downloadclient/{id}
+GET/api/v3/downloadclient/{id}
+PUT/api/v3/downloadclient/bulk
+DELETE/api/v3/downloadclient/bulk
+GET/api/v3/downloadclient/schema
+POST/api/v3/downloadclient/test
+POST/api/v3/downloadclient/testall
+POST/api/v3/downloadclient/action/{name}
+```
+
+LANGUAGE: APIDOC
+CODE:
+```
+### DownloadClientConfig
+GET/api/v3/config/downloadclient
+PUT/api/v3/config/downloadclient/{id}
+GET/api/v3/config/downloadclient/{id}
+```
+
+LANGUAGE: APIDOC
+CODE:
+```
+### ExtraFile
+GET/api/v3/extrafile
+```
+
+LANGUAGE: APIDOC
+CODE:
+```
+### FileSystem
+GET/api/v3/filesystem
+GET/api/v3/filesystem/type
+GET/api/v3/filesystem/mediafiles
+```
+
+LANGUAGE: APIDOC
+CODE:
+```
+### Health
+GET/api/v3/health
+```
+
+LANGUAGE: APIDOC
+CODE:
+```
+### History
+GET/api/v3/history
+GET/api/v3/history/since
+GET/api/v3/history/movie
+POST/api/v3/history/failed/{id}
+```
+
+LANGUAGE: APIDOC
+CODE:
+```
+### HostConfig
+GET/api/v3/config/host
+PUT/api/v3/config/host/{id}
+GET/api/v3/config/host/{id}
+```
+
+LANGUAGE: APIDOC
+CODE:
+```
+### ImportList
+GET/api/v3/importlist
+POST/api/v3/importlist
+PUT/api/v3/importlist/{id}
+DELETE/api/v3/importlist/{id}
+GET/api/v3/importlist/{id}
+PUT/api/v3/importlist/bulk
+DELETE/api/v3/importlist/bulk
+GET/api/v3/importlist/schema
+POST/api/v3/importlist/test
+POST/api/v3/importlist/testall
+POST/api/v3/importlist/action/{name}
+```
+
+LANGUAGE: APIDOC
+CODE:
+```
+### ImportListConfig
+GET/api/v3/config/importlist
+PUT/api/v3/config/importlist/{id}
+GET/api/v3/config/importlist/{id}
+```
+
+LANGUAGE: APIDOC
+CODE:
+```
+### ImportListExclusion
+GET/api/v3/exclusions
+POST/api/v3/exclusions
+GET/api/v3/exclusions/paged
+PUT/api/v3/exclusions/{id}
+DELETE/api/v3/exclusions/{id}
+GET/api/v3/exclusions/{id}
+POST/api/v3/exclusions/bulk
+DELETE/api/v3/exclusions/bulk
+```
+
+LANGUAGE: APIDOC
+CODE:
+```
+### ImportListMovies
+GET/api/v3/importlist/movie
+POST/api/v3/importlist/movie
+```
+
+LANGUAGE: APIDOC
+CODE:
+```
+### Indexer
+GET/api/v3/indexer
+POST/api/v3/indexer
+PUT/api/v3/indexer/{id}
+DELETE/api/v3/indexer/{id}
+GET/api/v3/indexer/{id}
+PUT/api/v3/indexer/bulk
+DELETE/api/v3/indexer/bulk
+GET/api/v3/indexer/schema
+POST/api/v3/indexer/test
+POST/api/v3/indexer/testall
+POST/api/v3/indexer/action/{name}
+```
+
+LANGUAGE: APIDOC
+CODE:
+```
+### IndexerConfig
+GET/api/v3/config/indexer
+PUT/api/v3/config/indexer/{id}
+GET/api/v3/config/indexer/{id}
+```
+
+LANGUAGE: APIDOC
+CODE:
+```
+### IndexerFlag
+GET/api/v3/indexerflag
+```
+
+LANGUAGE: APIDOC
+CODE:
+```
+### Language
+GET/api/v3/language
+GET/api/v3/language/{id}
+```
+
+LANGUAGE: APIDOC
+CODE:
+```
+### Localization
+GET/api/v3/localization
+GET/api/v3/localization/language
+```
+
+LANGUAGE: APIDOC
+CODE:
+```
+### Log
+GET/api/v3/log
+```
+
+LANGUAGE: APIDOC
+CODE:
+```
+### LogFile
+GET/api/v3/log/file
+GET/api/v3/log/file/{filename}
+```
+
+LANGUAGE: APIDOC
+CODE:
+```
+### ManualImport
+GET/api/v3/manualimport
+POST/api/v3/manualimport
+```
+
+LANGUAGE: APIDOC
+CODE:
+```
+### MediaCover
+GET/api/v3/mediacover/{movieId}/{filename}
+```
+
+LANGUAGE: APIDOC
+CODE:
+```
+### MediaManagementConfig
+GET/api/v3/config/mediamanagement
+PUT/api/v3/config/mediamanagement/{id}
+GET/api/v3/config/mediamanagement/{id}
+```
+
+LANGUAGE: APIDOC
+CODE:
+```
+### Metadata
+GET/api/v3/metadata
+POST/api/v3/metadata
+PUT/api/v3/metadata/{id}
+DELETE/api/v3/metadata/{id}
+GET/api/v3/metadata/{id}
+GET/api/v3/metadata/schema
+POST/api/v3/metadata/test
+POST/api/v3/metadata/testall
+POST/api/v3/metadata/action/{name}
+```
+
+LANGUAGE: APIDOC
+CODE:
+```
+### MetadataConfig
+GET/api/v3/config/metadata
+PUT/api/v3/config/metadata/{id}
+GET/api/v3/config/metadata/{id}
+```
+
+LANGUAGE: APIDOC
+CODE:
+```
+### Missing
+GET/api/v3/wanted/missing
+```
+
+----------------------------------------
+
+TITLE: Radarr UI Configuration API Endpoints
+DESCRIPTION: Manages UI configurations, including updates and retrieval.
+
+SOURCE: https://radarr.video/docs/api
+
+LANGUAGE: APIDOC
+CODE:
+```
+PUT/api/v3/config/ui/{id}
+GET/api/v3/config/ui/{id}
+GET/api/v3/config/ui
+```
+
+----------------------------------------
+
+TITLE: Radarr Movie Import API Endpoint
+DESCRIPTION: Initiates the import process for movies.
+
+SOURCE: https://radarr.video/docs/api
+
+LANGUAGE: APIDOC
+CODE:
+```
+POST/api/v3/movie/import
+```
+
+----------------------------------------
+
+TITLE: Radarr Release Push API Endpoint
+DESCRIPTION: Pushes a release to Radarr.
+
+SOURCE: https://radarr.video/docs/api
+
+LANGUAGE: APIDOC
+CODE:
+```
+POST/api/v3/release/push
+```
+
+----------------------------------------
+
+TITLE: Radarr Notification API Endpoints
+DESCRIPTION: Handles notification settings, including creation, retrieval, updates, deletion, testing, and actions.
+
+SOURCE: https://radarr.video/docs/api
+
+LANGUAGE: APIDOC
+CODE:
+```
+GET/api/v3/notification
+POST/api/v3/notification
+PUT/api/v3/notification/{id}
+DELETE/api/v3/notification/{id}
+GET/api/v3/notification/{id}
+GET/api/v3/notification/schema
+POST/api/v3/notification/test
+POST/api/v3/notification/testall
+POST/api/v3/notification/action/{name}
+```
+
+----------------------------------------
+
+TITLE: Radarr Release API Endpoints
+DESCRIPTION: Manages releases, including creation and retrieval.
+
+SOURCE: https://radarr.video/docs/api
+
+LANGUAGE: APIDOC
+CODE:
+```
+POST/api/v3/release
+GET/api/v3/release
+```
+
+----------------------------------------
+
+TITLE: Radarr Release Profile API Endpoints
+DESCRIPTION: Handles release profiles, including creation, retrieval, updates, and deletion.
+
+SOURCE: https://radarr.video/docs/api
+
+LANGUAGE: APIDOC
+CODE:
+```
+POST/api/v3/releaseprofile
+GET/api/v3/releaseprofile
+DELETE/api/v3/releaseprofile/{id}
+PUT/api/v3/releaseprofile/{id}
+GET/api/v3/releaseprofile/{id}
+```
+
+----------------------------------------
+
+TITLE: Radarr System API Endpoints
+DESCRIPTION: Provides system-level operations such as retrieving status, routes, shutting down, and restarting.
+
+SOURCE: https://radarr.video/docs/api
+
+LANGUAGE: APIDOC
+CODE:
+```
+GET/api/v3/system/status
+GET/api/v3/system/routes
+GET/api/v3/system/routes/duplicate
+POST/api/v3/system/shutdown
+POST/api/v3/system/restart
+```
+
+----------------------------------------
+
+TITLE: Radarr Quality Profile API Endpoints
+DESCRIPTION: Handles quality profiles, including creation, retrieval, updates, and deletion.
+
+SOURCE: https://radarr.video/docs/api
+
+LANGUAGE: APIDOC
+CODE:
+```
+POST/api/v3/qualityprofile
+GET/api/v3/qualityprofile
+DELETE/api/v3/qualityprofile/{id}
+PUT/api/v3/qualityprofile/{id}
+GET/api/v3/qualityprofile/{id}
+```
+
+----------------------------------------
+
+TITLE: Radarr Root Folder API Endpoints
+DESCRIPTION: Manages root folders for movie storage, including creation, retrieval, and deletion.
+
+SOURCE: https://radarr.video/docs/api
+
+LANGUAGE: APIDOC
+CODE:
+```
+POST/api/v3/rootfolder
+GET/api/v3/rootfolder
+DELETE/api/v3/rootfolder/{id}
+GET/api/v3/rootfolder/{id}
+```
+
+----------------------------------------
+
+TITLE: Radarr Queue Details API Endpoint
+DESCRIPTION: Retrieves detailed information about the download queue.
+
+SOURCE: https://radarr.video/docs/api
+
+LANGUAGE: APIDOC
+CODE:
+```
+GET/api/v3/queue/details
+```
+
+----------------------------------------
+
+TITLE: Radarr Task API Endpoints
+DESCRIPTION: Retrieves information about system tasks.
+
+SOURCE: https://radarr.video/docs/api
+
+LANGUAGE: APIDOC
+CODE:
+```
+GET/api/v3/system/task
+GET/api/v3/system/task/{id}
+```
+
+----------------------------------------
+
+TITLE: Radarr Tag API Endpoints
+DESCRIPTION: Manages tags, including retrieval, creation, updates, and deletion.
+
+SOURCE: https://radarr.video/docs/api
+
+LANGUAGE: APIDOC
+CODE:
+```
+GET/api/v3/tag
+POST/api/v3/tag
+PUT/api/v3/tag/{id}
+DELETE/api/v3/tag/{id}
+GET/api/v3/tag/{id}
+```
+
+----------------------------------------
+
+TITLE: Radarr Video API Schemas
+DESCRIPTION: This entry provides a list of all available data schemas for the Radarr Video API. These schemas define the structure of data exchanged for various operations, including movie management, download client interactions, system settings, and more.
+
+SOURCE: https://radarr.video/docs/api
+
+LANGUAGE: APIDOC
+CODE:
+```
+AddMovieMethod
+AddMovieOptions
+AlternativeTitleResource
+ApiInfoResource
+ApplyTags
+AuthenticationRequiredType
+AuthenticationType
+AutoTaggingResource
+AutoTaggingSpecificationSchema
+BackupResource
+BackupType
+BlocklistBulkResource
+BlocklistResource
+BlocklistResourcePagingResource
+CalendarReleaseType
+CertificateValidationType
+CollectionMovieResource
+CollectionResource
+CollectionUpdateResource
+ColonReplacementFormat
+Command
+CommandPriority
+CommandResource
+CommandResult
+CommandStatus
+CommandTrigger
+CreditResource
+CreditType
+CustomFilterResource
+CustomFormatBulkResource
+CustomFormatResource
+CustomFormatSpecificationSchema
+DatabaseType
+DelayProfileResource
+DiskSpaceResource
+DownloadClientBulkResource
+DownloadClientConfigResource
+DownloadClientResource
+DownloadProtocol
+ExtraFileResource
+ExtraFileType
+Field
+FileDateType
+HealthCheckResult
+HealthResource
+HistoryResource
+HistoryResourcePagingResource
+HostConfigResource
+ImportListBulkResource
+ImportListConfigResource
+ImportListExclusionBulkResource
+ImportListExclusionResource
+ImportListExclusionResourcePagingResource
+ImportListResource
+ImportListType
+ImportRejectionResource
+IndexerBulkResource
+IndexerConfigResource
+IndexerFlagResource
+IndexerResource
+Language
+LanguageResource
+LocalizationLanguageResource
+LogFileResource
+LogResource
+LogResourcePagingResource
+ManualImportReprocessResource
+ManualImportResource
+MediaCover
+MediaCoverTypes
+MediaInfoResource
+MediaManagementConfigResource
+MetadataConfigResource
+MetadataResource
+Modifier
+MonitorTypes
+MovieCollectionResource
+MovieEditorResource
+MovieFileListResource
+MovieFileResource
+MovieHistoryEventType
+MovieResource
+MovieResourcePagingResource
+MovieRuntimeFormatType
+MovieStatisticsResource
+MovieStatusType
+NamingConfigResource
+NotificationResource
+ParseResource
+ParsedMovieInfo
+PingResource
+PrivacyLevel
+ProfileFormatItemResource
+ProperDownloadTypes
+ProviderMessage
+ProviderMessageType
+ProxyType
+Quality
+QualityDefinitionLimitsResource
+QualityDefinitionResource
+QualityModel
+QualityProfileQualityItemResource
+QualityProfileResource
+QualitySource
+QueueBulkResource
+QueueResource
+QueueResourcePagingResource
+QueueStatus
+QueueStatusResource
+RatingChild
+RatingType
+Ratings
+RejectionType
+ReleaseProfileResource
+ReleaseResource
+RemotePathMappingResource
+RenameMovieResource
+RescanAfterRefreshType
+Revision
+RootFolderResource
+RuntimeMode
+SelectOption
+SortDirection
+SourceType
+SystemResource
+TMDbCountryCode
+TagDetailsResource
+TagResource
+TaskResource
+TrackedDownloadState
+TrackedDownloadStatus
+TrackedDownloadStatusMessage
+UiConfigResource
+UnmappedFolder
+UpdateChanges
+UpdateMechanism
+UpdateResource
+```
+
+----------------------------------------
+
+TITLE: Radarr Queue Action API Endpoints
+DESCRIPTION: Performs actions on items in the download queue, such as grabbing.
+
+SOURCE: https://radarr.video/docs/api
+
+LANGUAGE: APIDOC
+CODE:
+```
+POST/api/v3/queue/grab/{id}
+POST/api/v3/queue/grab/bulk
+```
+
+----------------------------------------
+
+TITLE: Radarr Remote Path Mapping API Endpoints
+DESCRIPTION: Manages remote path mappings, including creation, retrieval, updates, and deletion.
+
+SOURCE: https://radarr.video/docs/api
+
+LANGUAGE: APIDOC
+CODE:
+```
+POST/api/v3/remotepathmapping
+GET/api/v3/remotepathmapping
+DELETE/api/v3/remotepathmapping/{id}
+PUT/api/v3/remotepathmapping/{id}
+GET/api/v3/remotepathmapping/{id}
+```
+
+----------------------------------------
+
+TITLE: Radarr Queue API Endpoints
+DESCRIPTION: Manages the download queue, including deletion of items and retrieval of queue status.
+
+SOURCE: https://radarr.video/docs/api
+
+LANGUAGE: APIDOC
+CODE:
+```
+DELETE/api/v3/queue/{id}
+DELETE/api/v3/queue/bulk
+GET/api/v3/queue
+```
+
+----------------------------------------
+
+TITLE: Radarr Quality Definition API Endpoints
+DESCRIPTION: Manages quality definitions, including updates, retrieval, and limits.
+
+SOURCE: https://radarr.video/docs/api
+
+LANGUAGE: APIDOC
+CODE:
+```
+PUT/api/v3/qualitydefinition/{id}
+GET/api/v3/qualitydefinition/{id}
+GET/api/v3/qualitydefinition
+PUT/api/v3/qualitydefinition/update
+GET/api/v3/qualitydefinition/limits
+```
+
+----------------------------------------
+
+TITLE: Radarr Tag Details API Endpoints
+DESCRIPTION: Retrieves detailed information about tags.
+
+SOURCE: https://radarr.video/docs/api
+
+LANGUAGE: APIDOC
+CODE:
+```
+GET/api/v3/tag/detail
+GET/api/v3/tag/detail/{id}
+```
+
+----------------------------------------
+
+TITLE: Radarr Parse API Endpoint
+DESCRIPTION: Endpoint for parsing data.
+
+SOURCE: https://radarr.video/docs/api
+
+LANGUAGE: APIDOC
+CODE:
+```
+GET/api/v3/parse
+```
+
+----------------------------------------
+
+TITLE: Radarr Quality Profile Schema API Endpoint
+DESCRIPTION: Retrieves the schema for quality profiles.
+
+SOURCE: https://radarr.video/docs/api
+
+LANGUAGE: APIDOC
+CODE:
+```
+GET/api/v3/qualityprofile/schema
+```
+
+----------------------------------------
+
+TITLE: Radarr Ping API Endpoints
+DESCRIPTION: Endpoints to check the status of the Radarr service.
+
+SOURCE: https://radarr.video/docs/api
+
+LANGUAGE: APIDOC
+CODE:
+```
+GET/ping
+HEAD/ping
+```
+
+----------------------------------------
+
+TITLE: Radarr Rename Movie API Endpoint
+DESCRIPTION: Initiates the renaming process for movies.
+
+SOURCE: https://radarr.video/docs/api
+
+LANGUAGE: APIDOC
+CODE:
+```
+GET/api/v3/rename
+```
+
+----------------------------------------
+
+TITLE: Radarr Update API Endpoint
+DESCRIPTION: Checks for available updates.
+
+SOURCE: https://radarr.video/docs/api
+
+LANGUAGE: APIDOC
+CODE:
+```
+GET/api/v3/update
+```
+
+----------------------------------------
+
+TITLE: Radarr Movie API Endpoints
+DESCRIPTION: Provides endpoints for managing movies within Radarr, including retrieval, creation, updating, and deletion.
+
+SOURCE: https://radarr.video/docs/api
+
+LANGUAGE: APIDOC
+CODE:
+```
+GET/api/v3/movie
+POST/api/v3/movie
+PUT/api/v3/movie/{id}
+DELETE/api/v3/movie/{id}
+GET/api/v3/movie/{id}
+```
+
+----------------------------------------
+
+TITLE: Radarr Queue Status API Endpoint
+DESCRIPTION: Retrieves the current status of the download queue.
+
+SOURCE: https://radarr.video/docs/api
+
+LANGUAGE: APIDOC
+CODE:
+```
+GET/api/v3/queue/status
+```
+
+----------------------------------------
+
+TITLE: Radarr Update Log File API Endpoints
+DESCRIPTION: Retrieves update log files.
+
+SOURCE: https://radarr.video/docs/api
+
+LANGUAGE: APIDOC
+CODE:
+```
+GET/api/v3/log/file/update
+GET/api/v3/log/file/update/{filename}
+```
+
+----------------------------------------
+
+TITLE: Radarr Movie File API Endpoints
+DESCRIPTION: Manages movie files, including retrieval, updating, and deletion of individual files or bulk operations.
+
+SOURCE: https://radarr.video/docs/api
+
+LANGUAGE: APIDOC
+CODE:
+```
+GET/api/v3/moviefile
+PUT/api/v3/moviefile/{id}
+DELETE/api/v3/moviefile/{id}
+GET/api/v3/moviefile/{id}
+PUT/api/v3/moviefile/editor
+DELETE/api/v3/moviefile/bulk
+PUT/api/v3/moviefile/bulk
+```
+
+----------------------------------------
+
+TITLE: Radarr Movie Editor API Endpoints
+DESCRIPTION: Endpoints for editing movie information in bulk or individually.
+
+SOURCE: https://radarr.video/docs/api
+
+LANGUAGE: APIDOC
+CODE:
+```
+PUT/api/v3/movie/editor
+DELETE/api/v3/movie/editor
+```
+
+----------------------------------------
+
+TITLE: Radarr Movie Lookup API Endpoints
+DESCRIPTION: Provides endpoints for looking up movie information using TMDB, IMDb, or general lookup.
+
+SOURCE: https://radarr.video/docs/api
+
+LANGUAGE: APIDOC
+CODE:
+```
+GET/api/v3/movie/lookup/tmdb
+GET/api/v3/movie/lookup/imdb
+GET/api/v3/movie/lookup
+```
+
+----------------------------------------
+
+TITLE: Radarr Movie Folder API Endpoint
+DESCRIPTION: Retrieves the folder associated with a specific movie.
+
+SOURCE: https://radarr.video/docs/api
+
+LANGUAGE: APIDOC
+CODE:
+```
+GET/api/v3/movie/{id}/folder
+```

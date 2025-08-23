@@ -1,0 +1,797 @@
+========================
+CODE SNIPPETS
+========================
+TITLE: Naming Configuration API
+DESCRIPTION: Endpoints for retrieving and updating naming configurations, including examples.
+
+SOURCE: https://sonarr.tv/docs/api/index
+
+LANGUAGE: APIDOC
+CODE:
+```
+GET /api/v3/config/naming
+PUT /api/v3/config/naming/{id}
+GET /api/v3/config/naming/{id}
+GET /api/v3/config/naming/examples
+```
+
+----------------------------------------
+
+TITLE: Media Management Configuration API
+DESCRIPTION: Endpoints for retrieving and updating media management configurations. Supports getting general configuration and specific configurations by ID.
+
+SOURCE: https://sonarr.tv/docs/api/index
+
+LANGUAGE: APIDOC
+CODE:
+```
+GET /api/v3/config/mediamanagement
+PUT /api/v3/config/mediamanagement/{id}
+GET /api/v3/config/mediamanagement/{id}
+```
+
+----------------------------------------
+
+TITLE: UI Configuration API
+DESCRIPTION: Endpoints for updating and retrieving UI configurations.
+
+SOURCE: https://sonarr.tv/docs/api/index
+
+LANGUAGE: APIDOC
+CODE:
+```
+PUT /api/v3/config/ui/{id}
+GET /api/v3/config/ui/{id}
+GET /api/v3/config/ui
+```
+
+----------------------------------------
+
+TITLE: Root Folder API
+DESCRIPTION: Endpoints for managing root folders, including creation, retrieval, and deletion.
+
+SOURCE: https://sonarr.tv/docs/api/index
+
+LANGUAGE: APIDOC
+CODE:
+```
+POST /api/v3/rootfolder
+GET /api/v3/rootfolder
+DELETE /api/v3/rootfolder/{id}
+GET /api/v3/rootfolder/{id}
+```
+
+----------------------------------------
+
+TITLE: Sonarr TV API Schemas
+DESCRIPTION: This entry provides a list of all available data schemas for the Sonarr TV API. Each schema defines the structure for specific resources like series, downloads, tags, and system configurations.
+
+SOURCE: https://sonarr.tv/docs/api/index
+
+LANGUAGE: APIDOC
+CODE:
+```
+AddSeriesOptions
+AlternateTitleResource
+ApplyTags
+AuthenticationRequiredType
+AuthenticationType
+AutoTaggingResource
+AutoTaggingSpecificationSchema
+BackupResource
+BackupType
+BlocklistBulkResource
+BlocklistResource
+BlocklistResourcePagingResource
+CertificateValidationType
+Command
+CommandPriority
+CommandResource
+CommandResult
+CommandStatus
+CommandTrigger
+CustomFilterResource
+CustomFormatBulkResource
+CustomFormatResource
+CustomFormatSpecificationSchema
+DatabaseType
+DelayProfileResource
+DiskSpaceResource
+DownloadClientBulkResource
+DownloadClientConfigResource
+DownloadClientResource
+DownloadProtocol
+EpisodeFileListResource
+EpisodeFileResource
+EpisodeHistoryEventType
+EpisodeResource
+EpisodeResourcePagingResource
+EpisodeTitleRequiredType
+EpisodesMonitoredResource
+Field
+FileDateType
+HealthCheckResult
+HealthResource
+HistoryResource
+HistoryResourcePagingResource
+HostConfigResource
+HttpUri
+ImportListBulkResource
+ImportListConfigResource
+ImportListExclusionBulkResource
+ImportListExclusionResource
+ImportListExclusionResourcePagingResource
+ImportListResource
+ImportListType
+ImportRejectionResource
+IndexerBulkResource
+IndexerConfigResource
+IndexerFlagResource
+IndexerResource
+Language
+LanguageProfileItemResource
+LanguageProfileResource
+LanguageResource
+ListSyncLevelType
+LocalizationLanguageResource
+LocalizationResource
+LogFileResource
+LogResource
+LogResourcePagingResource
+ManualImportReprocessResource
+ManualImportResource
+MediaCover
+MediaCoverTypes
+MediaInfoResource
+MediaManagementConfigResource
+MetadataResource
+MonitorTypes
+MonitoringOptions
+NamingConfigResource
+NewItemMonitorTypes
+NotificationResource
+ParseResource
+ParsedEpisodeInfo
+PingResource
+PrivacyLevel
+ProfileFormatItemResource
+ProperDownloadTypes
+ProviderMessage
+ProviderMessageType
+ProxyType
+Quality
+QualityDefinitionLimitsResource
+QualityDefinitionResource
+QualityModel
+QualityProfileQualityItemResource
+QualityProfileResource
+QualitySource
+QueueBulkResource
+QueueResource
+QueueResourcePagingResource
+QueueStatus
+QueueStatusResource
+Ratings
+RejectionType
+ReleaseEpisodeResource
+ReleaseProfileResource
+ReleaseResource
+ReleaseType
+RemotePathMappingResource
+RenameEpisodeResource
+RescanAfterRefreshType
+Revision
+RootFolderResource
+RuntimeMode
+SeasonPassResource
+SeasonPassSeriesResource
+SeasonResource
+SeasonStatisticsResource
+SelectOption
+SeriesEditorResource
+SeriesResource
+SeriesStatisticsResource
+SeriesStatusType
+SeriesTitleInfo
+SeriesTypes
+SortDirection
+SystemResource
+TagDetailsResource
+TagResource
+TaskResource
+TrackedDownloadState
+TrackedDownloadStatus
+TrackedDownloadStatusMessage
+UiConfigResource
+UnmappedFolder
+UpdateChanges
+UpdateMechanism
+UpdateResource
+```
+
+----------------------------------------
+
+TITLE: Release Push API
+DESCRIPTION: Endpoint for pushing releases to Sonarr.
+
+SOURCE: https://sonarr.tv/docs/api/index
+
+LANGUAGE: APIDOC
+CODE:
+```
+POST /api/v3/release/push
+```
+
+----------------------------------------
+
+TITLE: Release API
+DESCRIPTION: Endpoints for managing releases, including creation and retrieval.
+
+SOURCE: https://sonarr.tv/docs/api/index
+
+LANGUAGE: APIDOC
+CODE:
+```
+POST /api/v3/release
+GET /api/v3/release
+```
+
+----------------------------------------
+
+TITLE: Release Profile API
+DESCRIPTION: Endpoints for managing release profiles, including creation, retrieval, updates, and deletion.
+
+SOURCE: https://sonarr.tv/docs/api/index
+
+LANGUAGE: APIDOC
+CODE:
+```
+POST /api/v3/releaseprofile
+GET /api/v3/releaseprofile
+DELETE /api/v3/releaseprofile/{id}
+PUT /api/v3/releaseprofile/{id}
+GET /api/v3/releaseprofile/{id}
+```
+
+----------------------------------------
+
+TITLE: System API
+DESCRIPTION: Endpoints for retrieving system status, routes, and performing system operations like shutdown and restart.
+
+SOURCE: https://sonarr.tv/docs/api/index
+
+LANGUAGE: APIDOC
+CODE:
+```
+GET /api/v3/system/status
+GET /api/v3/system/routes
+GET /api/v3/system/routes/duplicate
+POST /api/v3/system/shutdown
+POST /api/v3/system/restart
+```
+
+----------------------------------------
+
+TITLE: Queue Details API
+DESCRIPTION: Endpoint for retrieving detailed information about the download queue.
+
+SOURCE: https://sonarr.tv/docs/api/index
+
+LANGUAGE: APIDOC
+CODE:
+```
+GET /api/v3/queue/details
+```
+
+----------------------------------------
+
+TITLE: Notification API
+DESCRIPTION: Endpoints for managing notification configurations, including testing and triggering actions.
+
+SOURCE: https://sonarr.tv/docs/api/index
+
+LANGUAGE: APIDOC
+CODE:
+```
+GET /api/v3/notification
+POST /api/v3/notification
+PUT /api/v3/notification/{id}
+DELETE /api/v3/notification/{id}
+GET /api/v3/notification/{id}
+GET /api/v3/notification/schema
+POST /api/v3/notification/test
+POST /api/v3/notification/testall
+POST /api/v3/notification/action/{name}
+```
+
+----------------------------------------
+
+TITLE: Queue Action API
+DESCRIPTION: Endpoints for performing actions on items in the download queue, such as grabbing releases.
+
+SOURCE: https://sonarr.tv/docs/api/index
+
+LANGUAGE: APIDOC
+CODE:
+```
+POST /api/v3/queue/grab/{id}
+POST /api/v3/queue/grab/bulk
+```
+
+----------------------------------------
+
+TITLE: Task API
+DESCRIPTION: Endpoints for retrieving information about system tasks.
+
+SOURCE: https://sonarr.tv/docs/api/index
+
+LANGUAGE: APIDOC
+CODE:
+```
+GET /api/v3/system/task
+GET /api/v3/system/task/{id}
+```
+
+----------------------------------------
+
+TITLE: Series Import API
+DESCRIPTION: Endpoint for importing series into Sonarr.
+
+SOURCE: https://sonarr.tv/docs/api/index
+
+LANGUAGE: APIDOC
+CODE:
+```
+POST /api/v3/series/import
+```
+
+----------------------------------------
+
+TITLE: Quality Profile API
+DESCRIPTION: Endpoints for managing quality profiles, including creation, retrieval, updates, and deletion.
+
+SOURCE: https://sonarr.tv/docs/api/index
+
+LANGUAGE: APIDOC
+CODE:
+```
+POST /api/v3/qualityprofile
+GET /api/v3/qualityprofile
+DELETE /api/v3/qualityprofile/{id}
+PUT /api/v3/qualityprofile/{id}
+GET /api/v3/qualityprofile/{id}
+```
+
+----------------------------------------
+
+TITLE: Sonarr API Endpoints
+DESCRIPTION: This section lists all available API endpoints for Sonarr v3. It covers functionalities such as managing auto-tagging, backups, blocklists, calendar feeds, commands, custom formats, download clients, episodes, file systems, history, import lists, indexers, languages, and system health.
+
+SOURCE: https://sonarr.tv/docs/api/index
+
+LANGUAGE: APIDOC
+CODE:
+```
+Server Variables:
+protocol: http, https
+hostpath:
+
+Computed URL: http://localhost:8989
+
+Endpoints:
+GET /api
+POST /login
+GET /logout
+GET /content/{path}
+GET /
+GET /{path}
+POST /api/v3/autotagging
+GET /api/v3/autotagging
+PUT /api/v3/autotagging/{id}
+DELETE /api/v3/autotagging/{id}
+GET /api/v3/autotagging/{id}
+GET /api/v3/autotagging/schema
+GET /api/v3/system/backup
+DELETE /api/v3/system/backup/{id}
+POST /api/v3/system/backup/restore/{id}
+POST /api/v3/system/backup/restore/upload
+GET /api/v3/blocklist
+DELETE /api/v3/blocklist/{id}
+DELETE /api/v3/blocklist/bulk
+GET /api/v3/calendar
+GET /api/v3/calendar/{id}
+GET /feed/v3/calendar/sonarr.ics
+POST /api/v3/command
+GET /api/v3/command
+DELETE /api/v3/command/{id}
+GET /api/v3/command/{id}
+GET /api/v3/customfilter
+POST /api/v3/customfilter
+PUT /api/v3/customfilter/{id}
+DELETE /api/v3/customfilter/{id}
+GET /api/v3/customfilter/{id}
+GET /api/v3/customformat
+POST /api/v3/customformat
+PUT /api/v3/customformat/{id}
+DELETE /api/v3/customformat/{id}
+GET /api/v3/customformat/{id}
+PUT /api/v3/customformat/bulk
+DELETE /api/v3/customformat/bulk
+GET /api/v3/customformat/schema
+GET /api/v3/wanted/cutoff
+GET /api/v3/wanted/cutoff/{id}
+POST /api/v3/delayprofile
+GET /api/v3/delayprofile
+DELETE /api/v3/delayprofile/{id}
+PUT /api/v3/delayprofile/{id}
+GET /api/v3/delayprofile/{id}
+PUT /api/v3/delayprofile/reorder/{id}
+GET /api/v3/diskspace
+GET /api/v3/downloadclient
+POST /api/v3/downloadclient
+PUT /api/v3/downloadclient/{id}
+DELETE /api/v3/downloadclient/{id}
+GET /api/v3/downloadclient/{id}
+PUT /api/v3/downloadclient/bulk
+DELETE /api/v3/downloadclient/bulk
+GET /api/v3/downloadclient/schema
+POST /api/v3/downloadclient/test
+POST /api/v3/downloadclient/testall
+POST /api/v3/downloadclient/action/{name}
+GET /api/v3/config/downloadclient
+PUT /api/v3/config/downloadclient/{id}
+GET /api/v3/config/downloadclient/{id}
+GET /api/v3/episode
+PUT /api/v3/episode/{id}
+GET /api/v3/episode/{id}
+PUT /api/v3/episode/monitor
+GET /api/v3/episodefile
+PUT /api/v3/episodefile/{id}
+DELETE /api/v3/episodefile/{id}
+GET /api/v3/episodefile/{id}
+PUT /api/v3/episodefile/editor
+DELETE /api/v3/episodefile/bulk
+PUT /api/v3/episodefile/bulk
+GET /api/v3/filesystem
+GET /api/v3/filesystem/type
+GET /api/v3/filesystem/mediafiles
+GET /api/v3/health
+GET /api/v3/history
+GET /api/v3/history/since
+GET /api/v3/history/series
+POST /api/v3/history/failed/{id}
+GET /api/v3/config/host
+PUT /api/v3/config/host/{id}
+GET /api/v3/config/host/{id}
+GET /api/v3/importlist
+POST /api/v3/importlist
+PUT /api/v3/importlist/{id}
+DELETE /api/v3/importlist/{id}
+GET /api/v3/importlist/{id}
+PUT /api/v3/importlist/bulk
+DELETE /api/v3/importlist/bulk
+GET /api/v3/importlist/schema
+POST /api/v3/importlist/test
+POST /api/v3/importlist/testall
+POST /api/v3/importlist/action/{name}
+GET /api/v3/config/importlist
+PUT /api/v3/config/importlist/{id}
+GET /api/v3/config/importlist/{id}
+GET /api/v3/importlistexclusion
+POST /api/v3/importlistexclusion
+GET /api/v3/importlistexclusion/paged
+PUT /api/v3/importlistexclusion/{id}
+DELETE /api/v3/importlistexclusion/{id}
+GET /api/v3/importlistexclusion/{id}
+DELETE /api/v3/importlistexclusion/bulk
+GET /api/v3/indexer
+POST /api/v3/indexer
+PUT /api/v3/indexer/{id}
+DELETE /api/v3/indexer/{id}
+GET /api/v3/indexer/{id}
+PUT /api/v3/indexer/bulk
+DELETE /api/v3/indexer/bulk
+GET /api/v3/indexer/schema
+POST /api/v3/indexer/test
+POST /api/v3/indexer/testall
+POST /api/v3/indexer/action/{name}
+GET /api/v3/config/indexer
+PUT /api/v3/config/indexer/{id}
+GET /api/v3/config/indexer/{id}
+GET /api/v3/indexerflag
+GET /api/v3/language
+GET /api/v3/language/{id}
+POST /api/v3/languageprofile
+GET /api/v3/languageprofile
+DELETE /api/v3/languageprofile/{id}
+PUT /api/v3/languageprofile/{id}
+GET /api/v3/languageprofile/{id}
+GET /api/v3/languageprofile/schema
+GET /api/v3/localization
+GET /api/v3/localization/language
+GET /api/v3/localization/{id}
+GET /api/v3/log
+GET /api/v3/log/file
+GET /api/v3/log/file/{filename}
+GET /api/v3/manualimport
+POST /api/v3/manualimport
+GET /api/v3/mediacover/{seriesId}/{filename}
+```
+
+----------------------------------------
+
+TITLE: Metadata API
+DESCRIPTION: Endpoints for managing metadata, including retrieval, creation, updates, deletion, schema definition, testing, and triggering actions.
+
+SOURCE: https://sonarr.tv/docs/api/index
+
+LANGUAGE: APIDOC
+CODE:
+```
+GET /api/v3/metadata
+POST /api/v3/metadata
+PUT /api/v3/metadata/{id}
+DELETE /api/v3/metadata/{id}
+GET /api/v3/metadata/{id}
+GET /api/v3/metadata/schema
+POST /api/v3/metadata/test
+POST /api/v3/metadata/testall
+POST /api/v3/metadata/action/{name}
+```
+
+----------------------------------------
+
+TITLE: Tag API
+DESCRIPTION: Endpoints for managing tags, including retrieval, creation, updates, and deletion.
+
+SOURCE: https://sonarr.tv/docs/api/index
+
+LANGUAGE: APIDOC
+CODE:
+```
+GET /api/v3/tag
+POST /api/v3/tag
+PUT /api/v3/tag/{id}
+DELETE /api/v3/tag/{id}
+GET /api/v3/tag/{id}
+```
+
+----------------------------------------
+
+TITLE: Remote Path Mapping API
+DESCRIPTION: Endpoints for managing remote path mappings, including creation, retrieval, updates, and deletion.
+
+SOURCE: https://sonarr.tv/docs/api/index
+
+LANGUAGE: APIDOC
+CODE:
+```
+POST /api/v3/remotepathmapping
+GET /api/v3/remotepathmapping
+DELETE /api/v3/remotepathmapping/{id}
+PUT /api/v3/remotepathmapping/{id}
+GET /api/v3/remotepathmapping/{id}
+```
+
+----------------------------------------
+
+TITLE: Parse API
+DESCRIPTION: Endpoint for parsing data.
+
+SOURCE: https://sonarr.tv/docs/api/index
+
+LANGUAGE: APIDOC
+CODE:
+```
+GET /api/v3/parse
+```
+
+----------------------------------------
+
+TITLE: Queue API
+DESCRIPTION: Endpoints for managing the download queue, including deleting items and retrieving queue status.
+
+SOURCE: https://sonarr.tv/docs/api/index
+
+LANGUAGE: APIDOC
+CODE:
+```
+DELETE /api/v3/queue/{id}
+DELETE /api/v3/queue/bulk
+GET /api/v3/queue
+```
+
+----------------------------------------
+
+TITLE: Series API
+DESCRIPTION: Endpoints for managing series, including retrieval, creation, updates, and deletion.
+
+SOURCE: https://sonarr.tv/docs/api/index
+
+LANGUAGE: APIDOC
+CODE:
+```
+GET /api/v3/series
+POST /api/v3/series
+GET /api/v3/series/{id}
+PUT /api/v3/series/{id}
+DELETE /api/v3/series/{id}
+```
+
+----------------------------------------
+
+TITLE: Tag Details API
+DESCRIPTION: Endpoints for retrieving detailed information about tags.
+
+SOURCE: https://sonarr.tv/docs/api/index
+
+LANGUAGE: APIDOC
+CODE:
+```
+GET /api/v3/tag/detail
+GET /api/v3/tag/detail/{id}
+```
+
+----------------------------------------
+
+TITLE: Quality Profile Schema API
+DESCRIPTION: Endpoint for retrieving the schema for quality profiles.
+
+SOURCE: https://sonarr.tv/docs/api/index
+
+LANGUAGE: APIDOC
+CODE:
+```
+GET /api/v3/qualityprofile/schema
+```
+
+----------------------------------------
+
+TITLE: Quality Definition API
+DESCRIPTION: Endpoints for managing quality definitions, including updates and retrieving limits.
+
+SOURCE: https://sonarr.tv/docs/api/index
+
+LANGUAGE: APIDOC
+CODE:
+```
+PUT /api/v3/qualitydefinition/{id}
+GET /api/v3/qualitydefinition/{id}
+GET /api/v3/qualitydefinition
+PUT /api/v3/qualitydefinition/update
+GET /api/v3/qualitydefinition/limits
+```
+
+----------------------------------------
+
+TITLE: Update Log File API
+DESCRIPTION: Endpoints for retrieving update log files.
+
+SOURCE: https://sonarr.tv/docs/api/index
+
+LANGUAGE: APIDOC
+CODE:
+```
+GET /api/v3/log/file/update
+GET /api/v3/log/file/update/{filename}
+```
+
+----------------------------------------
+
+TITLE: Season Pass API
+DESCRIPTION: Endpoint for managing season passes.
+
+SOURCE: https://sonarr.tv/docs/api/index
+
+LANGUAGE: APIDOC
+CODE:
+```
+POST /api/v3/seasonpass
+```
+
+----------------------------------------
+
+TITLE: Series Folder API
+DESCRIPTION: Endpoint for retrieving the folder information for a specific series.
+
+SOURCE: https://sonarr.tv/docs/api/index
+
+LANGUAGE: APIDOC
+CODE:
+```
+GET /api/v3/series/{id}/folder
+```
+
+----------------------------------------
+
+TITLE: Series Lookup API
+DESCRIPTION: Endpoint for looking up series information.
+
+SOURCE: https://sonarr.tv/docs/api/index
+
+LANGUAGE: APIDOC
+CODE:
+```
+GET /api/v3/series/lookup
+```
+
+----------------------------------------
+
+TITLE: Update API
+DESCRIPTION: Endpoint for checking for updates.
+
+SOURCE: https://sonarr.tv/docs/api/index
+
+LANGUAGE: APIDOC
+CODE:
+```
+GET /api/v3/update
+```
+
+----------------------------------------
+
+TITLE: Queue Status API
+DESCRIPTION: Endpoint for retrieving the current status of the download queue.
+
+SOURCE: https://sonarr.tv/docs/api/index
+
+LANGUAGE: APIDOC
+CODE:
+```
+GET /api/v3/queue/status
+```
+
+----------------------------------------
+
+TITLE: Series Editor API
+DESCRIPTION: Endpoints for editing series information.
+
+SOURCE: https://sonarr.tv/docs/api/index
+
+LANGUAGE: APIDOC
+CODE:
+```
+PUT /api/v3/series/editor
+DELETE /api/v3/series/editor
+```
+
+----------------------------------------
+
+TITLE: Ping API
+DESCRIPTION: Endpoints for checking the status of the Sonarr service.
+
+SOURCE: https://sonarr.tv/docs/api/index
+
+LANGUAGE: APIDOC
+CODE:
+```
+GET /ping
+HEAD /ping
+```
+
+----------------------------------------
+
+TITLE: Rename Episode API
+DESCRIPTION: Endpoint for renaming episodes.
+
+SOURCE: https://sonarr.tv/docs/api/index
+
+LANGUAGE: APIDOC
+CODE:
+```
+GET /api/v3/rename
+```
+
+----------------------------------------
+
+TITLE: Missing Episodes API
+DESCRIPTION: Endpoints for retrieving information about missing episodes.
+
+SOURCE: https://sonarr.tv/docs/api/index
+
+LANGUAGE: APIDOC
+CODE:
+```
+GET /api/v3/wanted/missing
+GET /api/v3/wanted/missing/{id}
+```

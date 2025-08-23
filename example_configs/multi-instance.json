@@ -1,0 +1,32 @@
+{
+  "services": {
+    "sonarr-hd": {
+      "baseUrl": "http://sonarr-hd:8989",
+      "apiKey": "hd-sonarr-api-key-here"
+    },
+    "sonarr-4k": {
+      "baseUrl": "http://sonarr-4k:8989",
+      "apiKey": "4k-sonarr-api-key-here"
+    },
+    "radarr-main": {
+      "baseUrl": "http://radarr-main:7878",
+      "apiKey": "main-radarr-api-key-here"
+    },
+    "radarr-4k": {
+      "baseUrl": "http://radarr-4k:7878",
+      "apiKey": "4k-radarr-api-key-here"
+    }
+  },
+  "downloaders": {
+    "sabnzbd-main": {
+      "baseUrl": "http://sabnzbd-main:8080",
+      "apiKey": "main-sabnzbd-api-key-here",
+      "name": "SABnzbd Main"
+    },
+    "sabnzbd-4k": {
+      "baseUrl": "http://sabnzbd-4k:8080",
+      "apiKey": "4k-sabnzbd-api-key-here",
+      "name": "SABnzbd 4K"
+    }
+  }
+}

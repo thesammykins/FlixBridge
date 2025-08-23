@@ -1,0 +1,56 @@
+{
+  "name": "flix-bridge",
+  "version": "0.1.0",
+  "description": "Media Management MCP Server - Connect AI assistants to TV shows and movie management services",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "lint": "eslint src/**/*.ts",
+    "smoke": "tsx scripts/smoke.ts",
+    "test:phase2": "tsx scripts/test-phase2.ts",
+    "test:queue-diagnostics": "tsx scripts/test-queue-diagnostics.ts",
+    "test:env-mapping": "tsx scripts/test-env-mapping.ts",
+    "debug:queue": "tsx scripts/debug-queue.ts",
+    "env-mapping": "node scripts/generate-env-mapping.js",
+    "env-mapping:interactive": "node scripts/generate-env-mapping.js --interactive",
+    "env-mapping:template": "node scripts/generate-env-mapping.js --template",
+    "multi-tenant": "node scripts/generate-multi-tenant-mapping.js",
+    "multi-tenant:quality": "node scripts/generate-multi-tenant-mapping.js --quality-tiers",
+    "multi-tenant:content": "node scripts/generate-multi-tenant-mapping.js --content-types",
+    "multi-tenant:customers": "node scripts/generate-multi-tenant-mapping.js --customers",
+    "multi-tenant:environments": "node scripts/generate-multi-tenant-mapping.js --environments",
+    "multi-tenant:custom": "node scripts/generate-multi-tenant-mapping.js --custom",
+    "config-to-mcp": "node scripts/config-to-mcp.js",
+    "convert": "node scripts/config-to-mcp.js"
+  },
+  "keywords": [
+    "mcp",
+    "media-management",
+    "automation",
+    "tv-shows",
+    "movies",
+    "downloads",
+    "bridge",
+    "ai-assistant"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.4.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@typescript-eslint/eslint-plugin": "^6.13.0",
+    "@typescript-eslint/parser": "^6.13.0",
+    "eslint": "^8.54.0",
+    "tsx": "^4.6.0",
+    "typescript": "^5.3.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
