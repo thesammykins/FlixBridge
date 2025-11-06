@@ -7,6 +7,10 @@
 > **Media Management MCP Server**  
 > Connect your AI assistant to TV shows and movie management services
 
+<a href="https://glama.ai/mcp/servers/@thesammykins/FlixBridge">
+  <img width="380" height="200" src="https://glama.ai/mcp/servers/@thesammykins/FlixBridge/badge" alt="FlixBridge MCP server" />
+</a>
+
 FlixBridge is a Model Context Protocol (MCP) server that bridges AI assistants with media management services. It provides a unified interface for monitoring downloads, managing libraries, and automating media workflows.
 
 ## ✨ Key Features
