@@ -1,5 +1,7 @@
 # Changelog
 
+## [0.3.9] - 2026-05-04
+
 ## [0.3.7] - 2026-05-04
 
 - fix(ci): use OIDC-ready npm publish flow
