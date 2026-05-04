@@ -5,6 +5,7 @@ permissions:
   packages: write
   pull-requests: write
   actions: write
+  id-token: write
 
 on:
   push:
@@ -22,10 +23,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node-version }}
           cache: "npm"
@@ -80,12 +81,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
-      - name: Use Node.js 20
-        uses: actions/setup-node@v4
+      - name: Use Node.js 24
+        uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
           cache: "npm"
 
       - name: Install dependencies
@@ -102,21 +103,22 @@ jobs:
       contents: write
       packages: write
       pull-requests: write
+      id-token: write
     outputs:
       published: ${{ steps.publish-check.outputs.published }}
       version: ${{ steps.version.outputs.new_version }}
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Use Node.js 20
-        uses: actions/setup-node@v4
+      - name: Use Node.js 24
+        uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
           cache: "npm"
           registry-url: "https://registry.npmjs.org"
 
@@ -214,29 +216,37 @@ jobs:
           git commit -m "chore: bump version to ${{ steps.version.outputs.new_version }} [skip ci]"
           git tag ${{ steps.version.outputs.new_version }}
 
-      - name: Push changes
+      - name: Publish to npm
+        id: npm-publish
         if: steps.changes.outputs.has_changes == 'true'
+        run: npm publish --provenance --access public
+        continue-on-error: true
+
+      - name: Push changes
+        if: steps.changes.outputs.has_changes == 'true' && steps.npm-publish.outcome == 'success'
         run: |
           git push origin main
           git push origin ${{ steps.version.outputs.new_version }}
 
-      - name: Publish to npm
-        if: steps.changes.outputs.has_changes == 'true'
-        run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
       - name: Set publish output
         id: publish-check
         run: |
-          if [ "${{ steps.changes.outputs.has_changes }}" == "true" ]; then
+          if [ "${{ steps.changes.outputs.has_changes }}" == "true" ] && [ "${{ steps.npm-publish.outcome }}" == "success" ]; then
             echo "published=true" >> $GITHUB_OUTPUT
           else
             echo "published=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Fail with publish guidance
+        if: steps.changes.outputs.has_changes == 'true' && steps.npm-publish.outcome != 'success'
+        run: |
+          echo "npm publish failed."
+          echo "If using trusted publishing, configure npm Trusted Publisher for this repo/workflow."
+          echo "If using token-based publishing, verify token scope and package permissions."
+          exit 1
+
       - name: Create GitHub Release
-        if: steps.changes.outputs.has_changes == 'true'
+        if: steps.changes.outputs.has_changes == 'true' && steps.npm-publish.outcome == 'success'
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
