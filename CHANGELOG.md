@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.3.7] - 2026-05-04
+
+- fix(ci): use OIDC-ready npm publish flow
+
 ## [0.3.6] - 2026-05-04
 
 - fix(ci): resolve lint and npm audit failures
