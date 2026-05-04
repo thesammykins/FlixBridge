@@ -1,6 +1,6 @@
 {
   "name": "@thesammykins/flixbridge",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "description": "Media Management MCP Server - environment-only configuration for Sonarr/Radarr/SABnzbd",
   "type": "module",
   "main": "dist/index.js",

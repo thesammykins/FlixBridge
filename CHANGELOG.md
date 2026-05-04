@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.3.6] - 2026-05-04
+
+- fix(ci): resolve lint and npm audit failures
+
 ## [0.3.4] - 2025-08-23
 
 - Refactor the way we do environment variables to be slug-based and not rely on random config files, should be almost infinitely scalable now. Also added a RULE.md for providing to an LLM so it's got an understanding of how to call and use the tool
