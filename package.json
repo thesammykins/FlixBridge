@@ -54,7 +54,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^0.4.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "zod": "^3.22.4"
   },
   "devDependencies": {

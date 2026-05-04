@@ -125,7 +125,7 @@ export class TestRunner {
 	 * Print summary of all test results
 	 */
 	printSummary(): void {
-		console.log("\n" + "=".repeat(60));
+		console.log(`\n${"=".repeat(60)}`);
 		console.log("📊 Test Summary");
 		console.log("=".repeat(60));
 
@@ -159,7 +159,7 @@ export class TestRunner {
 			}
 		}
 
-		console.log("\n" + "=".repeat(60));
+		console.log(`\n${"=".repeat(60)}`);
 
 		// Exit with error code if any tests failed
 		if (totalFailed > 0) {
