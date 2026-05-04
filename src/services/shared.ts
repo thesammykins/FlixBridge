@@ -1,26 +1,38 @@
 import { z } from "zod";
-import { fetchJson, buildUrl, handleError } from "../core.js";
+import {
+	buildUrl,
+	createInternalError,
+	fetchJson,
+	handleError,
+} from "../core.js";
 import { debugOperation } from "../debug.js";
 import { withMetrics } from "../metrics.js";
 import type {
-	ServiceConfig,
-	OperationResult,
-	SystemStatusData,
-	QueueOptions,
-	QueueData,
-	GrabData,
-	RootFolderData,
-	HistoryOptions,
-	HistoryData,
-	SearchOptions,
-	SearchData,
-	AddRequest,
 	AddData,
+	AddRequest,
+	GrabData,
+	HistoryData,
+	HistoryOptions,
 	ImportIssueData,
+	OperationResult,
 	QualityProfileData,
+	QueueData,
 	QueueDiagnosticsData,
-	QueueIssueAnalysis,
 	QueueFixAction,
+	QueueIssueAnalysis,
+	QueueOptions,
+	RemovalExecutionOptions,
+	RemovalKind,
+	RemovalPreparationData,
+	RemovalResultData,
+	RemovalResultItem,
+	RemovalTargetDetails,
+	RootFolderData,
+	SearchData,
+	SearchOptions,
+	ServiceConfig,
+	ServiceError,
+	SystemStatusData,
 } from "./base.js";
 
 // API Response Types
@@ -92,6 +104,54 @@ interface QueueRecord {
 	errorMessage?: string;
 	downloadId?: string;
 	outputPath?: string;
+	protocol?: string;
+}
+
+interface ManualImportEpisode {
+	id?: number;
+}
+
+interface ManualImportResource {
+	id?: number;
+	path?: string;
+	relativePath?: string;
+	folderName?: string;
+	name?: string;
+	series?: { id?: number };
+	seasonNumber?: number;
+	episodes?: ManualImportEpisode[];
+	quality?: unknown;
+	languages?: unknown[];
+	releaseGroup?: string;
+	downloadId?: string;
+	customFormats?: unknown[];
+	customFormatScore?: number;
+	indexerFlags?: number;
+	releaseType?: unknown;
+	rejections?: Array<{ reason?: string }>;
+}
+
+interface ManualImportAttemptResult {
+	attempted: boolean;
+	success: boolean;
+	message?: string;
+}
+
+interface ManualImportReprocessRequest {
+	id?: number;
+	path?: string;
+	seriesId?: number;
+	seasonNumber?: number;
+	episodeIds?: number[];
+	episodes?: ManualImportEpisode[];
+	quality?: unknown;
+	languages?: unknown[];
+	releaseGroup?: string;
+	downloadId?: string;
+	customFormats?: unknown[];
+	customFormatScore?: number;
+	indexerFlags?: number;
+	releaseType?: unknown;
 }
 
 const StatusSchema = z.object({
@@ -122,6 +182,8 @@ const QueueItemSchema = z.object({
 	sizeleft: z.number().optional(),
 	protocol: z.string().optional(),
 	estimatedCompletionTime: z.string().optional(),
+	downloadId: z.string().optional(),
+	outputPath: z.string().optional(),
 	statusMessages: z
 		.array(
 			z.object({
@@ -144,6 +206,35 @@ const FolderSchema = z.object({
 	path: z.string(),
 	freeSpace: z.number().optional(),
 	accessible: z.boolean().optional(),
+});
+
+const SeriesSchema = z.object({
+	id: z.number(),
+	title: z.string(),
+	monitored: z.boolean().optional(),
+	path: z.string().optional(),
+	statistics: z
+		.object({
+			episodeCount: z.number().optional(),
+			episodeFileCount: z.number().optional(),
+		})
+		.optional(),
+});
+
+const MovieSchema = z.object({
+	id: z.number(),
+	title: z.string(),
+	monitored: z.boolean().optional(),
+	path: z.string().optional(),
+	hasFile: z.boolean().optional(),
+	sizeOnDisk: z.number().optional(),
+	movieFile: z
+		.object({
+			id: z.number(),
+			size: z.number().optional(),
+			relativePath: z.string().optional(),
+		})
+		.optional(),
 });
 
 export abstract class BaseArrService {
@@ -225,6 +316,8 @@ export abstract class BaseArrService {
 				mediaKind: this.mediaKind,
 				protocol: item.protocol,
 				estimatedCompletionTime: item.estimatedCompletionTime,
+				downloadId: item.downloadId,
+				outputPath: item.outputPath,
 			}));
 
 			return {
@@ -539,7 +632,9 @@ export abstract class BaseArrService {
 			async () => {
 				debugOperation(this.serviceName, "queueDiagnostics");
 				// Get current queue with detailed status
-				const queueResponse = await fetchJson(this.buildApiUrl("/queue"));
+				const queueResponse = await fetchJson(
+					this.buildApiUrl("/queue", { pageSize: 250 }),
+				);
 				const queueData = QueueSchema.parse(queueResponse);
 
 				const allItems = queueData.records || [];
@@ -590,6 +685,293 @@ export abstract class BaseArrService {
 
 		try {
 			return await operation();
+		} catch (error) {
+			return handleError(error, this.serviceName);
+		}
+	}
+
+	async prepareRemoval(
+		kind: RemovalKind,
+		ids: number[],
+	): Promise<OperationResult<RemovalPreparationData>> {
+		debugOperation(this.serviceName, "prepareRemoval", {
+			kind,
+			req: ids.length,
+		});
+		try {
+			const normalizedIds = Array.from(
+				new Set(
+					ids
+						.filter((id) => Number.isFinite(id))
+						.map((id) => Math.trunc(Number(id))),
+				),
+			).filter((id) => id > 0);
+
+			if (normalizedIds.length === 0) {
+				return {
+					ok: false,
+					error: createInternalError(
+						"No valid ids supplied for removal preparation",
+					),
+				};
+			}
+
+			if (kind === "queue") {
+				const response = await fetchJson(
+					this.buildApiUrl("/queue", { pageSize: 250 }),
+				);
+				const data = QueueSchema.parse(response);
+				const recordMap = new Map<number, z.infer<typeof QueueItemSchema>>(
+					data.records.map((record) => [record.id, record]),
+				);
+
+				const targets: RemovalTargetDetails[] = [];
+				const missing: number[] = [];
+				const notes: string[] = [];
+
+				for (const id of normalizedIds) {
+					const record = recordMap.get(id);
+					if (!record) {
+						missing.push(id);
+						continue;
+					}
+
+					const flattenedMessages = [
+						record.status,
+						record.errorMessage,
+						...(record.statusMessages?.flatMap((message) => [
+							message.title,
+							message.message,
+							...(message.messages ?? []),
+						]) ?? []),
+					].filter((message): message is string => Boolean(message));
+					const manualReviewRequired = flattenedMessages
+						.map((message) => message.toLowerCase())
+						.some((message) =>
+							message.includes("manual investigation required"),
+						);
+
+					targets.push({
+						id: record.id,
+						source: "queue",
+						title: record.title,
+						mediaKind: this.mediaKind,
+						status: record.status,
+						downloadId: record.downloadId,
+						path: record.outputPath,
+						protocol: record.protocol,
+						statusMessages: flattenedMessages,
+						errorMessage: record.errorMessage,
+						manualReviewRequired,
+					});
+				}
+
+				targets.sort((a, b) => a.id - b.id);
+				missing.sort((a, b) => a - b);
+
+				if (missing.length > 0) {
+					notes.push(
+						`Queue ids not found on ${this.serviceName}: ${missing.join(", ")}`,
+					);
+				}
+
+				return {
+					ok: true,
+					data: {
+						service: this.serviceName,
+						mediaKind: this.mediaKind,
+						kind,
+						requestedIds: normalizedIds,
+						missingIds: missing,
+						targets,
+						notes: notes.length > 0 ? notes : undefined,
+					},
+				};
+			}
+
+			const targets: RemovalTargetDetails[] = [];
+			const missing: number[] = [];
+
+			for (const id of normalizedIds) {
+				try {
+					if (this.id === "sonarr") {
+						const response = await fetchJson(this.buildApiUrl(`/series/${id}`));
+						const series = SeriesSchema.parse(response);
+						targets.push({
+							id: series.id,
+							source: "library",
+							title: series.title,
+							mediaKind: this.mediaKind,
+							monitored: series.monitored,
+							hasFile: (series.statistics?.episodeFileCount || 0) > 0,
+							path: series.path,
+						});
+					} else {
+						const response = await fetchJson(this.buildApiUrl(`/movie/${id}`));
+						const movie = MovieSchema.parse(response);
+						targets.push({
+							id: movie.id,
+							source: "library",
+							title: movie.title,
+							mediaKind: this.mediaKind,
+							monitored: movie.monitored,
+							hasFile: movie.hasFile ?? Boolean(movie.movieFile),
+							path: movie.path,
+						});
+					}
+				} catch (error) {
+					if (this.isNotFoundError(error)) {
+						missing.push(id);
+						continue;
+					}
+					return handleError(error, this.serviceName);
+				}
+			}
+
+			targets.sort((a, b) => a.id - b.id);
+			missing.sort((a, b) => a - b);
+
+			return {
+				ok: true,
+				data: {
+					service: this.serviceName,
+					mediaKind: this.mediaKind,
+					kind,
+					requestedIds: normalizedIds,
+					missingIds: missing,
+					targets,
+				},
+			};
+		} catch (error) {
+			return handleError(error, this.serviceName);
+		}
+	}
+
+	async executeRemoval(
+		preparation: RemovalPreparationData,
+		options: RemovalExecutionOptions,
+	): Promise<OperationResult<RemovalResultData>> {
+		debugOperation(this.serviceName, "executeRemoval", {
+			kind: preparation.kind,
+			attempts: preparation.targets.length,
+		});
+		try {
+			const details: RemovalResultItem[] = [];
+			let removed = 0;
+			let failed = 0;
+			let manualImportSuccesses = 0;
+			const manualImportFailures: string[] = [];
+
+			for (const target of preparation.targets) {
+				let manualImportNote: string | undefined;
+				let manualImportAttempted = false;
+				let manualImportSucceeded = false;
+
+				if (
+					target.source === "queue" &&
+					options.attemptManualImport !== false
+				) {
+					const manualResult = await this.tryManualImport(target);
+					manualImportAttempted = manualResult.attempted;
+					if (manualResult.success) {
+						manualImportSucceeded = true;
+						manualImportNote =
+							manualResult.message ?? "Manual import completed";
+						manualImportSuccesses += 1;
+					} else if (manualResult.message) {
+						manualImportNote = manualResult.message;
+						if (manualResult.attempted) {
+							manualImportFailures.push(manualResult.message);
+						}
+					}
+				}
+
+				try {
+					if (target.source === "queue") {
+						try {
+							await this.removeFromQueue(target.id, {
+								removeFromClient: options.removeFromClient ?? true,
+								blocklist: options.blocklist ?? false,
+								queueTimeoutMs: options.queueTimeoutMs,
+							});
+						} catch (error) {
+							if (!(manualImportSucceeded && this.isNotFoundError(error))) {
+								throw error;
+							}
+						}
+					} else {
+						await this.removeLibraryItem(target.id, {
+							deleteFiles: options.deleteFiles ?? false,
+							addImportExclusion: options.addImportExclusion ?? false,
+						});
+					}
+
+					removed += 1;
+					details.push({
+						id: target.id,
+						title: target.title,
+						source: target.source,
+						status: "removed",
+						message: manualImportNote,
+					});
+				} catch (error) {
+					failed += 1;
+					const failureMessage = manualImportNote
+						? `${manualImportNote}; ${this.describeError(error)}`
+						: this.describeError(error);
+					details.push({
+						id: target.id,
+						title: target.title,
+						source: target.source,
+						status: "failed",
+						message: failureMessage,
+					});
+				}
+			}
+
+			const skipped = preparation.missingIds.length;
+
+			const notes: string[] = [];
+			if (preparation.notes && preparation.notes.length > 0) {
+				notes.push(...preparation.notes);
+			}
+			if (failed > 0) {
+				notes.push(
+					`Failed to remove ${failed} item(s) from ${this.serviceName}. Check details for reasons.`,
+				);
+			}
+			if (skipped > 0) {
+				notes.push(
+					`${skipped} item(s) were skipped because they were not present during preparation.`,
+				);
+			}
+			if (manualImportSuccesses > 0) {
+				notes.push(
+					`Manual import completed for ${manualImportSuccesses} queue item(s) before removal.`,
+				);
+			}
+			if (manualImportFailures.length > 0) {
+				notes.push(
+					`Manual import could not be completed for ${manualImportFailures.length} queue item(s): ${manualImportFailures
+						.map((message) => message.replace(/;.+$/, ""))
+						.join(" | ")}`,
+				);
+			}
+
+			return {
+				ok: true,
+				data: {
+					service: this.serviceName,
+					mediaKind: this.mediaKind,
+					kind: preparation.kind,
+					removed,
+					failed,
+					skipped,
+					missingIds: preparation.missingIds,
+					details,
+					notes: notes.length > 0 ? notes : undefined,
+				},
+			};
 		} catch (error) {
 			return handleError(error, this.serviceName);
 		}
@@ -740,26 +1122,25 @@ export abstract class BaseArrService {
 
 		try {
 			switch (analysis.category.type) {
-				case "mapping":
-					// For TheXEM mapping issues, try manual import
-					try {
-						await this.triggerManualImport(item.id);
-						return {
-							...baseAction,
-							action: "manual_import",
-							attempted: true,
-							success: true,
-						};
-					} catch (error) {
-						return {
-							...baseAction,
-							action: "manual_import",
-							attempted: true,
-							success: false,
-							error:
-								error instanceof Error ? error.message : "Manual import failed",
-						};
-					}
+				case "mapping": {
+					const manualResult = await this.tryManualImport({
+						id: item.id,
+						source: "queue",
+						title: item.title,
+						mediaKind: this.mediaKind,
+						status: item.status,
+						downloadId: item.downloadId,
+						path: item.outputPath,
+						protocol: item.protocol,
+					});
+					return {
+						...baseAction,
+						action: "manual_import",
+						attempted: manualResult.attempted,
+						success: manualResult.success,
+						error: manualResult.success ? undefined : manualResult.message,
+					};
+				}
 
 				case "quality_downgrade":
 					// For quality downgrades, remove from queue
@@ -804,11 +1185,31 @@ export abstract class BaseArrService {
 						};
 					}
 
-				default:
+				default: {
+					if (this.shouldAttemptManualImport(analysis, item)) {
+						const manualResult = await this.tryManualImport({
+							id: item.id,
+							source: "queue",
+							title: item.title,
+							mediaKind: this.mediaKind,
+							status: item.status,
+							downloadId: item.downloadId,
+							path: item.outputPath,
+							protocol: item.protocol,
+						});
+						return {
+							...baseAction,
+							action: "manual_import",
+							attempted: manualResult.attempted,
+							success: manualResult.success,
+							error: manualResult.success ? undefined : manualResult.message,
+						};
+					}
 					return {
 						...baseAction,
 						attempted: false,
 					};
+				}
 			}
 		} catch (error) {
 			return {
@@ -823,23 +1224,253 @@ export abstract class BaseArrService {
 		}
 	}
 
-	private async triggerManualImport(queueId: number): Promise<void> {
-		// Trigger manual import for stuck items
-		await fetchJson(this.buildApiUrl(`/queue/${queueId}/manual`), {
-			method: "POST",
-		});
+	private async removeFromQueue(
+		queueId: number,
+		options: {
+			removeFromClient?: boolean;
+			blocklist?: boolean;
+			queueTimeoutMs?: number;
+		} = {},
+	): Promise<void> {
+		const removeFromClient = options.removeFromClient ?? true;
+		const blocklist = options.blocklist ?? false;
+		let attempt = 0;
+		let timeoutMs = Math.max(
+			1000,
+			Math.min(options.queueTimeoutMs ?? 5000, 60000),
+		);
+
+		for (;;) {
+			try {
+				await fetchJson(this.buildApiUrl(`/queue/${queueId}`), {
+					method: "DELETE",
+					body: JSON.stringify({
+						removeFromClient,
+						blocklist,
+					}),
+					headers: { "Content-Type": "application/json" },
+					timeoutMs,
+				});
+				return;
+			} catch (error) {
+				if (this.isTimeoutServiceError(error) && attempt === 0) {
+					attempt += 1;
+					timeoutMs = Math.min(timeoutMs * 2, 20000);
+					continue;
+				}
+				throw error;
+			}
+		}
 	}
 
-	private async removeFromQueue(queueId: number): Promise<void> {
-		// Remove item from queue
-		await fetchJson(this.buildApiUrl(`/queue/${queueId}`), {
-			method: "DELETE",
-			body: JSON.stringify({
-				removeFromClient: true,
-				blocklist: false,
-			}),
-			headers: { "Content-Type": "application/json" },
+	private async removeLibraryItem(
+		itemId: number,
+		options: { deleteFiles: boolean; addImportExclusion: boolean },
+	): Promise<void> {
+		const params: Record<string, string> = {
+			deleteFiles: options.deleteFiles ? "true" : "false",
+		};
+
+		if (this.id === "sonarr") {
+			params.addImportListExclusion = options.addImportExclusion
+				? "true"
+				: "false";
+			await fetchJson(this.buildApiUrl(`/series/${itemId}`, params), {
+				method: "DELETE",
+			});
+		} else {
+			params.addImportExclusion = options.addImportExclusion ? "true" : "false";
+			await fetchJson(this.buildApiUrl(`/movie/${itemId}`, params), {
+				method: "DELETE",
+			});
+		}
+	}
+
+	private isNotFoundError(error: unknown): boolean {
+		return (
+			error !== null &&
+			typeof error === "object" &&
+			"status" in error &&
+			typeof (error as ServiceError).status === "number" &&
+			(error as ServiceError).status === 404
+		);
+	}
+
+	private describeError(error: unknown): string {
+		if (error && typeof error === "object") {
+			if (
+				"message" in error &&
+				typeof (error as { message: unknown }).message === "string"
+			) {
+				const msg = (error as { message: string }).message;
+				if (
+					"status" in error &&
+					typeof (error as ServiceError).status === "number"
+				) {
+					return `${(error as ServiceError).status} ${msg}`;
+				}
+				return msg;
+			}
+			if (
+				"status" in error &&
+				typeof (error as ServiceError).status === "number"
+			) {
+				return `${(error as ServiceError).status} error`;
+			}
+		}
+
+		if (error instanceof Error) {
+			return error.message;
+		}
+
+		return "Unknown error";
+	}
+
+	private shouldAttemptManualImport(
+		analysis: QueueIssueAnalysis,
+		item: QueueRecord,
+	): boolean {
+		const segments: string[] = [analysis.message, analysis.suggestedAction];
+		if (item.errorMessage) {
+			segments.push(item.errorMessage);
+		}
+		for (const statusMessage of item.statusMessages ?? []) {
+			if (statusMessage.message) segments.push(statusMessage.message);
+			if (statusMessage.title) segments.push(statusMessage.title);
+			if (statusMessage.messages) segments.push(...statusMessage.messages);
+		}
+		const combined = segments
+			.filter((segment): segment is string => Boolean(segment))
+			.join(" ")
+			.toLowerCase();
+		return (
+			combined.includes("manual import") ||
+			combined.includes("automatic import is not possible") ||
+			combined.includes("manual investigation required")
+		);
+	}
+
+	private async tryManualImport(
+		target: RemovalTargetDetails,
+	): Promise<ManualImportAttemptResult> {
+		if (!target.downloadId) {
+			return {
+				attempted: false,
+				success: false,
+				message: "Manual import skipped: missing download id",
+			};
+		}
+
+		const params: Record<string, string> = { filterExistingFiles: "false" };
+		params.downloadId = target.downloadId;
+		if (target.path) {
+			params.folder = target.path;
+		}
+
+		let candidates: ManualImportResource[];
+		try {
+			candidates = await fetchJson(this.buildApiUrl("/manualimport", params));
+		} catch (error) {
+			return {
+				attempted: true,
+				success: false,
+				message: this.describeError(error),
+			};
+		}
+
+		if (!Array.isArray(candidates) || candidates.length === 0) {
+			return {
+				attempted: true,
+				success: false,
+				message: "Manual import unavailable: no candidates returned",
+			};
+		}
+
+		const viableCandidate = candidates.find((candidate) => {
+			return (
+				candidate.series?.id &&
+				!(candidate.rejections && candidate.rejections.length > 0)
+			);
 		});
+
+		if (!viableCandidate) {
+			const rejectionReasons = candidates
+				.flatMap((candidate) => candidate.rejections ?? [])
+				.map((rejection) => rejection.reason)
+				.filter((reason): reason is string => Boolean(reason));
+			return {
+				attempted: true,
+				success: false,
+				message:
+					rejectionReasons.length > 0
+						? `Manual import rejected: ${rejectionReasons.join("; ")}`
+						: "Manual import rejected by Sonarr",
+			};
+		}
+
+		const manualImportRequest = this.buildManualImportRequest(
+			viableCandidate,
+			target,
+		);
+
+		if (!manualImportRequest.seriesId) {
+			return {
+				attempted: true,
+				success: false,
+				message: "Manual import skipped: candidate missing series information",
+			};
+		}
+
+		try {
+			await fetchJson(this.buildApiUrl("/manualimport"), {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify([manualImportRequest]),
+			});
+			return {
+				attempted: true,
+				success: true,
+				message: "Manual import triggered",
+			};
+		} catch (error) {
+			return {
+				attempted: true,
+				success: false,
+				message: this.describeError(error),
+			};
+		}
+	}
+
+	private buildManualImportRequest(
+		candidate: ManualImportResource,
+		target: RemovalTargetDetails,
+	): ManualImportReprocessRequest {
+		const episodeIds = (candidate.episodes || [])
+			.map((episode) => episode.id)
+			.filter((id): id is number => typeof id === "number");
+		const request: ManualImportReprocessRequest = {
+			id: candidate.id,
+			path: candidate.path || candidate.relativePath || target.path,
+			seriesId: candidate.series?.id,
+			seasonNumber: candidate.seasonNumber,
+			episodeIds: episodeIds.length > 0 ? episodeIds : undefined,
+			episodes:
+				candidate.episodes && candidate.episodes.length > 0
+					? candidate.episodes
+					: undefined,
+			quality: candidate.quality,
+			languages: candidate.languages,
+			releaseGroup: candidate.releaseGroup,
+			downloadId: candidate.downloadId ?? target.downloadId,
+			customFormats: candidate.customFormats,
+			customFormatScore: candidate.customFormatScore,
+			indexerFlags: candidate.indexerFlags,
+			releaseType: candidate.releaseType,
+		};
+		if (!request.path && target.path) {
+			request.path = target.path;
+		}
+		return request;
 	}
 
 	private async retryQueueItem(queueId: number): Promise<void> {
@@ -847,6 +1478,19 @@ export abstract class BaseArrService {
 		await fetchJson(this.buildApiUrl(`/queue/refresh/${queueId}`), {
 			method: "POST",
 		});
+	}
+
+	private isTimeoutServiceError(error: unknown): boolean {
+		return (
+			error !== null &&
+			typeof error === "object" &&
+			"status" in error &&
+			typeof (error as ServiceError).status === "number" &&
+			(error as ServiceError).status === 0 &&
+			"message" in error &&
+			typeof (error as { message?: unknown }).message === "string" &&
+			/(timeout|timed out)/i.test((error as { message: string }).message)
+		);
 	}
 
 	private selectBestQualityProfile(profiles: QualityProfile[]): number | null {

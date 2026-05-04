@@ -53,7 +53,19 @@ export async function fetchJson<T>(
 			} as ServiceError;
 		}
 
-		return await response.json();
+		const text = await response.text();
+		if (!text) {
+			return undefined as T;
+		}
+
+		try {
+			return JSON.parse(text) as T;
+		} catch (parseError) {
+			throw createInternalError(
+				`Failed to parse JSON response from ${url}`,
+				parseError,
+			);
+		}
 	} catch (error) {
 		const elapsed = Date.now() - startTime;
 		debugHttp(method, url, undefined, elapsed);

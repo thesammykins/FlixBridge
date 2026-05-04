@@ -46,6 +46,8 @@ export interface QueueItem {
 	mediaKind: "series" | "movie";
 	protocol?: string;
 	estimatedCompletionTime?: string;
+	downloadId?: string;
+	outputPath?: string;
 }
 
 export interface QueueData {
@@ -222,6 +224,65 @@ export interface QueueDiagnosticsData {
 	};
 }
 
+export type RemovalKind = "queue" | "library";
+
+export interface RemovalTargetDetails {
+	id: number;
+	source: RemovalKind;
+	title: string;
+	mediaKind: "series" | "movie";
+	status?: string;
+	monitored?: boolean;
+	hasFile?: boolean;
+	path?: string;
+	downloadId?: string;
+	protocol?: string;
+	statusMessages?: string[];
+	errorMessage?: string;
+	manualReviewRequired?: boolean;
+}
+
+export interface RemovalPreparationData {
+	service: string;
+	mediaKind: "series" | "movie";
+	kind: RemovalKind;
+	requestedIds: number[];
+	missingIds: number[];
+	targets: RemovalTargetDetails[];
+	notes?: string[];
+}
+
+export interface RemovalExecutionOptions {
+	deleteFiles?: boolean;
+	addImportExclusion?: boolean;
+	removeFromClient?: boolean;
+	blocklist?: boolean;
+	attemptManualImport?: boolean;
+	queueTimeoutMs?: number;
+}
+
+export type RemovalResultStatus = "removed" | "skipped" | "failed";
+
+export interface RemovalResultItem {
+	id: number;
+	title: string;
+	source: RemovalKind;
+	status: RemovalResultStatus;
+	message?: string;
+}
+
+export interface RemovalResultData {
+	service: string;
+	mediaKind: "series" | "movie";
+	kind: RemovalKind;
+	removed: number;
+	skipped: number;
+	failed: number;
+	missingIds: number[];
+	details: RemovalResultItem[];
+	notes?: string[];
+}
+
 export interface MultiServiceDiagnosticsData {
 	totalServices: number;
 	servicesScanned: string[];
@@ -256,4 +317,12 @@ export interface ServiceImplementation {
 	queueDiagnostics(
 		autoFix?: boolean,
 	): Promise<OperationResult<QueueDiagnosticsData>>;
+	prepareRemoval(
+		kind: RemovalKind,
+		ids: number[],
+	): Promise<OperationResult<RemovalPreparationData>>;
+	executeRemoval(
+		preparation: RemovalPreparationData,
+		options: RemovalExecutionOptions,
+	): Promise<OperationResult<RemovalResultData>>;
 }

@@ -12,11 +12,18 @@ Flix-Bridge v0.3.x uses environment-only configuration with slug-based discovery
 1. Slug-based Environment Variables: `SONARR_<SLUG>_URL`, `RADARR_<SLUG>_URL`, etc.
 2. Single-instance fallback: `SONARR_URL`, `RADARR_URL`, etc.
 
+Slug-based and single-instance variables can be mixed. When names overlap, slug-based instances take precedence over fallback names.
+
+Slug-based variables may also use a `FLIX_BRIDGE_` prefix and `_KEY` suffix, for example `FLIX_BRIDGE_SONARR_HD_URL` with `FLIX_BRIDGE_SONARR_HD_KEY`.
+Single-instance fallback variables may also use the same prefix, for example `FLIX_BRIDGE_SABNZBD_URL` with `FLIX_BRIDGE_SABNZBD_KEY`.
+
 No file-based configuration or JSON mapping is required.
 
 ## Method 1: Slug-based Environment Variables (Recommended)
 
 Define multiple instances using slug-based patterns. Each service type uses a pattern like `<SERVICE>_<SLUG>_<FIELD>`:
+
+Supported key fields are `_API_KEY` and `_KEY`. The `FLIX_BRIDGE_` prefix is optional for slug-based variables.
 
 ### Basic Slug Configuration
 
@@ -37,6 +44,17 @@ export RADARR_UHD_API_KEY="your-uhd-radarr-key"
 export SABNZBD_MAIN_URL="http://localhost:8080"
 export SABNZBD_MAIN_API_KEY="your-sabnzbd-key"
 export SABNZBD_MAIN_NAME="SABnzbd Main"
+```
+
+Equivalent prefixed variables are also accepted:
+
+```bash
+export FLIX_BRIDGE_SONARR_HD_URL="http://localhost:8989"
+export FLIX_BRIDGE_SONARR_HD_KEY="your-hd-sonarr-key"
+export FLIX_BRIDGE_RADARR_UHD_URL="http://localhost:7879"
+export FLIX_BRIDGE_RADARR_UHD_KEY="your-uhd-radarr-key"
+export FLIX_BRIDGE_SABNZBD_MAIN_URL="http://localhost:8080"
+export FLIX_BRIDGE_SABNZBD_MAIN_KEY="your-sabnzbd-key"
 ```
 
 ### Service Naming Rules
@@ -69,6 +87,17 @@ export RADARR_URL="http://localhost:7878"
 export RADARR_API_KEY="your-radarr-api-key"
 export SABNZBD_URL="http://localhost:8080"
 export SABNZBD_API_KEY="your-sabnzbd-api-key"
+```
+
+Equivalent prefixed fallback variables are also accepted:
+
+```bash
+export FLIX_BRIDGE_SONARR_URL="http://localhost:8989"
+export FLIX_BRIDGE_SONARR_KEY="your-sonarr-api-key"
+export FLIX_BRIDGE_RADARR_URL="http://localhost:7878"
+export FLIX_BRIDGE_RADARR_KEY="your-radarr-api-key"
+export FLIX_BRIDGE_SABNZBD_URL="http://localhost:8080"
+export FLIX_BRIDGE_SABNZBD_KEY="your-sabnzbd-api-key"
 ```
 
 ## Service Naming Rules

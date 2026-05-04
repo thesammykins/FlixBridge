@@ -88,6 +88,8 @@ FlixBridge v0.3.x uses environment-only configuration with slug-based discovery.
 - Sonarr: `SONARR_<SLUG>_URL`, `SONARR_<SLUG>_API_KEY`, optional `SONARR_<SLUG>_NAME`
 - Radarr: `RADARR_<SLUG>_URL`, `RADARR_<SLUG>_API_KEY`, optional `RADARR_<SLUG>_NAME`
 - SABnzbd: `SABNZBD_<SLUG>_URL`, `SABNZBD_<SLUG>_API_KEY`, optional `SABNZBD_<SLUG>_NAME`
+- Prefixed aliases are also accepted: `FLIX_BRIDGE_SONARR_<SLUG>_URL` with `_KEY` or `_API_KEY`.
+- Single-instance prefixed aliases are accepted too, e.g. `FLIX_BRIDGE_SABNZBD_URL` with `FLIX_BRIDGE_SABNZBD_KEY`.
 
 ### Multi-Instance Example
 
@@ -125,7 +127,8 @@ export SABNZBD_MAIN_API_KEY="{{SAB_MAIN_KEY}}"
 - **system_status** - Health and version information
 - **queue_list** - Download queue with progress tracking
 - **queue_grab** - Force retry/grab specific downloads  
-- **queue_diagnostics** - Auto-detect and fix stuck items
+- **queue_diagnostics** - Analyze stuck items; pass `autoFix:false` for read-only checks
+- **remove_content** - Preview and remove queue, library, or downloader items with confirmation
 - **root_folders** - Storage locations and free space
 
 ### Media Management
@@ -138,6 +141,9 @@ export SABNZBD_MAIN_API_KEY="{{SAB_MAIN_KEY}}"
 ### Multi-Service Tools
 - **all_services_diagnostics** - Run diagnostics across all instances
 - **download_status** - Unified status across services and downloaders
+- **server_metrics** - Local operation metrics and health status
+
+> **Production Safety**: `queue_diagnostics` and `all_services_diagnostics` default to `autoFix:true`; explicitly pass `autoFix:false` for read-only production baselines. Use `remove_content` with `dryRun:true` first and execute only with the returned `confirmationToken` after checking the preview.
 
 ## 🔧 MCP Client Setup
 

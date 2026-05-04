@@ -5,6 +5,10 @@
 
 Complete reference for all available Flix-Bridge tools with examples and response formats.
 
+> **Production Safety Note**: Use `queue_diagnostics` and `all_services_diagnostics` with `autoFix:false` for read-only production baselines. Their default is `autoFix:true`, which can retry downloads, trigger manual imports, or remove not-an-upgrade queue items.
+
+> **ℹ️ API Version Note**: This documentation is based on the Sonarr/Radarr v3 API specification. The v3 API is compatible with both v3 and v4 versions of Sonarr/Radarr applications. Flix-Bridge is designed to be extensible to other *arr services (Lidarr, Readarr, etc.) in the future.
+
 ## Table of Contents
 
 - [Service Discovery](#service-discovery)
@@ -13,6 +17,7 @@ Complete reference for all available Flix-Bridge tools with examples and respons
   - [system_status](#system_status)
   - [queue_list](#queue_list)
   - [queue_grab](#queue_grab)
+  - [remove_content](#remove_content)
   - [root_folders](#root_folders)
 - [Media Management](#media-management)
   - [search](#search)
@@ -24,6 +29,7 @@ Complete reference for all available Flix-Bridge tools with examples and respons
   - [queue_diagnostics](#queue_diagnostics)
   - [all_services_diagnostics](#all_services_diagnostics)
   - [download_status](#download_status)
+  - [server_metrics](#server_metrics)
 
 ## Service Discovery
 
@@ -86,6 +92,8 @@ List all configured services and downloaders. This tool provides discovery of av
 
 Get system status and health information for a specific service.
 
+> **Service Compatibility:** Works with both Sonarr and Radarr instances. Response format is identical across services.
+
 **Input:**
 ```json
 {
@@ -120,14 +128,14 @@ Get system status and health information for a specific service.
 
 List items in the download queue with status and progress information.
 
+> **Service Compatibility:** Works with both Sonarr and Radarr instances. The `mediaKind` field in responses indicates whether items are "series" (Sonarr) or "movie" (Radarr).
+
 **Input:**
 ```json
 {
   "service": "sonarr-main",
   "page": 1,
-  "pageSize": 25,
-  "sortKey": "progress",
-  "sortDirection": "descending"
+  "pageSize": 25
 }
 ```
 
@@ -157,14 +165,36 @@ List items in the download queue with status and progress information.
 
 **Parameters:**
 - `service` (required): Service instance name
-- `page` (optional): Page number for pagination
-- `pageSize` (optional): Number of items per page (default: 25)
-- `sortKey` (optional): Sort by field (progress, title, status)
-- `sortDirection` (optional): "ascending" or "descending"
+- `page` (optional): Page number for pagination (default: 1)
+- `pageSize` (optional): Number of items per page (default: 25, API default: 10)
+
+**Diagnosing Stuck Items:**
+- Sonarr/Radarr attach `statusMessages` to each queue entry. The raw payload (available via `GET /api/v3/queue` or `GET /api/v3/queue/details`) looks like:
+  ```json
+  {
+    "status": "completed",
+    "errorMessage": "Automatic import is not possible.",
+    "statusMessages": [
+      {
+        "title": "Downloaded - Unable to Import",
+        "messages": ["Manual investigation required", "Additional details here"]
+      }
+    ]
+  }
+  ```
+  **Note:** `statusMessages` is an array where each object contains:
+  - `title` (string): Summary of the issue
+  - `messages` (array of strings): Detailed messages about the issue
+- `queue_list` keeps the response lightweight. For richer explanations use [`queue_diagnostics`](#queue_diagnostics) (we surface normalized messages derived from these fields) or query the queue endpoint directly when you need the exact text.
+- Torrent jobs do not expose the original payload through the manual-import API. You may see `statusMessages` explaining the failure, but follow-up actions (copying files, retriggering import) must be handled by your download client or through the service UI.
 
 ### queue_grab
 
 Force grab/retry download of specific queued items.
+
+**API Endpoints:**
+- Single item: `POST /api/v3/queue/grab/{id}`
+- Bulk operation: `POST /api/v3/queue/grab/bulk`
 
 **Single Item:**
 ```json
@@ -189,19 +219,123 @@ Force grab/retry download of specific queued items.
   "data": {
     "service": "sonarr-main",
     "mediaKind": "series",
-    "attempted": 1,
-    "succeeded": 1,
+    "grabbed": 1,
+    "ids": [123]
+  }
+}
+```
+
+### remove_content
+
+Remove items from queue or library with optional preview and confirmation workflow.
+
+**API Endpoints:**
+- Queue deletion: `DELETE /api/v3/queue/{id}`
+- Library deletion (Sonarr): `DELETE /api/v3/series/{id}`
+- Library deletion (Radarr): `DELETE /api/v3/movie/{id}`
+
+**Preview Mode (dryRun: true - default):**
+```json
+{
+  "service": "sonarr-main",
+  "target": "queue",
+  "ids": [123, 456],
+  "dryRun": true,
+  "removeFromClient": true,
+  "blocklist": false
+}
+```
+
+**Execute Mode (dryRun: false):**
+```json
+{
+  "service": "sonarr-main",
+  "target": "queue",
+  "ids": [123, 456],
+  "dryRun": false,
+  "confirmationToken": "token_from_preview",
+  "removeFromClient": true,
+  "blocklist": false,
+  "allowManualRemoval": false
+}
+```
+
+**Output (Preview Mode):**
+```json
+{
+  "ok": true,
+  "data": {
+    "service": "sonarr-main",
+    "mediaKind": "series",
+    "target": "queue",
+    "preview": {
+      "requestedIds": [123, 456],
+      "targets": [
+        {
+          "id": 123,
+          "source": "queue",
+          "title": "Sample.Series.S01E01",
+          "status": "warning",
+          "downloadId": "SAB_nzo_abc123",
+          "protocol": "usenet",
+          "manualReviewRequired": true
+        }
+      ]
+    },
+    "confirmationToken": "unique_token_here",
+    "nextAction": "Call remove_content with dryRun:false and the provided confirmationToken to execute the removal."
+  }
+}
+```
+
+**Output (Execute Mode):**
+```json
+{
+  "ok": true,
+  "data": {
+    "service": "sonarr-main",
+    "mediaKind": "series",
+    "kind": "queue",
+    "removed": 2,
     "failed": 0,
-    "results": [
+    "skipped": 0,
+    "details": [
       {
         "id": 123,
-        "success": true,
-        "message": "Grab triggered successfully"
+        "title": "Sample.Series.S01E01",
+        "source": "queue",
+        "status": "removed",
+        "message": "Manual import triggered"
       }
     ]
   }
 }
 ```
+
+**Parameters:**
+- `service` (required): Service instance name
+- `target` (required): Removal target - "queue" or "library"
+- `ids` (required): Array of item IDs to remove
+- `dryRun` (optional): Preview mode without executing (default: true)
+- `confirmationToken` (optional): Token from preview mode (required when dryRun: false)
+- `removeFromClient` (optional): Remove from download client when removing queue items (default: true)
+- `blocklist` (optional): Add to blocklist when removing queue items (default: false)
+- `deleteFiles` (optional): Delete media files when removing from library (default: false)
+- `addImportExclusion` (optional): Add to import exclusion list when removing from library (default: false)
+- `allowManualRemoval` (optional): Allow removal of items flagged for manual review (default: false)
+- `manualImport` (optional): Try manual import before removing queue items unless set to false (default: true)
+
+**Workflow:**
+1. **Preview**: Call with `dryRun: true` to see what will be removed
+2. **Review**: Check the preview response and `manualReviewRequired` flags
+3. **Execute**: Call with `dryRun: false` and the `confirmationToken` to confirm removal
+
+**Safety Features:**
+- Two-step confirmation workflow prevents accidental deletions
+- Automatic manual import attempt before queue removal (when possible)
+- Manual review flags for items requiring investigation
+- Detailed preview showing exactly what will be affected
+- Optional downloader cleanup is previewed before execution when `removeFromDownloader:true` is used
 
 ### root_folders
 
@@ -247,6 +381,10 @@ List configured root folders and storage information.
 
 Search for media (series/movies) to add to your library.
 
+> **Service Compatibility:** Works with both Sonarr and Radarr instances.
+> - **Sonarr**: Returns TVDB IDs in the `foreignId` field
+> - **Radarr**: Returns TMDB IDs in the `foreignId` field
+
 **Input:**
 ```json
 {
@@ -263,19 +401,19 @@ Search for media (series/movies) to add to your library.
   "data": {
     "service": "sonarr-main",
     "mediaKind": "series",
-    "query": "Breaking Bad",
     "total": 3,
     "results": [
       {
+        "id": 81189,
         "foreignId": 81189,
         "title": "Breaking Bad",
         "year": 2008,
         "overview": "High school chemistry teacher...",
-        "network": "AMC",
-        "status": "ended",
-        "existing": false
+        "mediaKind": "series",
+        "imdbId": "tt0903747"
       }
-    ]
+    ],
+    "truncated": false
   }
 }
 ```
@@ -285,9 +423,41 @@ Search for media (series/movies) to add to your library.
 - `query` (required): Search term
 - `limit` (optional): Maximum results to return
 
+**Radarr Example:**
+```json
+// Input
+{"service": "radarr-main", "query": "The Matrix", "limit": 5}
+
+// Output
+{
+  "ok": true,
+  "data": {
+    "service": "radarr-main",
+    "mediaKind": "movie",
+    "total": 5,
+    "results": [
+      {
+        "id": 603,
+        "foreignId": 603,
+        "title": "The Matrix",
+        "year": 1999,
+        "overview": "Set in the 22nd century...",
+        "mediaKind": "movie",
+        "imdbId": "tt0133093"
+      }
+    ],
+    "truncated": false
+  }
+}
+```
+
 ### add_new
 
 Add new media (series/movies) to your library with intelligent quality profile selection.
+
+> **Service Compatibility:** Works with both Sonarr and Radarr instances.
+> - **Sonarr**: Requires `foreignId` as TVDB ID, adds to series library
+> - **Radarr**: Requires `foreignId` as TMDB ID, adds to movie library
 
 **Input:**
 ```json
@@ -411,21 +581,22 @@ Get download and import history with optional filtering.
     "items": [
       {
         "id": 456,
+        "title": "Sample Series S01E01",
+        "quality": "HDTV-1080p",
         "eventType": "grabbed",
         "date": "2024-01-15T10:00:00Z",
-        "mediaTitle": "Sample Series S01E01",
-        "quality": "HDTV-1080p",
-        "successful": true
+        "mediaKind": "series"
       }
-    ]
+    ],
+    "truncated": false
   }
 }
 ```
 
 **Parameters:**
 - `service` (required): Service instance name
-- `page` (optional): Page number for pagination
-- `pageSize` (optional): Items per page
+- `page` (optional): Page number for pagination (default: 1)
+- `pageSize` (optional): Items per page (default: 10)
 - `since` (optional): Only show history after this date (ISO format)
 
 ### import_issues
@@ -446,15 +617,19 @@ Check for import issues and stuck downloads.
   "data": {
     "service": "sonarr-main",
     "mediaKind": "series",
-    "totalFiles": 5,
-    "issueCount": 2,
     "issues": [
       {
-        "path": "/downloads/Sample.Series.S01E01.mkv",
-        "reason": "No series found matching file",
-        "severity": "warning"
+        "id": 123,
+        "title": "Sample Series S01E01",
+        "reason": "Missing episode",
+        "ageMinutes": 0
       }
-    ]
+    ],
+    "summary": {
+      "total": 5,
+      "stuckPending": 1,
+      "failedImport": 0
+    }
   }
 }
 ```
@@ -468,9 +643,12 @@ Analyze and automatically fix stuck queue items for a specific service.
 **Input:**
 ```json
 {
-  "service": "sonarr-main"
+  "service": "sonarr-main",
+  "autoFix": false
 }
 ```
+
+Set `autoFix:false` for read-only diagnostics. If omitted, `autoFix` defaults to true and can trigger write operations for auto-fixable issues.
 
 **Output:**
 ```json
@@ -519,9 +697,16 @@ Analyze and automatically fix stuck queue items for a specific service.
 - **Network Errors**: Connectivity issues → retries downloads
 - **Unknown Issues**: Provides analysis but requires manual intervention
 
+**Where Messages Come From:**
+- Flix-Bridge inspects Sonarr’s queue payload (`status`, `errorMessage`, and `statusMessages[].message`). That is why many diagnostics read “Manual investigation required” or “Automatic import is not possible.”
+- When we attempt Sonarr’s manual import API (`POST /api/v3/manualimport`), any `rejections[].reason` values from Sonarr are echoed in `fixesAttempted[].error` and the final `details[].message` reported by [`remove_content`](#remove_content).
+- If Sonarr returns no manual-import candidates (common with torrent downloads), the diagnostic will state “Manual import unavailable: no candidates returned.” At that point the download can be removed safely, but you may choose to keep the payload for manual processing.
+
 ### all_services_diagnostics
 
 Run queue diagnostics across all configured services simultaneously.
+
+Use `autoFix:false` for read-only production checks. The default is true.
 
 **Input:**
 ```json
@@ -573,7 +758,7 @@ Get unified download status across multiple services and download clients.
 {
   "services": ["sonarr-main", "radarr-main"],
   "includeDownloader": true,
-  "downloader": "sabnzbd"
+  "downloader": "sabnzbd-main"
 }
 ```
 
@@ -582,25 +767,34 @@ Get unified download status across multiple services and download clients.
 {
   "ok": true,
   "data": {
-    "services": [
+    "services": ["sonarr-main", "radarr-main"],
+    "totals": {
+      "queued": 8,
+      "downloading": 5,
+      "completedPendingImport": 1
+    },
+    "serviceResults": [
       {
         "service": "sonarr-main",
         "mediaKind": "series",
-        "queueCount": 3,
-        "activeDownloads": 2
+        "total": 3,
+        "downloading": 2,
+        "pending": 1
       }
     ],
     "downloader": {
+      "service": "sabnzbd-main",
       "name": "SABnzbd",
-      "status": "idle",
-      "queueCount": 5,
-      "downloadSpeed": "15.2 MB/s"
+      "version": "4.3.0",
+      "isHealthy": true,
+      "paused": false,
+      "totalSlots": 5,
+      "speedKBps": 15564,
+      "totalSizeMB": 12000,
+      "remainingSizeMB": 8000,
+      "items": 5
     },
-    "summary": {
-      "totalQueueItems": 8,
-      "activeDownloads": 5,
-      "completedToday": 12
-    }
+    "correlationRatio": 1
   }
 }
 ```
@@ -609,6 +803,42 @@ Get unified download status across multiple services and download clients.
 - `services` (optional): Array of service names to include
 - `includeDownloader` (optional): Whether to include download client status
 - `downloader` (optional): Download client name (if includeDownloader is true)
+
+### server_metrics
+
+Get local server operation metrics and health status.
+
+**Input:**
+```json
+{
+  "detailed": true
+}
+```
+
+**Output:**
+```json
+{
+  "ok": true,
+  "data": {
+    "uptime": 123456,
+    "totalRequests": 42,
+    "successRate": 100,
+    "averageResponseTime": 120,
+    "serviceCount": 2,
+    "topErrors": [],
+    "health": {
+      "status": "healthy",
+      "issues": [],
+      "recentFailureRate": 0
+    },
+    "recentOperations": []
+  }
+}
+```
+
+**Parameters:**
+- `service` (optional): Return metrics for one service if metrics exist
+- `detailed` (optional): Include recent operations and exported metrics
 
 ## Response Format Standards
 

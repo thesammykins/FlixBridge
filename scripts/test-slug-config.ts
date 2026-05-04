@@ -41,6 +41,42 @@ const testCases = [
     ]
   },
   {
+    name: "Prefixed FlixBridge configuration",
+    env: {
+      FLIX_BRIDGE_SONARR_HD_URL: "http://sonarr-hd:8989",
+      FLIX_BRIDGE_SONARR_HD_KEY: "sonarr-hd-key",
+      FLIX_BRIDGE_RADARR_UHD_URL: "http://radarr-uhd:7878",
+      FLIX_BRIDGE_RADARR_UHD_KEY: "radarr-uhd-key",
+      FLIX_BRIDGE_SABNZBD_MAIN_URL: "http://sab-main:8080",
+      FLIX_BRIDGE_SABNZBD_MAIN_KEY: "sab-main-key",
+    },
+    expectedServices: [
+      "sonarr-hd",
+      "radarr-uhd"
+    ],
+    expectedDownloaders: [
+      "sabnzbd-main"
+    ]
+  },
+  {
+    name: "Slug services with fallback downloader",
+    env: {
+      FLIX_BRIDGE_SONARR_HD_URL: "http://sonarr-hd:8989",
+      FLIX_BRIDGE_SONARR_HD_KEY: "sonarr-hd-key",
+      FLIX_BRIDGE_RADARR_HD_URL: "http://radarr-hd:7878",
+      FLIX_BRIDGE_RADARR_HD_KEY: "radarr-hd-key",
+      FLIX_BRIDGE_SABNZBD_URL: "http://sab-main:8080",
+      FLIX_BRIDGE_SABNZBD_KEY: "sab-main-key",
+    },
+    expectedServices: [
+      "sonarr-hd",
+      "radarr-hd"
+    ],
+    expectedDownloaders: [
+      "sabnzbd"
+    ]
+  },
+  {
     name: "Single instance fallback configuration",
     env: {
       SONARR_URL: "http://localhost:8989",
@@ -49,6 +85,25 @@ const testCases = [
       RADARR_API_KEY: "radarr-key",
       SABNZBD_URL: "http://localhost:8080",
       SABNZBD_API_KEY: "sabnzbd-key"
+    },
+    expectedServices: [
+      "sonarr",
+      "radarr"
+    ],
+    expectedDownloaders: [
+      "sabnzbd"
+    ]
+  },
+  {
+    name: "Prefixed single instance fallback configuration",
+    env: {
+      FLIX_BRIDGE_SONARR_URL: "http://localhost:8989",
+      FLIX_BRIDGE_SONARR_KEY: "sonarr-key",
+      FLIX_BRIDGE_RADARR_URL: "http://localhost:7878",
+      FLIX_BRIDGE_RADARR_KEY: "radarr-key",
+      FLIX_BRIDGE_SABNZBD_URL: "http://localhost:8080",
+      FLIX_BRIDGE_SABNZBD_KEY: "sabnzbd-key",
+      FLIX_BRIDGE_SABNZBD_NAME: "SABnzbd Main"
     },
     expectedServices: [
       "sonarr",
@@ -97,7 +152,7 @@ const testCases = [
 function mockEnv(env: Record<string, string>) {
   // Clear existing relevant env vars
   for (const key of Object.keys(process.env)) {
-    if (key.startsWith('SONARR_') || key.startsWith('RADARR_') || key.startsWith('SABNZBD_')) {
+    if (key.startsWith('SONARR_') || key.startsWith('RADARR_') || key.startsWith('SABNZBD_') || key.startsWith('FLIX_BRIDGE_SONARR_') || key.startsWith('FLIX_BRIDGE_RADARR_') || key.startsWith('FLIX_BRIDGE_SABNZBD_')) {
       delete process.env[key];
     }
   }
@@ -109,7 +164,7 @@ function mockEnv(env: Record<string, string>) {
 function restoreEnv() {
   // Clear test env vars
   for (const key of Object.keys(process.env)) {
-    if (key.startsWith('SONARR_') || key.startsWith('RADARR_') || key.startsWith('SABNZBD_')) {
+    if (key.startsWith('SONARR_') || key.startsWith('RADARR_') || key.startsWith('SABNZBD_') || key.startsWith('FLIX_BRIDGE_SONARR_') || key.startsWith('FLIX_BRIDGE_RADARR_') || key.startsWith('FLIX_BRIDGE_SABNZBD_')) {
       delete process.env[key];
     }
   }

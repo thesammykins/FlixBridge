@@ -104,6 +104,28 @@ export interface SabnzbdQueueData {
 	remainingSizeMB: number;
 }
 
+export interface SabnzbdRemovalPreview {
+	downloader: string;
+	requestedIds: string[];
+	missingIds: string[];
+	items: NormalizedSabQueueItem[];
+}
+
+export interface SabnzbdRemovalResultItem {
+	id: string;
+	title: string;
+	status: "removed" | "failed" | "skipped";
+	message?: string;
+}
+
+export interface SabnzbdRemovalResult {
+	downloader: string;
+	removed: number;
+	failed: number;
+	missingIds: string[];
+	details: SabnzbdRemovalResultItem[];
+}
+
 export class SabnzbdService {
 	readonly id = "sabnzbd" as const;
 	readonly serviceName: string;
@@ -264,6 +286,161 @@ export class SabnzbdService {
 		}
 	}
 
+	async prepareRemoval(
+		ids: Array<string | number>,
+	): Promise<OperationResult<SabnzbdRemovalPreview>> {
+		const normalizedIds = Array.from(
+			new Set(
+				ids
+					.map((value) => String(value ?? "").trim())
+					.filter((value) => value.length > 0),
+			),
+		);
+
+		if (normalizedIds.length === 0) {
+			return {
+				ok: false,
+				error: {
+					kind: "internal",
+					message: "No valid downloader ids supplied for removal",
+				},
+			};
+		}
+
+		const queue = await this.queueList();
+		if (!queue.ok || !queue.data) {
+			return {
+				ok: false,
+				error: queue.error ?? {
+					kind: "internal",
+					message: "Unable to load SABnzbd queue",
+				},
+			};
+		}
+
+		const map = new Map(queue.data.items.map((item) => [item.nzoId, item]));
+		const items: NormalizedSabQueueItem[] = [];
+		const missing: string[] = [];
+
+		for (const id of normalizedIds) {
+			const item = map.get(id);
+			if (item) {
+				items.push(item);
+			} else {
+				missing.push(id);
+			}
+		}
+
+		items.sort((a, b) => a.nzoId.localeCompare(b.nzoId));
+		missing.sort((a, b) => a.localeCompare(b));
+
+		return {
+			ok: true,
+			data: {
+				downloader: this.serviceName,
+				requestedIds: normalizedIds,
+				missingIds: missing,
+				items,
+			},
+		};
+	}
+
+	async removeQueueItems(
+		ids: Array<string | number>,
+		deleteData = false,
+	): Promise<OperationResult<SabnzbdRemovalResult>> {
+		const normalizedIds = Array.from(
+			new Set(
+				ids
+					.map((value) => String(value ?? "").trim())
+					.filter((value) => value.length > 0),
+			),
+		);
+
+		if (normalizedIds.length === 0) {
+			return {
+				ok: false,
+				error: {
+					kind: "internal",
+					message: "No valid downloader ids supplied for removal",
+				},
+			};
+		}
+
+		const queue = await this.queueList();
+		if (!queue.ok || !queue.data) {
+			return {
+				ok: false,
+				error: queue.error ?? {
+					kind: "internal",
+					message: "Unable to load SABnzbd queue",
+				},
+			};
+		}
+
+		const titleMap = new Map(
+			queue.data.items.map((item) => [item.nzoId, item.title]),
+		);
+		const missing: string[] = [];
+		const details: SabnzbdRemovalResultItem[] = [];
+		let removed = 0;
+		let failed = 0;
+
+		for (const id of normalizedIds) {
+			const title = titleMap.get(id) || id;
+			if (!titleMap.has(id)) {
+				missing.push(id);
+				details.push({
+					id,
+					title,
+					status: "skipped",
+					message: "Item not present in downloader queue",
+				});
+				continue;
+			}
+
+			try {
+				const url = this.buildApiUrl("queue", {
+					name: "delete",
+					value: id,
+					del_files: deleteData ? "1" : "0",
+				});
+				const response = await fetchJson<{ status?: boolean; error?: string }>(
+					url,
+				);
+				if (response && response.status === false) {
+					throw new Error(
+						response.error || "SABnzbd rejected deletion request",
+					);
+				}
+
+				details.push({ id, title, status: "removed" });
+				removed += 1;
+			} catch (error) {
+				failed += 1;
+				details.push({
+					id,
+					title,
+					status: "failed",
+					message: this.describeError(error),
+				});
+			}
+		}
+
+		missing.sort((a, b) => a.localeCompare(b));
+
+		return {
+			ok: true,
+			data: {
+				downloader: this.serviceName,
+				removed,
+				failed,
+				missingIds: missing,
+				details,
+			},
+		};
+	}
+
 	/**
 	 * Correlate SABnzbd queue items with arr queue items by title matching
 	 */
@@ -335,6 +512,21 @@ export class SabnzbdService {
 		}
 
 		return matches / Math.max(words1.length, words2.length);
+	}
+
+	private describeError(error: unknown): string {
+		if (error && typeof error === "object" && "message" in error) {
+			const message = (error as { message?: unknown }).message;
+			if (typeof message === "string" && message.length > 0) {
+				return message;
+			}
+		}
+
+		if (error instanceof Error) {
+			return error.message;
+		}
+
+		return String(error);
 	}
 
 	private mapError(error: unknown): ServiceError | InternalError {
