@@ -25,6 +25,7 @@ async function main() {
 		await import("./unit/queue-operations.test.js");
 		await import("./unit/system-operations.test.js");
 		await import("./unit/queue-diagnostics.test.js");
+		await import("./unit/mcp-stdio.test.js");
 
 		// Print summary
 		testRunner.printSummary();

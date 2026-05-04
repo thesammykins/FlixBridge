@@ -97,7 +97,7 @@ function buildConfigFromSlugBasedEnvVars() {
 			!serviceName.toLowerCase().includes("sonarr") &&
 			!serviceName.toLowerCase().includes("radarr")
 		) {
-			console.warn(
+			console.error(
 				`Warning: Service name '${serviceName}' does not contain 'sonarr' or 'radarr'. Current registry requires this for type detection.`,
 			);
 		}
@@ -251,6 +251,6 @@ function normalizeUrl(url: string): string {
 
 function logDebug(message: string): void {
 	if (process.env.FLIX_BRIDGE_DEBUG === "1") {
-		console.debug(`[Config] ${message}`);
+		console.error(`[Config] ${message}`);
 	}
 }

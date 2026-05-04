@@ -20,7 +20,7 @@ export function debug(message: string, context?: DebugContext): void {
 
 	const timestamp = new Date().toISOString();
 	const contextStr = context ? ` ${JSON.stringify(context)}` : "";
-	console.debug(`[${timestamp}] FLIX_BRIDGE: ${message}${contextStr}`);
+	console.error(`[${timestamp}] FLIX_BRIDGE: ${message}${contextStr}`);
 }
 
 /**

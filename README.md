@@ -85,11 +85,19 @@ npm start
 FlixBridge v0.3.x uses environment-only configuration with slug-based discovery. No config files and no JSON-in-env mapping required.
 
 ### Slug-based multiple instances
-- Sonarr: `SONARR_<SLUG>_URL`, `SONARR_<SLUG>_API_KEY`, optional `SONARR_<SLUG>_NAME`
-- Radarr: `RADARR_<SLUG>_URL`, `RADARR_<SLUG>_API_KEY`, optional `RADARR_<SLUG>_NAME`
-- SABnzbd: `SABNZBD_<SLUG>_URL`, `SABNZBD_<SLUG>_API_KEY`, optional `SABNZBD_<SLUG>_NAME`
+- Sonarr: `SONARR_<SLUG>_URL`, `SONARR_<SLUG>_API_KEY`, `SONARR_<SLUG>_NAME` (optional)
+- Radarr: `RADARR_<SLUG>_URL`, `RADARR_<SLUG>_API_KEY`, `RADARR_<SLUG>_NAME` (optional)
+- SABnzbd: `SABNZBD_<SLUG>_URL`, `SABNZBD_<SLUG>_API_KEY`, `SABNZBD_<SLUG>_NAME` (optional)
 - Prefixed aliases are also accepted: `FLIX_BRIDGE_SONARR_<SLUG>_URL` with `_KEY` or `_API_KEY`.
 - Single-instance prefixed aliases are accepted too, e.g. `FLIX_BRIDGE_SABNZBD_URL` with `FLIX_BRIDGE_SABNZBD_KEY`.
+
+### Single-instance fallback variables
+- `SONARR_URL`
+- `SONARR_API_KEY`
+- `RADARR_URL`
+- `RADARR_API_KEY`
+- `SABNZBD_URL`
+- `SABNZBD_API_KEY`
 
 ### Multi-Instance Example
 

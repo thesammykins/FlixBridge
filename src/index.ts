@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -25,6 +26,28 @@ import type {
 	SabnzbdRemovalResult,
 } from "./services/downloaders/sabnzbd.js";
 import { serviceRegistry } from "./services/registry.js";
+
+const FALLBACK_SERVER_VERSION = "0.3.7";
+
+function readServerVersion(): string {
+	try {
+		const packageJson = JSON.parse(
+			readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+		) as { version?: unknown };
+		if (
+			typeof packageJson.version === "string" &&
+			packageJson.version.length > 0
+		) {
+			return packageJson.version;
+		}
+	} catch {
+		// fall back to known release version
+	}
+
+	return FALLBACK_SERVER_VERSION;
+}
+
+const SERVER_VERSION = readServerVersion();
 
 const tools = [
 	{
@@ -292,10 +315,17 @@ type ConfirmationRecord =
 const CONFIRMATION_TTL_MS = 5 * 60 * 1000;
 
 class ArrMcpServer {
-	private server = new Server({
-		name: "arr-mcp",
-		version: "0.3.2",
-	});
+	private server = new Server(
+		{
+			name: "arr-mcp",
+			version: SERVER_VERSION,
+		},
+		{
+			capabilities: {
+				tools: {},
+			},
+		},
+	);
 	private config?: {
 		services: Record<string, ServiceConfig>;
 		downloaders?: Record<string, SabnzbdConfig>;
@@ -1245,7 +1275,7 @@ class ArrMcpServer {
 		for (const [name, serviceConfig] of Object.entries(config.services)) {
 			try {
 				serviceRegistry.register(name, serviceConfig);
-				console.log(`✅ Registered service: ${name}`);
+				console.error(`✅ Registered service: ${name}`);
 			} catch (error) {
 				console.error(
 					`❌ Failed to register service ${name}:`,
@@ -1262,7 +1292,7 @@ class ArrMcpServer {
 			)) {
 				try {
 					serviceRegistry.registerDownloader(name, downloaderConfig);
-					console.log(`✅ Registered downloader: ${name}`);
+					console.error(`✅ Registered downloader: ${name}`);
 				} catch (error) {
 					console.error(
 						`❌ Failed to register downloader ${name}:`,
@@ -1275,11 +1305,11 @@ class ArrMcpServer {
 
 		const registeredServices = serviceRegistry.getAllNames();
 		const registeredDownloaders = serviceRegistry.getAllDownloaderNames();
-		console.log(
+		console.error(
 			`🚀 ARR MCP Server initialized with ${registeredServices.length} services: ${registeredServices.join(", ")}`,
 		);
 		if (registeredDownloaders.length > 0) {
-			console.log(
+			console.error(
 				`📥 Registered ${registeredDownloaders.length} downloaders: ${registeredDownloaders.join(", ")}`,
 			);
 		}
