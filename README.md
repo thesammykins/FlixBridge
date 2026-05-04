@@ -147,6 +147,32 @@ export SABNZBD_MAIN_API_KEY="{{SAB_MAIN_KEY}}"
 
 ## 🔧 MCP Client Setup
 
+### Copy/Paste Agent Install Prompt
+
+Use this prompt with your coding agent to install FlixBridge and return a ready-to-paste MCP config:
+
+```text
+Install and configure FlixBridge MCP for me.
+
+Requirements:
+1) Install package: @thesammykins/flixbridge
+2) Generate MCP config for Claude Desktop using command "npx" and args ["@thesammykins/flixbridge"]
+3) Include these env vars in the config with my values:
+   - SONARR_URL
+   - SONARR_API_KEY
+   - RADARR_URL
+   - RADARR_API_KEY
+   - SABNZBD_URL (optional)
+   - SABNZBD_API_KEY (optional)
+4) Return only:
+   - exact install command(s)
+   - exact claude_desktop_config.json snippet
+   - a 3-step verification checklist
+5) After setup, remind me to call list_services first.
+```
+
+If you use slug-based multi-instance setup, ask the agent to use `SONARR_<SLUG>_*`, `RADARR_<SLUG>_*`, and `SABNZBD_<SLUG>_*` variables.
+
 ### Claude Desktop
 
 Add to `claude_desktop_config.json`:
