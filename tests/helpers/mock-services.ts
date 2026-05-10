@@ -4,26 +4,26 @@
  */
 
 import type {
-	ServiceConfig,
-	OperationResult,
-	SystemStatusData,
-	QueueData,
-	QueueOptions,
-	GrabData,
-	RootFolderData,
-	QueueDiagnosticsData,
-	HistoryData,
-	HistoryOptions,
-	SearchData,
-	SearchOptions,
 	AddData,
 	AddRequest,
-	QualityProfileData,
+	GrabData,
+	HistoryData,
+	HistoryOptions,
 	ImportIssueData,
+	OperationResult,
+	QualityProfileData,
+	QueueData,
+	QueueDiagnosticsData,
+	QueueOptions,
+	RootFolderData,
+	SearchData,
+	SearchOptions,
+	ServiceConfig,
+	SystemStatusData,
 } from "../../src/services/base.js";
 import { BaseArrService } from "../../src/services/shared.js";
-import * as sonarrFixtures from "../fixtures/sonarr-responses.js";
 import * as radarrFixtures from "../fixtures/radarr-responses.js";
+import * as sonarrFixtures from "../fixtures/sonarr-responses.js";
 
 interface MockResponse {
 	[endpoint: string]: unknown;
@@ -133,6 +133,13 @@ export class MockSonarrService extends BaseArrService {
 			estimatedCompletionTime: item.estimatedCompletionTime,
 			downloadId: item.downloadId,
 			outputPath: item.outputPath,
+			downloadClient:
+				item.downloadClient ??
+				(item as { downloadClientName?: string }).downloadClientName,
+			trackedDownloadState: item.trackedDownloadState,
+			trackedDownloadStatus: item.trackedDownloadStatus,
+			statusMessages: item.statusMessages,
+			errorMessage: item.errorMessage,
 		}));
 
 		return {
@@ -432,6 +439,13 @@ export class MockRadarrService extends BaseArrService {
 			estimatedCompletionTime: item.estimatedCompletionTime,
 			downloadId: item.downloadId,
 			outputPath: item.outputPath,
+			downloadClient:
+				item.downloadClient ??
+				(item as { downloadClientName?: string }).downloadClientName,
+			trackedDownloadState: item.trackedDownloadState,
+			trackedDownloadStatus: item.trackedDownloadStatus,
+			statusMessages: item.statusMessages,
+			errorMessage: item.errorMessage,
 		}));
 
 		return {

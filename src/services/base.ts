@@ -48,6 +48,15 @@ export interface QueueItem {
 	estimatedCompletionTime?: string;
 	downloadId?: string;
 	outputPath?: string;
+	downloadClient?: string;
+	trackedDownloadState?: string;
+	trackedDownloadStatus?: string;
+	statusMessages?: Array<{
+		title?: string;
+		message?: string;
+		messages?: string[];
+	}>;
+	errorMessage?: string;
 }
 
 export interface QueueData {
@@ -191,6 +200,12 @@ export interface QueueIssueAnalysis {
 	id: number;
 	title: string;
 	status: string;
+	protocol?: string;
+	downloadClient?: string;
+	trackedDownloadState?: string;
+	trackedDownloadStatus?: string;
+	statusMessages?: string[];
+	errorMessage?: string;
 	category: QueueIssueCategory;
 	message: string;
 	suggestedAction: string;

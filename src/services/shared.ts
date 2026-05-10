@@ -105,6 +105,10 @@ interface QueueRecord {
 	downloadId?: string;
 	outputPath?: string;
 	protocol?: string;
+	downloadClient?: string;
+	downloadClientName?: string;
+	trackedDownloadState?: string;
+	trackedDownloadStatus?: string;
 }
 
 interface ManualImportEpisode {
@@ -184,6 +188,10 @@ const QueueItemSchema = z.object({
 	estimatedCompletionTime: z.string().optional(),
 	downloadId: z.string().optional(),
 	outputPath: z.string().optional(),
+	downloadClient: z.string().optional(),
+	downloadClientName: z.string().optional(),
+	trackedDownloadState: z.string().optional(),
+	trackedDownloadStatus: z.string().optional(),
 	statusMessages: z
 		.array(
 			z.object({
@@ -318,6 +326,11 @@ export abstract class BaseArrService {
 				estimatedCompletionTime: item.estimatedCompletionTime,
 				downloadId: item.downloadId,
 				outputPath: item.outputPath,
+				downloadClient: item.downloadClient ?? item.downloadClientName,
+				trackedDownloadState: item.trackedDownloadState,
+				trackedDownloadStatus: item.trackedDownloadStatus,
+				statusMessages: item.statusMessages,
+				errorMessage: item.errorMessage,
 			}));
 
 			return {
@@ -637,7 +650,7 @@ export abstract class BaseArrService {
 				);
 				const queueData = QueueSchema.parse(queueResponse);
 
-				const allItems = queueData.records || [];
+				const allItems = (queueData.records || []) as QueueRecord[];
 				const issuesAnalyzed: QueueIssueAnalysis[] = [];
 				const fixesAttempted: QueueFixAction[] = [];
 
@@ -981,12 +994,25 @@ export abstract class BaseArrService {
 		const status = item.status?.toLowerCase() || "";
 		const statusMessages = item.statusMessages || [];
 		const errorMessage = item.errorMessage || "";
-		const allMessages = [
-			status,
-			...statusMessages.map((m: StatusMessage) => m.title || m.message || ""),
-			...statusMessages.flatMap((m: StatusMessage) => m.messages || []),
-			errorMessage,
-		]
+		const flattenedStatusMessages = statusMessages
+			.flatMap((m: StatusMessage) => [
+				m.title,
+				m.message,
+				...(m.messages || []),
+			])
+			.filter((message): message is string => Boolean(message));
+		const baseAnalysis = {
+			id: item.id,
+			title: item.title,
+			status: item.status,
+			protocol: item.protocol,
+			downloadClient: item.downloadClient ?? item.downloadClientName,
+			trackedDownloadState: item.trackedDownloadState,
+			trackedDownloadStatus: item.trackedDownloadStatus,
+			statusMessages: flattenedStatusMessages,
+			errorMessage: item.errorMessage,
+		};
+		const allMessages = [status, ...flattenedStatusMessages, errorMessage]
 			.filter(Boolean)
 			.join(" ")
 			.toLowerCase();
@@ -994,9 +1020,7 @@ export abstract class BaseArrService {
 		// TheXEM mapping issues
 		if (allMessages.includes("thexem") && allMessages.includes("mapping")) {
 			return {
-				id: item.id,
-				title: item.title,
-				status: item.status,
+				...baseAnalysis,
 				category: { type: "mapping", severity: "warning", autoFixable: true },
 				message: "TheXEM mapping issue detected",
 				suggestedAction: "Trigger manual import to bypass mapping requirements",
@@ -1009,9 +1033,7 @@ export abstract class BaseArrService {
 			allMessages.includes("do not improve on existing")
 		) {
 			return {
-				id: item.id,
-				title: item.title,
-				status: item.status,
+				...baseAnalysis,
 				category: {
 					type: "quality_downgrade",
 					severity: "warning",
@@ -1030,9 +1052,7 @@ export abstract class BaseArrService {
 			allMessages.includes("dns")
 		) {
 			return {
-				id: item.id,
-				title: item.title,
-				status: item.status,
+				...baseAnalysis,
 				category: {
 					type: "network_error",
 					severity: "warning",
@@ -1049,9 +1069,7 @@ export abstract class BaseArrService {
 			(allMessages.includes("space") || allMessages.includes("full"))
 		) {
 			return {
-				id: item.id,
-				title: item.title,
-				status: item.status,
+				...baseAnalysis,
 				category: {
 					type: "disk_space",
 					severity: "critical",
@@ -1068,9 +1086,7 @@ export abstract class BaseArrService {
 			allMessages.includes("access denied")
 		) {
 			return {
-				id: item.id,
-				title: item.title,
-				status: item.status,
+				...baseAnalysis,
 				category: {
 					type: "permissions",
 					severity: "critical",
@@ -1089,9 +1105,7 @@ export abstract class BaseArrService {
 
 		if (isStuck) {
 			return {
-				id: item.id,
-				title: item.title,
-				status: item.status,
+				...baseAnalysis,
 				category: { type: "unknown", severity: "warning", autoFixable: false },
 				message: "Item appears stuck with unrecognized issue",
 				suggestedAction: "Manual investigation required",
@@ -1100,9 +1114,7 @@ export abstract class BaseArrService {
 
 		// No issues detected
 		return {
-			id: item.id,
-			title: item.title,
-			status: item.status,
+			...baseAnalysis,
 			category: { type: "unknown", severity: "info", autoFixable: false },
 			message: "No issues detected",
 			suggestedAction: "No action needed",

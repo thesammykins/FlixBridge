@@ -3,21 +3,22 @@
  * Validates queue listing, filtering, and grab operations for both Sonarr and Radarr
  */
 
-import { describe, test } from "../helpers/test-runner.js";
 import {
-	assertOk,
-	assertHasData,
 	assertArrayLength,
-	assertServiceName,
+	assertHasData,
+	assertHasProperty,
 	assertMediaKind,
-	assertQueueItem,
-	assertStatusMessagesStructure,
+	assertOk,
 	assertPropertyEquals,
+	assertQueueItem,
+	assertServiceName,
+	assertStatusMessagesStructure,
 } from "../helpers/assertions.js";
 import {
-	MockSonarrService,
 	MockRadarrService,
+	MockSonarrService,
 } from "../helpers/mock-services.js";
+import { describe, test } from "../helpers/test-runner.js";
 
 await describe("Queue Operations - Sonarr", [
 	test("should list queue items with correct structure", async () => {
@@ -89,9 +90,8 @@ await describe("Queue Operations - Sonarr", [
 
 		// Find item with statusMessages (second item in fixtures)
 		const itemWithMessages = result.data.items[1];
-
-		// StatusMessages are in the raw queue response but not surfaced in queueList
-		// This is intentional - they're available via queue_diagnostics
+		assertStatusMessagesStructure(itemWithMessages.statusMessages);
+		assertHasProperty(itemWithMessages, "statusMessages");
 	}),
 
 	test("should calculate progress percentage correctly", async () => {
