@@ -101,14 +101,15 @@ interface QueueRecord {
 	title: string;
 	status: string;
 	statusMessages?: StatusMessage[];
-	errorMessage?: string;
-	downloadId?: string;
-	outputPath?: string;
-	protocol?: string;
-	downloadClient?: string;
-	downloadClientName?: string;
-	trackedDownloadState?: string;
-	trackedDownloadStatus?: string;
+	errorMessage?: string | null;
+	estimatedCompletionTime?: string | null;
+	downloadId?: string | null;
+	outputPath?: string | null;
+	protocol?: string | null;
+	downloadClient?: string | null;
+	downloadClientName?: string | null;
+	trackedDownloadState?: string | null;
+	trackedDownloadStatus?: string | null;
 }
 
 interface ManualImportEpisode {
@@ -178,20 +179,24 @@ const QueueStatusSchema = z.union([
 	z.string(), // fallback for unknown statuses
 ]);
 
+const NullableStringSchema = z.string().nullable().optional();
+const optionalString = (value: string | null | undefined): string | undefined =>
+	value ?? undefined;
+
 const QueueItemSchema = z.object({
 	id: z.number(),
 	title: z.string(),
 	status: QueueStatusSchema,
 	size: z.number().optional(),
 	sizeleft: z.number().optional(),
-	protocol: z.string().optional(),
-	estimatedCompletionTime: z.string().optional(),
-	downloadId: z.string().optional(),
-	outputPath: z.string().optional(),
-	downloadClient: z.string().optional(),
-	downloadClientName: z.string().optional(),
-	trackedDownloadState: z.string().optional(),
-	trackedDownloadStatus: z.string().optional(),
+	protocol: NullableStringSchema,
+	estimatedCompletionTime: NullableStringSchema,
+	downloadId: NullableStringSchema,
+	outputPath: NullableStringSchema,
+	downloadClient: NullableStringSchema,
+	downloadClientName: NullableStringSchema,
+	trackedDownloadState: NullableStringSchema,
+	trackedDownloadStatus: NullableStringSchema,
 	statusMessages: z
 		.array(
 			z.object({
@@ -201,7 +206,7 @@ const QueueItemSchema = z.object({
 			}),
 		)
 		.optional(),
-	errorMessage: z.string().optional(),
+	errorMessage: NullableStringSchema,
 });
 
 const QueueSchema = z.object({
@@ -322,15 +327,17 @@ export abstract class BaseArrService {
 						? Math.round(((item.size - item.sizeleft) / item.size) * 100)
 						: undefined,
 				mediaKind: this.mediaKind,
-				protocol: item.protocol,
-				estimatedCompletionTime: item.estimatedCompletionTime,
-				downloadId: item.downloadId,
-				outputPath: item.outputPath,
-				downloadClient: item.downloadClient ?? item.downloadClientName,
-				trackedDownloadState: item.trackedDownloadState,
-				trackedDownloadStatus: item.trackedDownloadStatus,
+				protocol: optionalString(item.protocol),
+				estimatedCompletionTime: optionalString(item.estimatedCompletionTime),
+				downloadId: optionalString(item.downloadId),
+				outputPath: optionalString(item.outputPath),
+				downloadClient: optionalString(
+					item.downloadClient ?? item.downloadClientName,
+				),
+				trackedDownloadState: optionalString(item.trackedDownloadState),
+				trackedDownloadStatus: optionalString(item.trackedDownloadStatus),
 				statusMessages: item.statusMessages,
-				errorMessage: item.errorMessage,
+				errorMessage: optionalString(item.errorMessage),
 			}));
 
 			return {
@@ -770,11 +777,11 @@ export abstract class BaseArrService {
 						title: record.title,
 						mediaKind: this.mediaKind,
 						status: record.status,
-						downloadId: record.downloadId,
-						path: record.outputPath,
-						protocol: record.protocol,
+						downloadId: optionalString(record.downloadId),
+						path: optionalString(record.outputPath),
+						protocol: optionalString(record.protocol),
 						statusMessages: flattenedMessages,
-						errorMessage: record.errorMessage,
+						errorMessage: optionalString(record.errorMessage),
 						manualReviewRequired,
 					});
 				}
@@ -1005,12 +1012,14 @@ export abstract class BaseArrService {
 			id: item.id,
 			title: item.title,
 			status: item.status,
-			protocol: item.protocol,
-			downloadClient: item.downloadClient ?? item.downloadClientName,
-			trackedDownloadState: item.trackedDownloadState,
-			trackedDownloadStatus: item.trackedDownloadStatus,
+			protocol: optionalString(item.protocol),
+			downloadClient: optionalString(
+				item.downloadClient ?? item.downloadClientName,
+			),
+			trackedDownloadState: optionalString(item.trackedDownloadState),
+			trackedDownloadStatus: optionalString(item.trackedDownloadStatus),
 			statusMessages: flattenedStatusMessages,
-			errorMessage: item.errorMessage,
+			errorMessage: optionalString(item.errorMessage),
 		};
 		const allMessages = [status, ...flattenedStatusMessages, errorMessage]
 			.filter(Boolean)
@@ -1141,9 +1150,9 @@ export abstract class BaseArrService {
 						title: item.title,
 						mediaKind: this.mediaKind,
 						status: item.status,
-						downloadId: item.downloadId,
-						path: item.outputPath,
-						protocol: item.protocol,
+						downloadId: optionalString(item.downloadId),
+						path: optionalString(item.outputPath),
+						protocol: optionalString(item.protocol),
 					});
 					return {
 						...baseAction,
@@ -1205,9 +1214,9 @@ export abstract class BaseArrService {
 							title: item.title,
 							mediaKind: this.mediaKind,
 							status: item.status,
-							downloadId: item.downloadId,
-							path: item.outputPath,
-							protocol: item.protocol,
+							downloadId: optionalString(item.downloadId),
+							path: optionalString(item.outputPath),
+							protocol: optionalString(item.protocol),
 						});
 						return {
 							...baseAction,
