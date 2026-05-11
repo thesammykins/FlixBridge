@@ -149,6 +149,12 @@ interface ManualImportAttemptResult {
 	message?: string;
 }
 
+interface ManualImportCommandRequest {
+	name: "ManualImport";
+	files: ManualImportReprocessRequest[];
+	importMode: "auto" | "move" | "copy";
+}
+
 interface ManualImportReprocessRequest {
 	id?: number;
 	path?: string;
@@ -165,7 +171,6 @@ interface ManualImportReprocessRequest {
 	customFormatScore?: number;
 	indexerFlags?: number;
 	releaseType?: unknown;
-	importMode?: "move" | "copy";
 }
 
 const StatusSchema = z.object({
@@ -1520,10 +1525,12 @@ export abstract class BaseArrService {
 						continue;
 					}
 					try {
-						await fetchJson(this.buildApiUrl("/manualimport"), {
+						await fetchJson(this.buildApiUrl("/command"), {
 							method: "POST",
 							headers: { "Content-Type": "application/json" },
-							body: JSON.stringify([item.selectedCandidate.request]),
+							body: JSON.stringify(
+								this.buildManualImportCommand([item.selectedCandidate.request]),
+							),
 						});
 						const cleared = await this.waitForQueueItemToClear(item.id);
 						results.push({
@@ -1743,6 +1750,16 @@ export abstract class BaseArrService {
 		}
 	}
 
+	private buildManualImportCommand(
+		files: ManualImportReprocessRequest[],
+	): ManualImportCommandRequest {
+		return {
+			name: "ManualImport",
+			files,
+			importMode: "auto",
+		};
+	}
+
 	private buildManualImportRequest(
 		candidate: ManualImportResource,
 		target: RemovalTargetDetails,
@@ -1769,7 +1786,6 @@ export abstract class BaseArrService {
 			customFormatScore: candidate.customFormatScore,
 			indexerFlags: candidate.indexerFlags,
 			releaseType: candidate.releaseType,
-			importMode: "move",
 		};
 		if (!request.path && target.path) {
 			request.path = target.path;

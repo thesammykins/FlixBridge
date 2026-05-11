@@ -481,9 +481,13 @@ await describe("Queue Diagnostics - Auto-Fix", [
 					{ headers: { "Content-Type": "application/json" } },
 				);
 			}
-			if (path === "/api/v3/manualimport" && init?.method === "POST") {
+			if (path === "/api/v3/command" && init?.method === "POST") {
+				const body = JSON.parse(String(init.body));
+				assert.strictEqual(body.name, "ManualImport");
+				assert.strictEqual(body.importMode, "auto");
+				assert.strictEqual(body.files.length, 1);
 				imported = true;
-				return new Response(JSON.stringify({ ok: true }), {
+				return new Response(JSON.stringify({ id: 42, name: "ManualImport" }), {
 					headers: { "Content-Type": "application/json" },
 				});
 			}
@@ -510,7 +514,7 @@ await describe("Queue Diagnostics - Auto-Fix", [
 			assert.strictEqual(
 				calls.some(
 					(call) =>
-						new URL(call.url).pathname === "/api/v3/manualimport" &&
+						new URL(call.url).pathname === "/api/v3/command" &&
 						call.init?.method === "POST",
 				),
 				true,
