@@ -242,6 +242,57 @@ export interface QueueDiagnosticsData {
 	};
 }
 
+export interface ManualImportCandidatePreview {
+	id?: number;
+	path?: string;
+	seriesId?: number;
+	movieId?: number;
+	seasonNumber?: number;
+	episodeIds?: number[];
+	rejectionReasons: string[];
+	request?: unknown;
+}
+
+export interface ManualImportPreviewItem {
+	id: number;
+	title: string;
+	status?: string;
+	downloadId?: string;
+	path?: string;
+	candidates: ManualImportCandidatePreview[];
+	selectedCandidate?: ManualImportCandidatePreview;
+	safeToImport: boolean;
+	reason: string;
+}
+
+export interface ManualImportPreviewData {
+	service: string;
+	mediaKind: "series" | "movie";
+	requestedIds: number[];
+	missingIds: number[];
+	items: ManualImportPreviewItem[];
+	summary: {
+		total: number;
+		safe: number;
+		unsafe: number;
+	};
+}
+
+export interface ManualImportExecutionData {
+	service: string;
+	mediaKind: "series" | "movie";
+	requestedIds: number[];
+	imported: number;
+	failed: number;
+	skipped: number;
+	results: Array<{
+		id: number;
+		title: string;
+		status: "imported" | "failed" | "skipped";
+		message?: string;
+	}>;
+}
+
 export type RemovalKind = "queue" | "library";
 
 export interface RemovalTargetDetails {
@@ -335,6 +386,12 @@ export interface ServiceImplementation {
 	queueDiagnostics(
 		autoFix?: boolean,
 	): Promise<OperationResult<QueueDiagnosticsData>>;
+	previewManualImport(
+		ids: number[],
+	): Promise<OperationResult<ManualImportPreviewData>>;
+	executeManualImport(
+		preview: ManualImportPreviewData,
+	): Promise<OperationResult<ManualImportExecutionData>>;
 	prepareRemoval(
 		kind: RemovalKind,
 		ids: number[],

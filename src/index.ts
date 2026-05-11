@@ -15,6 +15,7 @@ import { loadConfigFromEnvOnly } from "./config.js";
 import { debugToolTiming } from "./debug.js";
 import { metricsCollector } from "./metrics.js";
 import type {
+	ManualImportPreviewData,
 	OperationResult,
 	RemovalExecutionOptions,
 	RemovalPreparationData,
@@ -122,6 +123,21 @@ const tools = [
 				queueTimeoutMs: { type: "number" },
 			},
 			required: ["ids"],
+		},
+	},
+	{
+		name: "manual_import",
+		description:
+			"Preview and execute high-confidence ARR manual imports for queue items",
+		inputSchema: {
+			type: "object",
+			properties: {
+				service: { type: "string" },
+				ids: { type: "array", items: { type: "number" } },
+				dryRun: { type: "boolean" },
+				confirmationToken: { type: "string" },
+			},
+			required: ["service", "ids"],
 		},
 	},
 	{
@@ -304,6 +320,13 @@ type ConfirmationRecord =
 			createdAt: number;
 	  }
 	| {
+			scope: "manual_import";
+			serviceName: string;
+			ids: string[];
+			preview: ManualImportPreviewData;
+			createdAt: number;
+	  }
+	| {
 			scope: "downloader";
 			downloaderName: string;
 			ids: string[];
@@ -411,6 +434,8 @@ class ArrMcpServer {
 								return await service.queueGrab(
 									this.normalizeNumericIds(this.normalizeIdStrings(input.ids)),
 								);
+							case "manual_import":
+								return await this.handleManualImport(input);
 							case "root_folders":
 								return await service.rootFolderList();
 							case "history_detail":
@@ -650,6 +675,102 @@ class ArrMcpServer {
 				correlationRatio: downloaderData
 					? Math.min(1.0, totalQueued / Math.max(1, downloaderData.items))
 					: null,
+			},
+		};
+	}
+
+	private async handleManualImport(
+		input: z.infer<typeof InputSchema>,
+	): Promise<OperationResult<unknown>> {
+		const serviceName = input.service;
+		if (!serviceName) {
+			throw new McpError(
+				ErrorCode.InvalidParams,
+				"service is required for manual_import",
+			);
+		}
+		if (!input.ids || input.ids.length === 0) {
+			throw new McpError(
+				ErrorCode.InvalidParams,
+				"ids is required for manual_import",
+			);
+		}
+		const service = serviceRegistry.get(serviceName);
+		if (!service) {
+			throw new McpError(
+				ErrorCode.InvalidParams,
+				`Unknown service ${serviceName}`,
+			);
+		}
+
+		const idStrings = this.normalizeIdStrings(input.ids);
+		const ids = this.normalizeNumericIds(idStrings);
+		const dryRun = input.dryRun !== false;
+
+		if (dryRun) {
+			const preview = await service.previewManualImport(ids);
+			if (!preview.ok || !preview.data) return preview;
+			this.cleanupExpiredConfirmations();
+			const token = randomUUID();
+			this.pendingConfirmations.set(token, {
+				scope: "manual_import",
+				serviceName,
+				ids: idStrings,
+				preview: preview.data,
+				createdAt: Date.now(),
+			});
+			return {
+				ok: true,
+				data: {
+					mode: "dry_run",
+					service: serviceName,
+					preview: preview.data,
+					confirmationToken: token,
+					nextAction:
+						"Call manual_import with dryRun:false and this confirmationToken to import only safe candidates.",
+				},
+			};
+		}
+
+		const token = input.confirmationToken;
+		if (!token) {
+			throw new McpError(
+				ErrorCode.InvalidParams,
+				"confirmationToken is required to execute manual_import",
+			);
+		}
+		const record = this.pendingConfirmations.get(token);
+		if (!record || record.scope !== "manual_import") {
+			throw new McpError(
+				ErrorCode.InvalidParams,
+				"Invalid or unknown confirmation token. Run a dry run first.",
+			);
+		}
+		if (this.isConfirmationExpired(record)) {
+			this.pendingConfirmations.delete(token);
+			throw new McpError(
+				ErrorCode.InvalidParams,
+				"Confirmation token expired. Please run a new dry run.",
+			);
+		}
+		if (
+			record.serviceName !== serviceName ||
+			!this.idsMatch(record.ids, idStrings)
+		) {
+			throw new McpError(
+				ErrorCode.InvalidParams,
+				"Service or IDs differ from dry run. Please repeat dry run.",
+			);
+		}
+		this.pendingConfirmations.delete(token);
+		const execution = await service.executeManualImport(record.preview);
+		if (!execution.ok || !execution.data) return execution;
+		return {
+			ok: true,
+			data: {
+				mode: "execute",
+				service: serviceName,
+				result: execution.data,
 			},
 		};
 	}

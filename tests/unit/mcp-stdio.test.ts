@@ -22,6 +22,7 @@ const EXPECTED_TOOLS = [
 	"queue_list",
 	"queue_grab",
 	"remove_content",
+	"manual_import",
 	"root_folders",
 	"history_detail",
 	"search",

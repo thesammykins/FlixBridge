@@ -14,6 +14,10 @@ import type {
 	HistoryData,
 	HistoryOptions,
 	ImportIssueData,
+	ManualImportCandidatePreview,
+	ManualImportExecutionData,
+	ManualImportPreviewData,
+	ManualImportPreviewItem,
 	OperationResult,
 	QualityProfileData,
 	QueueData,
@@ -125,6 +129,7 @@ interface ManualImportResource {
 	folderName?: string;
 	name?: string;
 	series?: { id?: number };
+	movie?: { id?: number };
 	seasonNumber?: number;
 	episodes?: ManualImportEpisode[];
 	quality?: unknown;
@@ -148,6 +153,7 @@ interface ManualImportReprocessRequest {
 	id?: number;
 	path?: string;
 	seriesId?: number;
+	movieId?: number;
 	seasonNumber?: number;
 	episodeIds?: number[];
 	episodes?: ManualImportEpisode[];
@@ -1426,6 +1432,181 @@ export abstract class BaseArrService {
 		return "Unknown error";
 	}
 
+	async previewManualImport(
+		ids: number[],
+	): Promise<OperationResult<ManualImportPreviewData>> {
+		const operation = withMetrics(
+			this.serviceName,
+			"previewManualImport",
+			async () => {
+				const preparation = await this.prepareRemoval("queue", ids);
+				if (!preparation.ok || !preparation.data) {
+					return preparation as unknown as OperationResult<ManualImportPreviewData>;
+				}
+
+				const items: ManualImportPreviewItem[] = [];
+				for (const target of preparation.data.targets) {
+					const candidates = await this.getManualImportCandidates(target);
+					const previews = candidates.map((candidate) =>
+						this.buildManualImportCandidatePreview(candidate, target),
+					);
+					const viable = previews.filter((candidate) =>
+						this.isSafeManualImportCandidate(candidate),
+					);
+					const selectedCandidate = viable.length === 1 ? viable[0] : undefined;
+					const reason =
+						previews.length === 0
+							? "No manual import candidates returned"
+							: viable.length === 0
+								? "No unrejected candidate with complete media mapping"
+								: viable.length > 1
+									? "Multiple viable candidates returned; manual review required"
+									: "Exactly one unrejected candidate with complete media mapping";
+					items.push({
+						id: target.id,
+						title: target.title,
+						status: target.status,
+						downloadId: target.downloadId,
+						path: target.path,
+						candidates: previews,
+						selectedCandidate,
+						safeToImport: Boolean(selectedCandidate),
+						reason,
+					});
+				}
+
+				const safe = items.filter((item) => item.safeToImport).length;
+				return {
+					ok: true,
+					data: {
+						service: this.serviceName,
+						mediaKind: this.mediaKind,
+						requestedIds: ids,
+						missingIds: preparation.data.missingIds,
+						items,
+						summary: {
+							total: items.length,
+							safe,
+							unsafe: items.length - safe,
+						},
+					},
+				};
+			},
+		);
+		try {
+			return await operation();
+		} catch (error) {
+			return handleError(error, this.serviceName);
+		}
+	}
+
+	async executeManualImport(
+		preview: ManualImportPreviewData,
+	): Promise<OperationResult<ManualImportExecutionData>> {
+		const operation = withMetrics(
+			this.serviceName,
+			"executeManualImport",
+			async () => {
+				const results: ManualImportExecutionData["results"] = [];
+				for (const item of preview.items) {
+					if (!item.safeToImport || !item.selectedCandidate?.request) {
+						results.push({
+							id: item.id,
+							title: item.title,
+							status: "skipped",
+							message: item.reason,
+						});
+						continue;
+					}
+					try {
+						await fetchJson(this.buildApiUrl("/manualimport"), {
+							method: "POST",
+							headers: { "Content-Type": "application/json" },
+							body: JSON.stringify([item.selectedCandidate.request]),
+						});
+						results.push({
+							id: item.id,
+							title: item.title,
+							status: "imported",
+							message: "Manual import triggered",
+						});
+					} catch (error) {
+						results.push({
+							id: item.id,
+							title: item.title,
+							status: "failed",
+							message: this.describeError(error),
+						});
+					}
+				}
+
+				return {
+					ok: true,
+					data: {
+						service: this.serviceName,
+						mediaKind: this.mediaKind,
+						requestedIds: preview.requestedIds,
+						imported: results.filter((item) => item.status === "imported")
+							.length,
+						failed: results.filter((item) => item.status === "failed").length,
+						skipped: results.filter((item) => item.status === "skipped").length,
+						results,
+					},
+				};
+			},
+		);
+		try {
+			return await operation();
+		} catch (error) {
+			return handleError(error, this.serviceName);
+		}
+	}
+
+	private async getManualImportCandidates(
+		target: RemovalTargetDetails,
+	): Promise<ManualImportResource[]> {
+		if (!target.downloadId) return [];
+		const params: Record<string, string> = { filterExistingFiles: "false" };
+		params.downloadId = target.downloadId;
+		if (target.path) params.folder = target.path;
+		const candidates = await fetchJson(
+			this.buildApiUrl("/manualimport", params),
+		);
+		return Array.isArray(candidates) ? candidates : [];
+	}
+
+	private buildManualImportCandidatePreview(
+		candidate: ManualImportResource,
+		target: RemovalTargetDetails,
+	): ManualImportCandidatePreview {
+		const request = this.buildManualImportRequest(candidate, target);
+		return {
+			id: candidate.id,
+			path: candidate.path || candidate.relativePath || target.path,
+			seriesId: candidate.series?.id,
+			movieId: candidate.movie?.id,
+			seasonNumber: candidate.seasonNumber,
+			episodeIds: (candidate.episodes || [])
+				.map((episode) => episode.id)
+				.filter((id): id is number => typeof id === "number"),
+			rejectionReasons: (candidate.rejections || [])
+				.map((rejection) => rejection.reason)
+				.filter((reason): reason is string => Boolean(reason)),
+			request,
+		};
+	}
+
+	private isSafeManualImportCandidate(
+		candidate: ManualImportCandidatePreview,
+	): boolean {
+		if (candidate.rejectionReasons.length > 0) return false;
+		if (!candidate.id || !candidate.path) return false;
+		if (this.mediaKind === "series") {
+			return Boolean(candidate.seriesId && candidate.episodeIds?.length);
+		}
+		return Boolean(candidate.movieId);
+	}
+
 	private shouldAttemptManualImport(
 		analysis: QueueIssueAnalysis,
 		item: QueueRecord,
@@ -1488,7 +1669,7 @@ export abstract class BaseArrService {
 
 		const viableCandidate = candidates.find((candidate) => {
 			return (
-				candidate.series?.id &&
+				(candidate.series?.id || candidate.movie?.id) &&
 				!(candidate.rejections && candidate.rejections.length > 0)
 			);
 		});
@@ -1513,11 +1694,11 @@ export abstract class BaseArrService {
 			target,
 		);
 
-		if (!manualImportRequest.seriesId) {
+		if (!manualImportRequest.seriesId && !manualImportRequest.movieId) {
 			return {
 				attempted: true,
 				success: false,
-				message: "Manual import skipped: candidate missing series information",
+				message: "Manual import skipped: candidate missing media information",
 			};
 		}
 
@@ -1552,6 +1733,7 @@ export abstract class BaseArrService {
 			id: candidate.id,
 			path: candidate.path || candidate.relativePath || target.path,
 			seriesId: candidate.series?.id,
+			movieId: candidate.movie?.id,
 			seasonNumber: candidate.seasonNumber,
 			episodeIds: episodeIds.length > 0 ? episodeIds : undefined,
 			episodes:
