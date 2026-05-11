@@ -1053,10 +1053,14 @@ export abstract class BaseArrService {
 			};
 		}
 
-		// Quality downgrade issues
+		// Quality downgrade / not-an-upgrade issues. Arr commonly reports these
+		// as completed import-pending warnings rather than hard failures.
 		if (
 			allMessages.includes("not a custom format upgrade") ||
-			allMessages.includes("do not improve on existing")
+			allMessages.includes("do not improve on existing") ||
+			allMessages.includes("not an upgrade") ||
+			(allMessages.includes("existing quality") &&
+				allMessages.includes("new quality"))
 		) {
 			return {
 				...baseAnalysis,
