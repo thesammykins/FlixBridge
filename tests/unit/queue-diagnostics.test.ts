@@ -438,6 +438,7 @@ await describe("Queue Diagnostics - Auto-Fix", [
 	test("should preview and execute high-confidence manual imports", async () => {
 		const originalFetch = globalThis.fetch;
 		const calls: Array<{ url: string; init?: RequestInit }> = [];
+		let imported = false;
 		globalThis.fetch = async (input, init) => {
 			const url =
 				typeof input === "string"
@@ -450,16 +451,18 @@ await describe("Queue Diagnostics - Auto-Fix", [
 			if (path === "/api/v3/queue") {
 				return new Response(
 					JSON.stringify({
-						totalRecords: 1,
-						records: [
-							{
-								id: 225,
-								title: "Manual.Import.S01E01",
-								status: "completed",
-								downloadId: "SAB_manual",
-								outputPath: "/downloads/complete/Manual.Import.S01E01",
-							},
-						],
+						totalRecords: imported ? 0 : 1,
+						records: imported
+							? []
+							: [
+									{
+										id: 225,
+										title: "Manual.Import.S01E01",
+										status: "completed",
+										downloadId: "SAB_manual",
+										outputPath: "/downloads/complete/Manual.Import.S01E01",
+									},
+								],
 					}),
 					{ headers: { "Content-Type": "application/json" } },
 				);
@@ -479,6 +482,7 @@ await describe("Queue Diagnostics - Auto-Fix", [
 				);
 			}
 			if (path === "/api/v3/manualimport" && init?.method === "POST") {
+				imported = true;
 				return new Response(JSON.stringify({ ok: true }), {
 					headers: { "Content-Type": "application/json" },
 				});
