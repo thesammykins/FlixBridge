@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.3.18] - 2026-05-11
+
+- docs: solidify manual import and cron maintenance docs (#8)
+
 ## [0.3.17] - 2026-05-11
 
 - Execute manual imports via ARR command
