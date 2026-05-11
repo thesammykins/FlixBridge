@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.3.15] - 2026-05-11
+
+- Add guarded manual import remediation
+
 ## [0.3.14] - 2026-05-11
 
 - Classify manual queue import blockers
