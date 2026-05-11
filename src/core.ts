@@ -1,5 +1,5 @@
-import type { ServiceError, InternalError } from "./services/base.js";
 import { debugHttp } from "./debug.js";
+import type { InternalError, ServiceError } from "./services/base.js";
 
 export interface HttpOptions extends globalThis.RequestInit {
 	timeoutMs?: number;

@@ -1,5 +1,5 @@
-import type { OperationResult, ServiceError, InternalError } from "../base.js";
 import { fetchJson } from "../../core.js";
+import type { InternalError, OperationResult, ServiceError } from "../base.js";
 
 export interface SabnzbdConfig {
 	baseUrl: string;

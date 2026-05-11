@@ -1,7 +1,7 @@
-import { SonarrService } from "./arr/sonarr.js";
 import { RadarrService } from "./arr/radarr.js";
-import { SabnzbdService, type SabnzbdConfig } from "./downloaders/sabnzbd.js";
-import type { ServiceImplementation, ServiceConfig } from "./base.js";
+import { SonarrService } from "./arr/sonarr.js";
+import type { ServiceConfig, ServiceImplementation } from "./base.js";
+import { type SabnzbdConfig, SabnzbdService } from "./downloaders/sabnzbd.js";
 
 export class ServiceRegistry {
 	private services: Map<string, ServiceImplementation> = new Map();

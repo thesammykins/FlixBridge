@@ -3,20 +3,20 @@
  * Validates content removal preview, protocol filtering, and safety features
  */
 
-import { describe, test } from "../helpers/test-runner.js";
 import {
-	assertOk,
-	assertHasData,
 	assertArrayLength,
-	assertServiceName,
-	assertMediaKind,
-	assertPropertyEquals,
+	assertHasData,
 	assertHasProperty,
+	assertMediaKind,
+	assertOk,
+	assertPropertyEquals,
+	assertServiceName,
 } from "../helpers/assertions.js";
 import {
-	MockSonarrService,
 	MockRadarrService,
+	MockSonarrService,
 } from "../helpers/mock-services.js";
+import { describe, test } from "../helpers/test-runner.js";
 
 await describe("Remove Content - Queue Preparation", [
 	test("should prepare queue item removal with all details", async () => {

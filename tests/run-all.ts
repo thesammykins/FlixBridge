@@ -4,9 +4,9 @@
  * Run with: npm test or tsx tests/run-all.ts
  */
 
-import { testRunner } from "./helpers/test-runner.js";
-import { join, dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { testRunner } from "./helpers/test-runner.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);

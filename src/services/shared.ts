@@ -100,11 +100,18 @@ interface QueueRecord {
 	id: number;
 	title: string;
 	status: string;
+	size?: number;
+	sizeleft?: number;
 	statusMessages?: StatusMessage[];
-	errorMessage?: string;
-	downloadId?: string;
-	outputPath?: string;
-	protocol?: string;
+	errorMessage?: string | null;
+	estimatedCompletionTime?: string | null;
+	downloadId?: string | null;
+	outputPath?: string | null;
+	protocol?: string | null;
+	downloadClient?: string | null;
+	downloadClientName?: string | null;
+	trackedDownloadState?: string | null;
+	trackedDownloadStatus?: string | null;
 }
 
 interface ManualImportEpisode {
@@ -174,16 +181,24 @@ const QueueStatusSchema = z.union([
 	z.string(), // fallback for unknown statuses
 ]);
 
+const NullableStringSchema = z.string().nullable().optional();
+const optionalString = (value: string | null | undefined): string | undefined =>
+	value ?? undefined;
+
 const QueueItemSchema = z.object({
 	id: z.number(),
 	title: z.string(),
 	status: QueueStatusSchema,
 	size: z.number().optional(),
 	sizeleft: z.number().optional(),
-	protocol: z.string().optional(),
-	estimatedCompletionTime: z.string().optional(),
-	downloadId: z.string().optional(),
-	outputPath: z.string().optional(),
+	protocol: NullableStringSchema,
+	estimatedCompletionTime: NullableStringSchema,
+	downloadId: NullableStringSchema,
+	outputPath: NullableStringSchema,
+	downloadClient: NullableStringSchema,
+	downloadClientName: NullableStringSchema,
+	trackedDownloadState: NullableStringSchema,
+	trackedDownloadStatus: NullableStringSchema,
 	statusMessages: z
 		.array(
 			z.object({
@@ -193,7 +208,7 @@ const QueueItemSchema = z.object({
 			}),
 		)
 		.optional(),
-	errorMessage: z.string().optional(),
+	errorMessage: NullableStringSchema,
 });
 
 const QueueSchema = z.object({
@@ -314,10 +329,17 @@ export abstract class BaseArrService {
 						? Math.round(((item.size - item.sizeleft) / item.size) * 100)
 						: undefined,
 				mediaKind: this.mediaKind,
-				protocol: item.protocol,
-				estimatedCompletionTime: item.estimatedCompletionTime,
-				downloadId: item.downloadId,
-				outputPath: item.outputPath,
+				protocol: optionalString(item.protocol),
+				estimatedCompletionTime: optionalString(item.estimatedCompletionTime),
+				downloadId: optionalString(item.downloadId),
+				outputPath: optionalString(item.outputPath),
+				downloadClient: optionalString(
+					item.downloadClient ?? item.downloadClientName,
+				),
+				trackedDownloadState: optionalString(item.trackedDownloadState),
+				trackedDownloadStatus: optionalString(item.trackedDownloadStatus),
+				statusMessages: item.statusMessages,
+				errorMessage: optionalString(item.errorMessage),
 			}));
 
 			return {
@@ -637,7 +659,22 @@ export abstract class BaseArrService {
 				);
 				const queueData = QueueSchema.parse(queueResponse);
 
-				const allItems = queueData.records || [];
+				const allItems: QueueRecord[] = queueData.records.map((record) => {
+					if (
+						record.id === undefined ||
+						record.title === undefined ||
+						record.status === undefined
+					) {
+						throw new Error("Queue response item missing required fields");
+					}
+
+					return {
+						...record,
+						id: record.id,
+						title: record.title,
+						status: record.status,
+					};
+				});
 				const issuesAnalyzed: QueueIssueAnalysis[] = [];
 				const fixesAttempted: QueueFixAction[] = [];
 
@@ -757,11 +794,11 @@ export abstract class BaseArrService {
 						title: record.title,
 						mediaKind: this.mediaKind,
 						status: record.status,
-						downloadId: record.downloadId,
-						path: record.outputPath,
-						protocol: record.protocol,
+						downloadId: optionalString(record.downloadId),
+						path: optionalString(record.outputPath),
+						protocol: optionalString(record.protocol),
 						statusMessages: flattenedMessages,
-						errorMessage: record.errorMessage,
+						errorMessage: optionalString(record.errorMessage),
 						manualReviewRequired,
 					});
 				}
@@ -981,12 +1018,27 @@ export abstract class BaseArrService {
 		const status = item.status?.toLowerCase() || "";
 		const statusMessages = item.statusMessages || [];
 		const errorMessage = item.errorMessage || "";
-		const allMessages = [
-			status,
-			...statusMessages.map((m: StatusMessage) => m.title || m.message || ""),
-			...statusMessages.flatMap((m: StatusMessage) => m.messages || []),
-			errorMessage,
-		]
+		const flattenedStatusMessages = statusMessages
+			.flatMap((m: StatusMessage) => [
+				m.title,
+				m.message,
+				...(m.messages || []),
+			])
+			.filter((message): message is string => Boolean(message));
+		const baseAnalysis = {
+			id: item.id,
+			title: item.title,
+			status: item.status,
+			protocol: optionalString(item.protocol),
+			downloadClient: optionalString(
+				item.downloadClient ?? item.downloadClientName,
+			),
+			trackedDownloadState: optionalString(item.trackedDownloadState),
+			trackedDownloadStatus: optionalString(item.trackedDownloadStatus),
+			statusMessages: flattenedStatusMessages,
+			errorMessage: optionalString(item.errorMessage),
+		};
+		const allMessages = [status, ...flattenedStatusMessages, errorMessage]
 			.filter(Boolean)
 			.join(" ")
 			.toLowerCase();
@@ -994,9 +1046,7 @@ export abstract class BaseArrService {
 		// TheXEM mapping issues
 		if (allMessages.includes("thexem") && allMessages.includes("mapping")) {
 			return {
-				id: item.id,
-				title: item.title,
-				status: item.status,
+				...baseAnalysis,
 				category: { type: "mapping", severity: "warning", autoFixable: true },
 				message: "TheXEM mapping issue detected",
 				suggestedAction: "Trigger manual import to bypass mapping requirements",
@@ -1009,9 +1059,7 @@ export abstract class BaseArrService {
 			allMessages.includes("do not improve on existing")
 		) {
 			return {
-				id: item.id,
-				title: item.title,
-				status: item.status,
+				...baseAnalysis,
 				category: {
 					type: "quality_downgrade",
 					severity: "warning",
@@ -1030,9 +1078,7 @@ export abstract class BaseArrService {
 			allMessages.includes("dns")
 		) {
 			return {
-				id: item.id,
-				title: item.title,
-				status: item.status,
+				...baseAnalysis,
 				category: {
 					type: "network_error",
 					severity: "warning",
@@ -1049,9 +1095,7 @@ export abstract class BaseArrService {
 			(allMessages.includes("space") || allMessages.includes("full"))
 		) {
 			return {
-				id: item.id,
-				title: item.title,
-				status: item.status,
+				...baseAnalysis,
 				category: {
 					type: "disk_space",
 					severity: "critical",
@@ -1068,9 +1112,7 @@ export abstract class BaseArrService {
 			allMessages.includes("access denied")
 		) {
 			return {
-				id: item.id,
-				title: item.title,
-				status: item.status,
+				...baseAnalysis,
 				category: {
 					type: "permissions",
 					severity: "critical",
@@ -1089,9 +1131,7 @@ export abstract class BaseArrService {
 
 		if (isStuck) {
 			return {
-				id: item.id,
-				title: item.title,
-				status: item.status,
+				...baseAnalysis,
 				category: { type: "unknown", severity: "warning", autoFixable: false },
 				message: "Item appears stuck with unrecognized issue",
 				suggestedAction: "Manual investigation required",
@@ -1100,9 +1140,7 @@ export abstract class BaseArrService {
 
 		// No issues detected
 		return {
-			id: item.id,
-			title: item.title,
-			status: item.status,
+			...baseAnalysis,
 			category: { type: "unknown", severity: "info", autoFixable: false },
 			message: "No issues detected",
 			suggestedAction: "No action needed",
@@ -1129,9 +1167,9 @@ export abstract class BaseArrService {
 						title: item.title,
 						mediaKind: this.mediaKind,
 						status: item.status,
-						downloadId: item.downloadId,
-						path: item.outputPath,
-						protocol: item.protocol,
+						downloadId: optionalString(item.downloadId),
+						path: optionalString(item.outputPath),
+						protocol: optionalString(item.protocol),
 					});
 					return {
 						...baseAction,
@@ -1193,9 +1231,9 @@ export abstract class BaseArrService {
 							title: item.title,
 							mediaKind: this.mediaKind,
 							status: item.status,
-							downloadId: item.downloadId,
-							path: item.outputPath,
-							protocol: item.protocol,
+							downloadId: optionalString(item.downloadId),
+							path: optionalString(item.outputPath),
+							protocol: optionalString(item.protocol),
 						});
 						return {
 							...baseAction,

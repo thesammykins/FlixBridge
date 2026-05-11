@@ -3,21 +3,21 @@
  * Validates system information and storage configuration
  */
 
-import { describe, test } from "../helpers/test-runner.js";
 import {
-	assertOk,
-	assertHasData,
 	assertArrayLength,
-	assertServiceName,
-	assertMediaKind,
-	assertValidRootFolder,
+	assertHasData,
 	assertHasProperty,
+	assertMediaKind,
+	assertOk,
 	assertPropertyEquals,
+	assertServiceName,
+	assertValidRootFolder,
 } from "../helpers/assertions.js";
 import {
-	MockSonarrService,
 	MockRadarrService,
+	MockSonarrService,
 } from "../helpers/mock-services.js";
+import { describe, test } from "../helpers/test-runner.js";
 
 await describe("System Status - Sonarr", [
 	test("should return system status with correct structure", async () => {

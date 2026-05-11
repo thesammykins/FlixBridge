@@ -1,69 +1,65 @@
 {
-  "name": "@thesammykins/flixbridge",
-  "version": "0.3.9",
-  "description": "Media Management MCP Server - environment-only configuration for Sonarr/Radarr/SABnzbd",
-  "type": "module",
-  "main": "dist/index.js",
-  "bin": {
-    "flixbridge": "dist/index.js"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/thesammykins/FlixBridge.git"
-  },
-  "bugs": {
-    "url": "https://github.com/thesammykins/FlixBridge/issues"
-  },
-  "homepage": "https://github.com/thesammykins/FlixBridge#readme",
-  "publishConfig": {
-    "access": "public"
-  },
-  "files": [
-    "dist/**/*",
-    "README.md",
-    "LICENSE"
-  ],
-  "scripts": {
-    "build": "tsc",
-    "dev": "tsx src/index.ts",
-    "start": "node dist/index.js",
-    "check": "biome check .",
-    "lint": "biome lint .",
-    "lint:fix": "biome lint --write .",
-    "format": "biome format .",
-    "format:fix": "biome format --write .",
-    "test": "tsx tests/run-all.ts",
-    "test:unit": "tsx tests/run-all.ts",
-    "smoke": "tsx scripts/smoke.ts",
-    "test:phase2": "tsx scripts/test-phase2.ts",
-    "test:queue-diagnostics": "tsx scripts/test-queue-diagnostics.ts",
-    "test:slug-config": "tsx scripts/test-slug-config.ts",
-    "test:list-services": "tsx scripts/test-list-services.ts",
-    "debug:queue": "tsx scripts/debug-queue.ts"
-  },
-  "keywords": [
-    "mcp",
-    "media-management",
-    "automation",
-    "tv-shows",
-    "movies",
-    "downloads",
-    "bridge",
-    "ai-assistant"
-  ],
-  "author": "",
-  "license": "MIT",
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
-    "zod": "^3.22.4"
-  },
-  "devDependencies": {
-    "@types/node": "^20.10.0",
-    "@biomejs/biome": "^1.9.4",
-    "tsx": "^4.6.0",
-    "typescript": "^5.3.0"
-  },
-  "engines": {
-    "node": ">=20.0.0"
-  }
+	"name": "@thesammykins/flixbridge",
+	"version": "0.3.10",
+	"description": "Media Management MCP Server - environment-only configuration for Sonarr/Radarr/SABnzbd",
+	"type": "module",
+	"main": "dist/index.js",
+	"bin": {
+		"flixbridge": "dist/index.js"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/thesammykins/FlixBridge.git"
+	},
+	"bugs": {
+		"url": "https://github.com/thesammykins/FlixBridge/issues"
+	},
+	"homepage": "https://github.com/thesammykins/FlixBridge#readme",
+	"publishConfig": {
+		"access": "public"
+	},
+	"files": ["dist/**/*", "README.md", "LICENSE"],
+	"scripts": {
+		"build": "tsc",
+		"dev": "tsx src/index.ts",
+		"start": "node dist/index.js",
+		"check": "biome check .",
+		"lint": "biome lint .",
+		"lint:fix": "biome lint --write .",
+		"format": "biome format .",
+		"format:fix": "biome format --write .",
+		"test": "tsx tests/run-all.ts",
+		"test:unit": "tsx tests/run-all.ts",
+		"smoke": "tsx scripts/smoke.ts",
+		"test:phase2": "tsx scripts/test-phase2.ts",
+		"test:queue-diagnostics": "tsx scripts/test-queue-diagnostics.ts",
+		"test:slug-config": "tsx scripts/test-slug-config.ts",
+		"test:list-services": "tsx scripts/test-list-services.ts",
+		"debug:queue": "tsx scripts/debug-queue.ts"
+	},
+	"keywords": [
+		"mcp",
+		"media-management",
+		"automation",
+		"tv-shows",
+		"movies",
+		"downloads",
+		"bridge",
+		"ai-assistant"
+	],
+	"author": "",
+	"license": "MIT",
+	"dependencies": {
+		"@modelcontextprotocol/sdk": "^1.29.0",
+		"zod": "^3.22.4"
+	},
+	"devDependencies": {
+		"@types/node": "^20.10.0",
+		"@biomejs/biome": "^1.9.4",
+		"tsx": "^4.6.0",
+		"typescript": "^5.3.0"
+	},
+	"engines": {
+		"node": ">=20.0.0"
+	}
 }

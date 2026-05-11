@@ -22,7 +22,7 @@ import {
 import { describe, test } from "../helpers/test-runner.js";
 
 await describe("Queue Diagnostics - Issue Detection", [
-	test("should request a bounded full queue page", async () => {
+	test("should request a bounded full queue page and expose raw issue details", async () => {
 		const originalFetch = globalThis.fetch;
 		let requestedUrl = "";
 
@@ -41,8 +41,18 @@ await describe("Queue Diagnostics - Issue Detection", [
 						{
 							id: 123,
 							title: "Sample.Series.S01E01",
-							status: "downloading",
-							statusMessages: [],
+							status: "warning",
+							protocol: "usenet",
+							downloadClient: "SABnzbd",
+							trackedDownloadState: "importPending",
+							trackedDownloadStatus: "warning",
+							errorMessage: "Import failed",
+							statusMessages: [
+								{
+									title: "Import blocked",
+									messages: ["Missing episode file"],
+								},
+							],
 						},
 					],
 				}),
@@ -63,6 +73,17 @@ await describe("Queue Diagnostics - Issue Detection", [
 			const url = new URL(requestedUrl);
 			assert.strictEqual(url.pathname, "/api/v3/queue");
 			assert.strictEqual(url.searchParams.get("pageSize"), "250");
+			assertArrayLength(result.data.issuesAnalyzed, 1, "issues");
+			const issue = result.data.issuesAnalyzed[0];
+			assertPropertyEquals(issue, "protocol", "usenet");
+			assertPropertyEquals(issue, "downloadClient", "SABnzbd");
+			assertPropertyEquals(issue, "trackedDownloadState", "importPending");
+			assertPropertyEquals(issue, "trackedDownloadStatus", "warning");
+			assertPropertyEquals(issue, "errorMessage", "Import failed");
+			assert.deepStrictEqual(issue.statusMessages, [
+				"Import blocked",
+				"Missing episode file",
+			]);
 		} finally {
 			globalThis.fetch = originalFetch;
 		}

@@ -4,26 +4,26 @@
  */
 
 import type {
-	ServiceConfig,
-	OperationResult,
-	SystemStatusData,
-	QueueData,
-	QueueOptions,
-	GrabData,
-	RootFolderData,
-	QueueDiagnosticsData,
-	HistoryData,
-	HistoryOptions,
-	SearchData,
-	SearchOptions,
 	AddData,
 	AddRequest,
-	QualityProfileData,
+	GrabData,
+	HistoryData,
+	HistoryOptions,
 	ImportIssueData,
+	OperationResult,
+	QualityProfileData,
+	QueueData,
+	QueueDiagnosticsData,
+	QueueOptions,
+	RootFolderData,
+	SearchData,
+	SearchOptions,
+	ServiceConfig,
+	SystemStatusData,
 } from "../../src/services/base.js";
 import { BaseArrService } from "../../src/services/shared.js";
-import * as sonarrFixtures from "../fixtures/sonarr-responses.js";
 import * as radarrFixtures from "../fixtures/radarr-responses.js";
+import * as sonarrFixtures from "../fixtures/sonarr-responses.js";
 
 interface MockResponse {
 	[endpoint: string]: unknown;
@@ -129,10 +129,18 @@ export class MockSonarrService extends BaseArrService {
 					? Math.round(((item.size - item.sizeleft) / item.size) * 100)
 					: undefined,
 			mediaKind: this.mediaKind,
-			protocol: item.protocol,
-			estimatedCompletionTime: item.estimatedCompletionTime,
-			downloadId: item.downloadId,
-			outputPath: item.outputPath,
+			protocol: item.protocol ?? undefined,
+			estimatedCompletionTime: item.estimatedCompletionTime ?? undefined,
+			downloadId: item.downloadId ?? undefined,
+			outputPath: item.outputPath ?? undefined,
+			downloadClient:
+				item.downloadClient ??
+				(item as { downloadClientName?: string | null }).downloadClientName ??
+				undefined,
+			trackedDownloadState: item.trackedDownloadState ?? undefined,
+			trackedDownloadStatus: item.trackedDownloadStatus ?? undefined,
+			statusMessages: item.statusMessages,
+			errorMessage: item.errorMessage ?? undefined,
 		}));
 
 		return {
@@ -428,10 +436,18 @@ export class MockRadarrService extends BaseArrService {
 					? Math.round(((item.size - item.sizeleft) / item.size) * 100)
 					: undefined,
 			mediaKind: this.mediaKind,
-			protocol: item.protocol,
-			estimatedCompletionTime: item.estimatedCompletionTime,
-			downloadId: item.downloadId,
-			outputPath: item.outputPath,
+			protocol: item.protocol ?? undefined,
+			estimatedCompletionTime: item.estimatedCompletionTime ?? undefined,
+			downloadId: item.downloadId ?? undefined,
+			outputPath: item.outputPath ?? undefined,
+			downloadClient:
+				item.downloadClient ??
+				(item as { downloadClientName?: string | null }).downloadClientName ??
+				undefined,
+			trackedDownloadState: item.trackedDownloadState ?? undefined,
+			trackedDownloadStatus: item.trackedDownloadStatus ?? undefined,
+			statusMessages: item.statusMessages,
+			errorMessage: item.errorMessage ?? undefined,
 		}));
 
 		return {

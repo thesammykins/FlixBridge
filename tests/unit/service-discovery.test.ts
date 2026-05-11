@@ -3,16 +3,16 @@
  * Validates service and downloader registration and discovery
  */
 
-import { describe, test } from "../helpers/test-runner.js";
+import { serviceRegistry } from "../../src/services/registry.js";
 import {
-	assertOk,
-	assertHasData,
 	assertArrayLength,
+	assertHasData,
 	assertHasProperty,
+	assertOk,
 	assertPropertyEquals,
 } from "../helpers/assertions.js";
-import { serviceRegistry } from "../../src/services/registry.js";
 import { createMockServiceConfig } from "../helpers/mock-services.js";
+import { describe, test } from "../helpers/test-runner.js";
 
 await describe("Service Discovery - list_services", [
 	test("should discover registered Sonarr services", async () => {
