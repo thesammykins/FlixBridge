@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.11] - 2026-05-11
+
+- Improve queue diagnostics detail
+- fix: resolve npm audit findings
+- fix: normalize nullable queue fields
+- fix: type parsed queue diagnostics records
+- Merge pull request #2 from thesammykins/fix/rich-queue-diagnostics
+
 ## [0.3.9] - 2026-05-04
 
 ## [0.3.7] - 2026-05-04
