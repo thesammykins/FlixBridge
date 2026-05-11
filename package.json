@@ -1,6 +1,6 @@
 {
 	"name": "@thesammykins/flixbridge",
-	"version": "0.3.11",
+	"version": "0.3.12",
 	"description": "Media Management MCP Server - environment-only configuration for Sonarr/Radarr/SABnzbd",
 	"type": "module",
 	"main": "dist/index.js",
@@ -18,11 +18,7 @@
 	"publishConfig": {
 		"access": "public"
 	},
-	"files": [
-		"dist/**/*",
-		"README.md",
-		"LICENSE"
-	],
+	"files": ["dist/**/*", "README.md", "LICENSE"],
 	"scripts": {
 		"build": "tsc",
 		"dev": "tsx src/index.ts",
