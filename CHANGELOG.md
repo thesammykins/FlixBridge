@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.3.14] - 2026-05-11
+
+- Classify manual queue import blockers
+
 ## [0.3.13] - 2026-05-11
 
 - Classify not-an-upgrade queue items as safe downgrades
