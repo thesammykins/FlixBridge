@@ -100,6 +100,8 @@ interface QueueRecord {
 	id: number;
 	title: string;
 	status: string;
+	size?: number;
+	sizeleft?: number;
 	statusMessages?: StatusMessage[];
 	errorMessage?: string | null;
 	estimatedCompletionTime?: string | null;
@@ -657,7 +659,22 @@ export abstract class BaseArrService {
 				);
 				const queueData = QueueSchema.parse(queueResponse);
 
-				const allItems = (queueData.records || []) as QueueRecord[];
+				const allItems: QueueRecord[] = queueData.records.map((record) => {
+					if (
+						record.id === undefined ||
+						record.title === undefined ||
+						record.status === undefined
+					) {
+						throw new Error("Queue response item missing required fields");
+					}
+
+					return {
+						...record,
+						id: record.id,
+						title: record.title,
+						status: record.status,
+					};
+				});
 				const issuesAnalyzed: QueueIssueAnalysis[] = [];
 				const fixesAttempted: QueueFixAction[] = [];
 
