@@ -165,6 +165,7 @@ interface ManualImportReprocessRequest {
 	customFormatScore?: number;
 	indexerFlags?: number;
 	releaseType?: unknown;
+	importMode?: "move" | "copy";
 }
 
 const StatusSchema = z.object({
@@ -1524,11 +1525,14 @@ export abstract class BaseArrService {
 							headers: { "Content-Type": "application/json" },
 							body: JSON.stringify([item.selectedCandidate.request]),
 						});
+						const cleared = await this.waitForQueueItemToClear(item.id);
 						results.push({
 							id: item.id,
 							title: item.title,
-							status: "imported",
-							message: "Manual import triggered",
+							status: cleared ? "imported" : "failed",
+							message: cleared
+								? "Manual import completed and queue item cleared"
+								: "Manual import POST returned but queue item remained present",
 						});
 					} catch (error) {
 						results.push({
@@ -1560,6 +1564,23 @@ export abstract class BaseArrService {
 		} catch (error) {
 			return handleError(error, this.serviceName);
 		}
+	}
+
+	private async waitForQueueItemToClear(queueId: number): Promise<boolean> {
+		const delaysMs = [0, 1000, 2000, 4000];
+		for (const delayMs of delaysMs) {
+			if (delayMs > 0) {
+				await new Promise((resolve) => setTimeout(resolve, delayMs));
+			}
+			const queue = await this.queueList({ pageSize: 1000 });
+			if (!queue.ok || !queue.data) {
+				continue;
+			}
+			if (!queue.data.items.some((item) => item.id === queueId)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private async getManualImportCandidates(
@@ -1748,6 +1769,7 @@ export abstract class BaseArrService {
 			customFormatScore: candidate.customFormatScore,
 			indexerFlags: candidate.indexerFlags,
 			releaseType: candidate.releaseType,
+			importMode: "move",
 		};
 		if (!request.path && target.path) {
 			request.path = target.path;
