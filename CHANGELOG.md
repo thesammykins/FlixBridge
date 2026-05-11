@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.3.13] - 2026-05-11
+
+- Classify not-an-upgrade queue items as safe downgrades
+
 ## [0.3.11] - 2026-05-11
 
 - Improve queue diagnostics detail
