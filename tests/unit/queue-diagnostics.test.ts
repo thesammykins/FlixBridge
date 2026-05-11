@@ -185,6 +185,52 @@ await describe("Queue Diagnostics - Issue Detection", [
 		assertPropertyEquals(qualityIssue.category, "autoFixable", true);
 	}),
 
+	test("should detect ARR not-an-upgrade import warnings as quality downgrades", async () => {
+		const service = new MockSonarrService("sonarr-anime");
+		service.setMockResponse("/queue", {
+			totalRecords: 1,
+			records: [
+				{
+					id: 126,
+					title: "One.Piece.S01E01",
+					status: "completed",
+					trackedDownloadState: "importPending",
+					trackedDownloadStatus: "warning",
+					statusMessages: [
+						{
+							title: "Import blocked",
+							messages: [
+								"Not an upgrade for existing episode file(s)",
+								"Existing quality: WEBDL-1080p",
+								"New quality: WEBDL-720p",
+							],
+						},
+					],
+					downloadClient: "SAB",
+					downloadId: "SAB_downgrade",
+				},
+			],
+		});
+
+		const result = await service.queueDiagnostics(false);
+
+		assertOk(result);
+		assertHasData(result);
+		assertPropertyEquals(result.data, "issuesFound", 1);
+
+		const issue = result.data.issuesAnalyzed[0];
+		assertPropertyEquals(issue.category, "type", "quality_downgrade");
+		assertPropertyEquals(issue.category, "autoFixable", true);
+		assertPropertyEquals(issue, "trackedDownloadState", "importPending");
+		assertPropertyEquals(issue, "trackedDownloadStatus", "warning");
+		assert.deepStrictEqual(issue.statusMessages, [
+			"Import blocked",
+			"Not an upgrade for existing episode file(s)",
+			"Existing quality: WEBDL-1080p",
+			"New quality: WEBDL-720p",
+		]);
+	}),
+
 	test("should detect network error issues", async () => {
 		// Setup
 		const service = new MockRadarrService("radarr-main");

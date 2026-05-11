@@ -237,12 +237,20 @@ export class MockSonarrService extends BaseArrService {
 
 				if (
 					messages.includes("not a custom format upgrade") ||
-					messages.includes("do not improve")
+					messages.includes("do not improve") ||
+					messages.includes("not an upgrade") ||
+					(messages.includes("existing quality") &&
+						messages.includes("new quality"))
 				) {
 					return {
 						id: item.id,
 						title: item.title,
 						status: item.status,
+						trackedDownloadState: item.trackedDownloadState ?? undefined,
+						trackedDownloadStatus: item.trackedDownloadStatus ?? undefined,
+						statusMessages: (item.statusMessages || [])
+							.flatMap((m) => [m.title, ...(m.messages || [])])
+							.filter(Boolean),
 						category: {
 							type: "quality_downgrade" as const,
 							severity: "warning" as const,
@@ -544,12 +552,20 @@ export class MockRadarrService extends BaseArrService {
 
 				if (
 					messages.includes("not a custom format upgrade") ||
-					messages.includes("do not improve")
+					messages.includes("do not improve") ||
+					messages.includes("not an upgrade") ||
+					(messages.includes("existing quality") &&
+						messages.includes("new quality"))
 				) {
 					return {
 						id: item.id,
 						title: item.title,
 						status: item.status,
+						trackedDownloadState: item.trackedDownloadState ?? undefined,
+						trackedDownloadStatus: item.trackedDownloadStatus ?? undefined,
+						statusMessages: (item.statusMessages || [])
+							.flatMap((m) => [m.title, ...(m.messages || [])])
+							.filter(Boolean),
 						category: {
 							type: "quality_downgrade" as const,
 							severity: "warning" as const,
