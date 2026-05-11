@@ -18,6 +18,7 @@ Complete reference for all available Flix-Bridge tools with examples and respons
   - [queue_list](#queue_list)
   - [queue_grab](#queue_grab)
   - [remove_content](#remove_content)
+  - [manual_import](#manual_import)
   - [root_folders](#root_folders)
 - [Media Management](#media-management)
   - [search](#search)
@@ -336,6 +337,75 @@ Remove items from queue or library with optional preview and confirmation workfl
 - Manual review flags for items requiring investigation
 - Detailed preview showing exactly what will be affected
 - Optional downloader cleanup is previewed before execution when `removeFromDownloader:true` is used
+
+### manual_import
+
+Preview and execute safe one-item manual import candidates for a queue entry.
+
+The flow is strict by design: preview first, then execution only with the returned token.
+
+**Input (preview):**
+```json
+{
+  "service": "sonarr-main",
+  "queueId": 123,
+  "dryRun": true
+}
+```
+
+**Output (preview):**
+```json
+{
+  "ok": true,
+  "data": {
+    "service": "sonarr-main",
+    "mediaKind": "series",
+    "queueId": 123,
+    "candidates": [
+      {
+        "fileId": "uuid-or-id",
+        "path": "/media/downloads/show.S01E05.mkv",
+        "rejections": [],
+        "quality": "WEB-DL"
+      }
+    ],
+    "confirmationToken": "candidate_token",
+    "nextAction": "Call manual_import with dryRun:false and confirmationToken"
+  }
+}
+```
+
+**Input (execute):**
+```json
+{
+  "service": "sonarr-main",
+  "queueId": 123,
+  "dryRun": false,
+  "confirmationToken": "candidate_token"
+}
+```
+
+Execution uses Sonarr/Radarr UI-equivalent payload:
+`POST /api/v3/command` with `{"name":"ManualImport","files":[...],"importMode":"auto"}`.
+
+Execution is considered successful only if queue state changes after the POST (the item disappears or transitions away).
+
+**Output (execute):**
+```json
+{
+  "ok": true,
+  "data": {
+    "service": "sonarr-main",
+    "mediaKind": "series",
+    "queueId": 123,
+    "attempted": true,
+    "success": true,
+    "details": {
+      "message": "Manual import command sent and queue state changed"
+    }
+  }
+}
+```
 
 ### root_folders
 
@@ -699,7 +769,7 @@ Set `autoFix:false` for read-only diagnostics. If omitted, `autoFix` defaults to
 
 **Where Messages Come From:**
 - Flix-Bridge inspects Sonarr’s queue payload (`status`, `errorMessage`, and `statusMessages[].message`). That is why many diagnostics read “Manual investigation required” or “Automatic import is not possible.”
-- When we attempt Sonarr’s manual import API (`POST /api/v3/manualimport`), any `rejections[].reason` values from Sonarr are echoed in `fixesAttempted[].error` and the final `details[].message` reported by [`remove_content`](#remove_content).
+- Manual import attempts are executed using the Sonarr/Radarr UI-equivalent endpoint (`POST /api/v3/command`, `name: "ManualImport"`, `importMode: "auto"`) when candidates are available from `GET /manualimport`. If a manual-import POST returns success but the queue item remains present, Flix-Bridge treats that as unsuccessful and retries with an explicit queue-state check.
 - If Sonarr returns no manual-import candidates (common with torrent downloads), the diagnostic will state “Manual import unavailable: no candidates returned.” At that point the download can be removed safely, but you may choose to keep the payload for manual processing.
 
 ### all_services_diagnostics
