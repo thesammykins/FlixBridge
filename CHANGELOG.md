@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.3.16] - 2026-05-11
+
+- Verify manual import completion
+
 ## [0.3.15] - 2026-05-11
 
 - Add guarded manual import remediation
