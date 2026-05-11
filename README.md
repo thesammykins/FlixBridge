@@ -136,6 +136,7 @@ export SABNZBD_MAIN_API_KEY="{{SAB_MAIN_KEY}}"
 - **queue_list** - Download queue with progress tracking
 - **queue_grab** - Force retry/grab specific downloads  
 - **queue_diagnostics** - Analyze stuck items; pass `autoFix:false` for read-only checks
+- **manual_import** - Preview and execute one-item manual imports with confirmation-token flow
 - **remove_content** - Preview and remove queue, library, or downloader items with confirmation
 - **root_folders** - Storage locations and free space
 
