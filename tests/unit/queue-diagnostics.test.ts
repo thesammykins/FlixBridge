@@ -435,6 +435,170 @@ await describe("Queue Diagnostics - Auto-Fix", [
 		assertPropertyEquals(fix, "attempted", true);
 	}),
 
+	test("should preview and execute high-confidence manual imports", async () => {
+		const originalFetch = globalThis.fetch;
+		const calls: Array<{ url: string; init?: RequestInit }> = [];
+		globalThis.fetch = async (input, init) => {
+			const url =
+				typeof input === "string"
+					? input
+					: input instanceof URL
+						? input.toString()
+						: input.url;
+			calls.push({ url, init });
+			const path = new URL(url).pathname;
+			if (path === "/api/v3/queue") {
+				return new Response(
+					JSON.stringify({
+						totalRecords: 1,
+						records: [
+							{
+								id: 225,
+								title: "Manual.Import.S01E01",
+								status: "completed",
+								downloadId: "SAB_manual",
+								outputPath: "/downloads/complete/Manual.Import.S01E01",
+							},
+						],
+					}),
+					{ headers: { "Content-Type": "application/json" } },
+				);
+			}
+			if (path === "/api/v3/manualimport" && init?.method !== "POST") {
+				return new Response(
+					JSON.stringify([
+						{
+							id: 1,
+							path: "/downloads/complete/Manual.Import.S01E01/file.mkv",
+							series: { id: 2 },
+							episodes: [{ id: 789 }],
+							rejections: [],
+						},
+					]),
+					{ headers: { "Content-Type": "application/json" } },
+				);
+			}
+			if (path === "/api/v3/manualimport" && init?.method === "POST") {
+				return new Response(JSON.stringify({ ok: true }), {
+					headers: { "Content-Type": "application/json" },
+				});
+			}
+			return new Response(JSON.stringify({ error: "not found" }), {
+				status: 404,
+			});
+		};
+
+		try {
+			const service = new SonarrService("sonarr-main", {
+				baseUrl: "http://mock-sonarr:8989",
+				apiKey: "mock-api-key",
+			});
+			const preview = await service.previewManualImport([225]);
+			assertOk(preview);
+			assertHasData(preview);
+			assertPropertyEquals(preview.data.summary, "safe", 1);
+			assertPropertyEquals(preview.data.items[0], "safeToImport", true);
+
+			const execution = await service.executeManualImport(preview.data);
+			assertOk(execution);
+			assertHasData(execution);
+			assertPropertyEquals(execution.data, "imported", 1);
+			assert.strictEqual(
+				calls.some(
+					(call) =>
+						new URL(call.url).pathname === "/api/v3/manualimport" &&
+						call.init?.method === "POST",
+				),
+				true,
+			);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	}),
+
+	test("should not execute ambiguous manual import candidates", async () => {
+		const originalFetch = globalThis.fetch;
+		let postCount = 0;
+		globalThis.fetch = async (input, init) => {
+			const url =
+				typeof input === "string"
+					? input
+					: input instanceof URL
+						? input.toString()
+						: input.url;
+			const path = new URL(url).pathname;
+			if (path === "/api/v3/queue") {
+				return new Response(
+					JSON.stringify({
+						totalRecords: 1,
+						records: [
+							{
+								id: 226,
+								title: "Manual.Import.Ambiguous.S01E01",
+								status: "completed",
+								downloadId: "SAB_ambiguous",
+								outputPath:
+									"/downloads/complete/Manual.Import.Ambiguous.S01E01",
+							},
+						],
+					}),
+					{ headers: { "Content-Type": "application/json" } },
+				);
+			}
+			if (path === "/api/v3/manualimport" && init?.method !== "POST") {
+				return new Response(
+					JSON.stringify([
+						{
+							id: 1,
+							path: "/downloads/complete/Manual.Import.Ambiguous.S01E01/a.mkv",
+							series: { id: 2 },
+							episodes: [{ id: 789 }],
+							rejections: [],
+						},
+						{
+							id: 2,
+							path: "/downloads/complete/Manual.Import.Ambiguous.S01E01/b.mkv",
+							series: { id: 2 },
+							episodes: [{ id: 790 }],
+							rejections: [],
+						},
+					]),
+					{ headers: { "Content-Type": "application/json" } },
+				);
+			}
+			if (path === "/api/v3/manualimport" && init?.method === "POST") {
+				postCount += 1;
+				return new Response(JSON.stringify({ ok: true }), {
+					headers: { "Content-Type": "application/json" },
+				});
+			}
+			return new Response(JSON.stringify({ error: "not found" }), {
+				status: 404,
+			});
+		};
+
+		try {
+			const service = new SonarrService("sonarr-main", {
+				baseUrl: "http://mock-sonarr:8989",
+				apiKey: "mock-api-key",
+			});
+			const preview = await service.previewManualImport([226]);
+			assertOk(preview);
+			assertHasData(preview);
+			assertPropertyEquals(preview.data.summary, "safe", 0);
+			assertPropertyEquals(preview.data.items[0], "safeToImport", false);
+
+			const execution = await service.executeManualImport(preview.data);
+			assertOk(execution);
+			assertHasData(execution);
+			assertPropertyEquals(execution.data, "imported", 0);
+			assertPropertyEquals(execution.data, "skipped", 1);
+			assert.strictEqual(postCount, 0);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	}),
+
 	test("should remove quality downgrade items when autoFix enabled", async () => {
 		// Setup
 		const service = new MockRadarrService("radarr-main");
