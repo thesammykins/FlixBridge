@@ -1127,6 +1127,64 @@ export abstract class BaseArrService {
 			};
 		}
 
+		// ID-matched releases that ARR refuses to auto-import need human review.
+		if (
+			allMessages.includes("matched by id") ||
+			(allMessages.includes("manual import required") &&
+				allMessages.includes("matching")) ||
+			allMessages.includes("automatic import is not possible")
+		) {
+			return {
+				...baseAnalysis,
+				category: {
+					type: "import_blocked_id_match",
+					severity: "warning",
+					autoFixable: false,
+				},
+				message: "Import blocked because release was matched by ID",
+				suggestedAction:
+					"Review manual import and verify the intended media match before importing",
+			};
+		}
+
+		// Sample detection warnings are unsafe to auto-import without inspecting files.
+		if (
+			allMessages.includes("unable to determine if file is a sample") ||
+			allMessages.includes("sample")
+		) {
+			return {
+				...baseAnalysis,
+				category: {
+					type: "sample_detection_ambiguous",
+					severity: "warning",
+					autoFixable: false,
+				},
+				message: "Import blocked by ambiguous sample detection",
+				suggestedAction:
+					"Inspect release contents manually before importing or discarding",
+			};
+		}
+
+		// Episode-pack/folder mismatches require manual episode mapping review.
+		if (
+			allMessages.includes("episodes expected") ||
+			allMessages.includes("expected in this release") ||
+			allMessages.includes("unexpected considering the folder name") ||
+			allMessages.includes("was not found in the grabbed release")
+		) {
+			return {
+				...baseAnalysis,
+				category: {
+					type: "episode_pack_mismatch",
+					severity: "warning",
+					autoFixable: false,
+				},
+				message: "Episode pack contents do not match expected episodes",
+				suggestedAction:
+					"Manually verify the file list, folder naming, and episode mapping",
+			};
+		}
+
 		// Check if item appears stuck (downloading for too long)
 		const isStuck =
 			status.includes("warning") ||

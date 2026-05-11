@@ -253,6 +253,138 @@ await describe("Queue Diagnostics - Issue Detection", [
 		assertPropertyEquals(networkIssue.category, "severity", "warning");
 		assertPropertyEquals(networkIssue.category, "autoFixable", true);
 	}),
+
+	test("should classify ID-matched manual import blocks", async () => {
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = async () =>
+			new Response(
+				JSON.stringify({
+					totalRecords: 1,
+					records: [
+						{
+							id: 201,
+							title: "Matched.By.ID.S01E01",
+							status: "completed",
+							trackedDownloadState: "importBlocked",
+							trackedDownloadStatus: "warning",
+							statusMessages: [
+								{
+									title: "Import blocked",
+									messages: [
+										"Found matching series via grab history, but release was matched to series by ID. Automatic import is not possible.",
+									],
+								},
+							],
+						},
+					],
+				}),
+				{ headers: { "Content-Type": "application/json" } },
+			);
+
+		try {
+			const service = new SonarrService("sonarr-main", {
+				baseUrl: "http://mock-sonarr:8989",
+				apiKey: "mock-api-key",
+			});
+			const result = await service.queueDiagnostics(false);
+			assertOk(result);
+			assertHasData(result);
+			const issue = result.data.issuesAnalyzed[0];
+			assertPropertyEquals(issue.category, "type", "import_blocked_id_match");
+			assertPropertyEquals(issue.category, "autoFixable", false);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	}),
+
+	test("should classify ambiguous sample detection warnings", async () => {
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = async () =>
+			new Response(
+				JSON.stringify({
+					totalRecords: 1,
+					records: [
+						{
+							id: 202,
+							title: "Sample.Ambiguous.S01E01",
+							status: "completed",
+							trackedDownloadState: "importPending",
+							trackedDownloadStatus: "warning",
+							statusMessages: [
+								{
+									title: "Sample",
+									messages: ["Unable to determine if file is a sample"],
+								},
+							],
+						},
+					],
+				}),
+				{ headers: { "Content-Type": "application/json" } },
+			);
+
+		try {
+			const service = new SonarrService("sonarr-main", {
+				baseUrl: "http://mock-sonarr:8989",
+				apiKey: "mock-api-key",
+			});
+			const result = await service.queueDiagnostics(false);
+			assertOk(result);
+			assertHasData(result);
+			const issue = result.data.issuesAnalyzed[0];
+			assertPropertyEquals(
+				issue.category,
+				"type",
+				"sample_detection_ambiguous",
+			);
+			assertPropertyEquals(issue.category, "autoFixable", false);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	}),
+
+	test("should classify episode pack mismatches", async () => {
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = async () =>
+			new Response(
+				JSON.stringify({
+					totalRecords: 1,
+					records: [
+						{
+							id: 203,
+							title: "Anime.Volume.Pack",
+							status: "completed",
+							trackedDownloadState: "importBlocked",
+							trackedDownloadStatus: "warning",
+							statusMessages: [
+								{
+									title: "Episodes missing",
+									messages: [
+										"One or more episodes expected in this release were not imported or missing from the release",
+										"Episode 1x02 was unexpected considering the folder name",
+									],
+								},
+							],
+						},
+					],
+				}),
+				{ headers: { "Content-Type": "application/json" } },
+			);
+
+		try {
+			const service = new SonarrService("sonarr-main", {
+				baseUrl: "http://mock-sonarr:8989",
+				apiKey: "mock-api-key",
+			});
+			const result = await service.queueDiagnostics(false);
+			assertOk(result);
+			assertHasData(result);
+			const issue = result.data.issuesAnalyzed[0];
+			assertPropertyEquals(issue.category, "type", "episode_pack_mismatch");
+			assertPropertyEquals(issue.category, "autoFixable", false);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	}),
 ]);
 
 await describe("Queue Diagnostics - Auto-Fix", [

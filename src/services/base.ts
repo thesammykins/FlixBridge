@@ -191,6 +191,9 @@ export interface QueueIssueCategory {
 		| "network_error"
 		| "disk_space"
 		| "permissions"
+		| "import_blocked_id_match"
+		| "sample_detection_ambiguous"
+		| "episode_pack_mismatch"
 		| "unknown";
 	severity: "critical" | "warning" | "info";
 	autoFixable: boolean;
