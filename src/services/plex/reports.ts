@@ -31,10 +31,14 @@ function gqlHeaders(
 // GraphQL envelope: { data: ... } on success, { errors: [...] } on failure.
 // The whole payload is schema-validated before access — the raw upstream
 // object is never cast into a typed shape.
-const GraphqlEnvelopeSchema = z.object({
-	data: z.unknown().optional(),
-	errors: z.array(z.object({ message: z.string().optional() })).optional(),
-});
+const GraphqlEnvelopeSchema = z
+	.object({
+		data: z.unknown().optional(),
+		errors: z.array(z.object({ message: z.string().optional() })).optional(),
+	})
+	.refine((v) => v.data !== undefined || (v.errors?.length ?? 0) > 0, {
+		message: "envelope must contain data or errors",
+	});
 
 function parseGraphql<T>(payload: unknown, schema: z.ZodType<T>): T {
 	const envelope = GraphqlEnvelopeSchema.safeParse(payload);
@@ -92,7 +96,7 @@ const CommentNodeSchema = z.object({
 	date: z.string().optional(),
 	user: z
 		.object({
-			id: z.string().optional(),
+			id: z.string(),
 			username: z.string().optional(),
 			displayName: z.string().optional(),
 		})
@@ -113,7 +117,7 @@ export interface PlexComment {
 	id: string;
 	message?: string;
 	date?: string;
-	user?: { id?: string; username?: string; displayName?: string };
+	user?: { id: string; username?: string; displayName?: string };
 }
 
 const METADATA_KEY_RE = /library\/metadata\/(\d+)/;

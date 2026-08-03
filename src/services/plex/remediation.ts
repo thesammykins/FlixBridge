@@ -63,22 +63,28 @@ export type ResolutionState =
 	| "fixed";
 
 export function resolutionState(comments: PlexComment[]): ResolutionState {
-	// Scan the whole thread, newest signal wins. A negation anywhere after a
-	// "fixed" means the report is open again — never suppress an open report.
-	let sawFixed = false;
-	let askedClarification = false;
-	for (const c of comments) {
+	// Newest signal wins. Sort newest-first (comments without a parseable date
+	// sort last) and return on the first recognized resolution signal; an older
+	// "not fixed" must not override a newer "Fixed".
+	const ordered = [...comments].sort((a, b) => {
+		const da = Date.parse(a.date ?? "");
+		const db = Date.parse(b.date ?? "");
+		if (Number.isNaN(da) && Number.isNaN(db)) return 0;
+		if (Number.isNaN(da)) return 1;
+		if (Number.isNaN(db)) return -1;
+		return db - da;
+	});
+	for (const c of ordered) {
 		if (!c.message) continue;
 		const negated = FIXED_NEGATIONS.test(c.message);
 		if (FIXED_MARKERS.test(c.message) && !negated) {
-			sawFixed = true;
-		} else if (negated) {
-			return "unresolved";
+			return "fixed";
 		}
-		if (CLARIFY_MARKERS.test(c.message)) askedClarification = true;
+		if (negated) return "unresolved";
+		if (CLARIFY_MARKERS.test(c.message)) {
+			return "clarification_requested";
+		}
 	}
-	if (sawFixed) return "fixed";
-	if (askedClarification) return "clarification_requested";
 	return "unresolved";
 }
 

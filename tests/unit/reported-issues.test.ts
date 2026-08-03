@@ -708,6 +708,60 @@ await describe("Plex reported-issues remediation", [
 		) {
 			throw new Error("newer not-fixed must override older fixed");
 		}
+		// Newer fixed marker beats an older negation (inverse order).
+		if (
+			resolutionState([
+				{ id: "c1", message: "not fixed yet", date: "2026-07-30" },
+				{ id: "c2", message: "Fixed: added to radarr-hd", date: "2026-08-01" },
+			]) !== "fixed"
+		) {
+			throw new Error("newer fixed must override older not-fixed");
+		}
+	}),
+
+	test("malformed GraphQL envelope is rejected, not cast", async () => {
+		const oldFetch = global.fetch;
+		global.fetch = createMockFetch({
+			[PLEX_GRAPHQL]: { definitelyNotAnEnvelope: true },
+		}) as typeof global.fetch;
+		try {
+			const client = await makeClient();
+			const result = await client.listReports(10);
+			if (result.ok) {
+				throw new Error("malformed envelope must fail");
+			}
+			const err = result.error as { message?: string };
+			if (!err.message?.includes("envelope failed validation")) {
+				throw new Error(
+					`expected envelope validation error, got: ${err.message}`,
+				);
+			}
+		} finally {
+			global.fetch = oldFetch;
+		}
+	}),
+
+	test("malformed qualityprofile payload is rejected, not silently empty", async () => {
+		const oldFetch = global.fetch;
+		global.fetch = buildFetchStub({
+			"/api/v3/qualityprofile": { definitelyNotAnArray: true },
+		}) as typeof global.fetch;
+		try {
+			const radarr = new MockRadarrService(
+				"radarr-hd",
+				createMockServiceConfig(),
+			);
+			const result = await radarr.listQualityProfiles();
+			if (result.ok) {
+				throw new Error("malformed qualityprofile must fail");
+			}
+			const err = result.error as { message?: string };
+			if (!err.message?.includes("failed validation")) {
+				throw new Error(`expected validation error, got: ${err.message}`);
+			}
+		} finally {
+			global.fetch = oldFetch;
+		}
 	}),
 
 	test("add_or_upgrade rejects an explicitly wrong-kind service even when a correct-kind one exists", async () => {
