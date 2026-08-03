@@ -456,4 +456,67 @@ await describe("Plex reported-issues remediation", [
 			global.fetch = oldFetch;
 		}
 	}),
+
+	test("update_quality_profile GETs the item, swaps the profile, PUTs it back", async () => {
+		const oldFetch = global.fetch;
+		let putBody: string | null = null;
+		const seen: string[] = [];
+		const origFetch = global.fetch;
+		global.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+			const url =
+				typeof input === "string"
+					? input
+					: input instanceof URL
+						? input.toString()
+						: input.url;
+			const urlObj = new URL(url);
+			seen.push(`${init?.method ?? "GET"} ${urlObj.pathname}`);
+			if (init?.method === "PUT") {
+				putBody = typeof init.body === "string" ? init.body : null;
+				return new Response(JSON.stringify({ id: 2364, qualityProfileId: 7 }), {
+					status: 200,
+					headers: { "Content-Type": "application/json" },
+				});
+			}
+			if (urlObj.pathname === "/api/v3/movie/2364") {
+				return new Response(
+					JSON.stringify({
+						id: 2364,
+						title: "Leviticus",
+						year: 2026,
+						qualityProfileId: 3,
+						path: "/movies/Leviticus (2026)",
+					}),
+					{ status: 200, headers: { "Content-Type": "application/json" } },
+				);
+			}
+			return origFetch(input, init);
+		}) as typeof global.fetch;
+		try {
+			const radarr = new MockRadarrService(
+				"radarr-hd",
+				createMockServiceConfig(),
+			);
+			const result = await radarr.updateQualityProfile(2364, 7);
+			if (!result.ok || !result.data) throw new Error("update failed");
+			if (result.data.updated !== true || result.data.qualityProfileId !== 7) {
+				throw new Error(`unexpected result: ${JSON.stringify(result.data)}`);
+			}
+			if (
+				!seen.some((s) => s === "GET /api/v3/movie/2364") ||
+				!seen.some((s) => s === "PUT /api/v3/movie/2364")
+			) {
+				throw new Error(
+					`expected GET+PUT on /movie/2364, saw: ${seen.join(", ")}`,
+				);
+			}
+			if (!putBody || !(putBody as string).includes('"qualityProfileId":7')) {
+				throw new Error(
+					`expected PUT body with qualityProfileId 7, got: ${putBody}`,
+				);
+			}
+		} finally {
+			global.fetch = oldFetch;
+		}
+	}),
 ]);

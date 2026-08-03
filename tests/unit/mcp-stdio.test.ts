@@ -35,6 +35,7 @@ const EXPECTED_TOOLS = [
 	"server_metrics",
 	"reported_issues",
 	"remediate_reported_issue",
+	"update_quality_profile",
 ];
 
 function isJsonObject(value: unknown): value is Record<string, unknown> {

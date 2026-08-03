@@ -307,6 +307,20 @@ const tools = [
 			required: ["reportId", "action"],
 		},
 	},
+	{
+		name: "update_quality_profile",
+		description:
+			"Change a library item's quality profile (e.g. align an item with the library standard). Takes the service, the arr item id, and the target qualityProfileId (see quality_profiles for ids and usage).",
+		inputSchema: {
+			type: "object",
+			properties: {
+				service: { type: "string" },
+				itemId: { type: "number" },
+				qualityProfileId: { type: "number" },
+			},
+			required: ["service", "itemId", "qualityProfileId"],
+		},
+	},
 ];
 
 const InputSchema = z.object({
@@ -339,6 +353,7 @@ const InputSchema = z.object({
 	confirmationToken: z.string().optional(),
 	queueTimeoutMs: z.number().optional(),
 	reportId: z.string().optional(),
+	itemId: z.number().optional(),
 	action: z
 		.enum(["comment_only", "re_search", "add_or_upgrade", "remove_and_regrab"])
 		.optional(),
@@ -467,6 +482,8 @@ class ArrMcpServer {
 					dryRun: input.dryRun,
 					confirmationToken: input.confirmationToken,
 				});
+			} else if (name === "update_quality_profile") {
+				result = await this.handleUpdateQualityProfile(input);
 			} else {
 				const service = serviceRegistry.get(input.service || "");
 				if (!service) {
@@ -1585,6 +1602,34 @@ class ArrMcpServer {
 		}
 
 		return await executeRemediation(client, report, input, services);
+	}
+
+	private async handleUpdateQualityProfile(input: {
+		service?: string;
+		itemId?: number;
+		qualityProfileId?: number;
+	}) {
+		if (
+			!input.service ||
+			input.itemId === undefined ||
+			input.qualityProfileId === undefined
+		) {
+			throw new McpError(
+				ErrorCode.InvalidParams,
+				"service, itemId and qualityProfileId are required",
+			);
+		}
+		const service = serviceRegistry.get(input.service);
+		if (!service) {
+			throw new McpError(
+				ErrorCode.InvalidParams,
+				`Service ${input.service} not found.`,
+			);
+		}
+		return await service.updateQualityProfile(
+			input.itemId,
+			input.qualityProfileId,
+		);
 	}
 }
 

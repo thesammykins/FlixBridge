@@ -25,6 +25,7 @@ import type {
 	ManualImportPreviewItem,
 	OperationResult,
 	QualityProfileData,
+	QualityProfileUpdateData,
 	QueueData,
 	QueueDiagnosticsData,
 	QueueFixAction,
@@ -837,6 +838,46 @@ export abstract class BaseArrService {
 					mediaKind: this.mediaKind,
 					triggered: true,
 					command: command.name,
+				},
+			};
+		} catch (error) {
+			return handleError(error, this.serviceName);
+		}
+	}
+
+	// Change a library item's quality profile. Radarr/Sonarr PUT is a
+	// full-object replace, so fetch the item, swap the profile id, PUT back.
+	async updateQualityProfile(
+		itemId: number,
+		qualityProfileId: number,
+	): Promise<OperationResult<QualityProfileUpdateData>> {
+		debugOperation(this.serviceName, "updateQualityProfile", {
+			itemId,
+			qualityProfileId,
+		});
+		try {
+			const endpoint =
+				this.id === "sonarr" ? `/series/${itemId}` : `/movie/${itemId}`;
+			const item: Record<string, unknown> = await fetchJson(
+				this.buildApiUrl(endpoint),
+			);
+			if (!item || typeof item !== "object") {
+				throw new Error(`Item ${itemId} not found on ${this.serviceName}`);
+			}
+			item.qualityProfileId = qualityProfileId;
+			await fetchJson(this.buildApiUrl(endpoint), {
+				method: "PUT",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(item),
+			});
+			return {
+				ok: true,
+				data: {
+					service: this.serviceName,
+					mediaKind: this.mediaKind,
+					itemId,
+					qualityProfileId,
+					updated: true,
 				},
 			};
 		} catch (error) {

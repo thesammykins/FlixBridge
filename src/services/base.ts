@@ -403,6 +403,14 @@ export interface SearchTriggerData {
 	command?: string;
 }
 
+export interface QualityProfileUpdateData {
+	service: string;
+	mediaKind: "series" | "movie";
+	itemId: number;
+	qualityProfileId: number;
+	updated: boolean;
+}
+
 export interface EpisodeFileMatch {
 	episodeId: number;
 	episodeFileId?: number;
@@ -458,6 +466,10 @@ export interface ServiceImplementation {
 	): Promise<OperationResult<LibraryLookupData>>;
 	deleteFile(fileId: number): Promise<OperationResult<FileDeleteData>>;
 	triggerSearch(itemId: number): Promise<OperationResult<SearchTriggerData>>;
+	updateQualityProfile(
+		itemId: number,
+		qualityProfileId: number,
+	): Promise<OperationResult<QualityProfileUpdateData>>;
 	lookupEpisodeFile(
 		seriesId: number,
 		seasonNumber?: number,
