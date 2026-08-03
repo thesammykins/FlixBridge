@@ -62,6 +62,7 @@ const LibraryItemSchema = z.object({
 	year: z.number().optional(),
 	path: z.string().optional(),
 	hasFile: z.boolean().optional(),
+	qualityProfileId: z.number().optional(),
 	statistics: z.object({ episodeFileCount: z.number().optional() }).optional(),
 	movieFile: z.object({ id: z.number().optional() }).optional(),
 });
@@ -2136,13 +2137,13 @@ export abstract class BaseArrService {
 	): Promise<{ recommended: number | null; usage: Map<number, number> }> {
 		try {
 			const listEndpoint = this.id === "sonarr" ? "/series" : "/movie";
-			const items: Array<{ qualityProfileId?: unknown }> = await fetchJson(
-				this.buildApiUrl(listEndpoint),
-			);
-			if (Array.isArray(items) && items.length > 0) {
+			const response: unknown = await fetchJson(this.buildApiUrl(listEndpoint));
+			const parsed = LibraryItemArraySchema.safeParse(response);
+			const items = parsed.success ? parsed.data : [];
+			if (items.length > 0) {
 				const counts = new Map<number, number>();
 				for (const item of items) {
-					if (typeof item.qualityProfileId === "number") {
+					if (item.qualityProfileId !== undefined) {
 						counts.set(
 							item.qualityProfileId,
 							(counts.get(item.qualityProfileId) ?? 0) + 1,

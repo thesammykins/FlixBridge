@@ -675,4 +675,60 @@ await describe("Plex reported-issues remediation", [
 			global.fetch = oldFetch;
 		}
 	}),
+
+	test('resolutionState: negated comments ("not fixed") stay unresolved', () => {
+		if (
+			resolutionState([{ id: "c1", message: "not fixed yet" }]) !== "unresolved"
+		) {
+			throw new Error('"not fixed yet" must not resolve as fixed');
+		}
+		if (
+			resolutionState([{ id: "c1", message: "still broken" }]) !== "unresolved"
+		) {
+			throw new Error('"still broken" must not resolve as fixed');
+		}
+		if (
+			resolutionState([{ id: "c1", message: "Fixed: added to radarr-hd" }]) !==
+			"fixed"
+		) {
+			throw new Error("positive fixed marker must resolve as fixed");
+		}
+		if (
+			resolutionState([{ id: "c1", message: "not fixed", date: "x" }]) !==
+			"unresolved"
+		) {
+			throw new Error("explicit not-fixed must stay unresolved");
+		}
+	}),
+
+	test("add_or_upgrade never falls back to a wrong-kind service", async () => {
+		const oldFetch = global.fetch;
+		global.fetch = buildFetchStub() as typeof global.fetch;
+		try {
+			const client = await makeClient();
+			// Movie report; only a sonarr service is passed explicitly.
+			const sonarr = new MockSonarrService(
+				"sonarr-hd",
+				createMockServiceConfig(),
+			);
+			const preview = await planRemediation(
+				client,
+				reportFixture(),
+				"add_or_upgrade",
+				"sonarr-hd",
+				[sonarr],
+			);
+			if (preview.ok) {
+				throw new Error(
+					`movie report must not plan against sonarr: ${JSON.stringify(preview.data)}`,
+				);
+			}
+			const err = preview.error as { message?: string };
+			if (!err.message?.includes("radarr service matched")) {
+				throw new Error(`expected right-kind error, got: ${err.message}`);
+			}
+		} finally {
+			global.fetch = oldFetch;
+		}
+	}),
 ]);

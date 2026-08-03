@@ -28,7 +28,10 @@ function gqlHeaders(
 	};
 }
 
-function parseGraphql<T>(payload: unknown): T {
+// GraphQL envelope: either { errors: [...] } or { data: ... }. The node
+// containers (reports/reportComments/createReportComment) are zod-validated
+// by the caller via the schema argument — never cast raw upstream data.
+function parseGraphql<T>(payload: unknown, schema: z.ZodType<T>): T {
 	if (
 		payload &&
 		typeof payload === "object" &&
@@ -45,7 +48,18 @@ function parseGraphql<T>(payload: unknown): T {
 			message: `Plex GraphQL error: ${message}`,
 		} as ServiceError;
 	}
-	return (payload as { data: T }).data;
+	const data = (payload as { data?: unknown }).data;
+	const parsed = schema.safeParse(data);
+	if (!parsed.success) {
+		throw {
+			service: "plex",
+			status: 0,
+			message: `Plex GraphQL response failed validation: ${parsed.error.issues
+				.map((i) => `${i.path.join(".")}: ${i.message}`)
+				.join("; ")}`,
+		} as ServiceError;
+	}
+	return parsed.data;
 }
 
 // Report node — field set mirrors the web app's getReportedIssues query.
@@ -152,12 +166,15 @@ export class PlexReportsClient {
 					variables: { first: limit, after: null },
 				}),
 			});
-			const data = parseGraphql<{
-				reports: {
-					nodes: unknown[];
-					pageInfo: { hasNextPage: boolean; endCursor?: string };
-				};
-			}>(payload);
+			const data = parseGraphql(
+				payload,
+				z.object({
+					reports: z.object({
+						nodes: z.array(z.unknown()),
+						pageInfo: z.object({ hasNextPage: z.boolean() }).passthrough(),
+					}),
+				}),
+			);
 
 			const reports: PlexReport[] = [];
 			for (const raw of data.reports.nodes) {
@@ -193,8 +210,9 @@ export class PlexReportsClient {
 				variables: { id: reportId, first: 20 },
 			}),
 		});
-		const data = parseGraphql<{ reportComments: { nodes: unknown[] } }>(
+		const data = parseGraphql(
 			payload,
+			z.object({ reportComments: z.object({ nodes: z.array(z.unknown()) }) }),
 		);
 		return data.reportComments.nodes.map((raw) => {
 			const node = CommentNodeSchema.parse(raw);
@@ -225,7 +243,10 @@ export class PlexReportsClient {
 					variables: { input: { report: reportId, message } },
 				}),
 			});
-			const data = parseGraphql<{ createReportComment: unknown }>(payload);
+			const data = parseGraphql(
+				payload,
+				z.object({ createReportComment: z.unknown() }),
+			);
 			const node = CommentNodeSchema.parse(data.createReportComment);
 			return {
 				ok: true,

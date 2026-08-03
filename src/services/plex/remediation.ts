@@ -48,7 +48,12 @@ export interface RemediateInput {
 	confirmationToken?: string;
 }
 
+// Fixed markers: a comment only counts as "fixed" when the user/our side
+// explicitly says it's resolved. Negated phrases ("not fixed", "still broken")
+// must NOT be treated as fixed — that would suppress still-open reports.
 const FIXED_MARKERS = /\b(fixed|resolved|regrabb?ed|replaced|upgraded|done)\b/i;
+const FIXED_NEGATIONS =
+	/\b(not\s+(fixed|resolved|done)|still\s+(broken|freezing|cutting|cut|failing|glitch)|never\s+fixed|doesn'?t\s+work|unresolved)\b/i;
 const CLARIFY_MARKERS =
 	/\b(more specific|clarif|what exactly|which device|user-side)\b/i;
 
@@ -58,13 +63,15 @@ export type ResolutionState =
 	| "fixed";
 
 export function resolutionState(comments: PlexComment[]): ResolutionState {
+	let askedClarification = false;
 	for (const c of comments) {
-		if (c.message && FIXED_MARKERS.test(c.message)) return "fixed";
+		if (!c.message) continue;
+		if (FIXED_MARKERS.test(c.message) && !FIXED_NEGATIONS.test(c.message)) {
+			return "fixed";
+		}
+		if (CLARIFY_MARKERS.test(c.message)) askedClarification = true;
 	}
-	for (const c of comments) {
-		if (c.message && CLARIFY_MARKERS.test(c.message))
-			return "clarification_requested";
-	}
+	if (askedClarification) return "clarification_requested";
 	return "unresolved";
 }
 
@@ -220,25 +227,35 @@ export async function planRemediation(
 	}
 
 	const matches = await resolveReportMatches(client, report, services);
-	const explicitMatch: ServiceMatch | undefined = serviceName
-		? matches.find((m) => m.service === serviceName)
-		: undefined;
+	const rightKind = item.type === "movie" ? "radarr" : "sonarr";
+	const rightKindService = (name: string | undefined) =>
+		name !== undefined &&
+		services.some((s) => s.serviceName === name && s.id === rightKind);
+	const explicitMatch: ServiceMatch | undefined =
+		serviceName && rightKindService(serviceName)
+			? matches.find((m) => m.service === serviceName)
+			: undefined;
 	const chosen = explicitMatch ?? bestMatch(matches);
 
 	// For add_or_upgrade a missing match is expected: no service holds the item
 	// yet, so fall back to the first service of the right kind (or the explicit
-	// service) with matchType "none" so the caller can add it.
-	const rightKind = item.type === "movie" ? "radarr" : "sonarr";
+	// service, only if it's the right kind) with matchType "none" so the caller
+	// can add it. A movie report must never fall back to Sonarr, or an episode
+	// report to Radarr.
 	const fallbackChosen: ServiceMatch | undefined =
 		!chosen && action === "add_or_upgrade"
-			? {
-					service:
-						serviceName && services.some((s) => s.serviceName === serviceName)
+			? (() => {
+					const service =
+						serviceName && rightKindService(serviceName)
 							? serviceName
-							: (services.find((s) => s.id === rightKind)?.serviceName ?? ""),
-					mediaKind: rightKind === "sonarr" ? "series" : "movie",
-					matchType: "none",
-				}
+							: (services.find((s) => s.id === rightKind)?.serviceName ?? "");
+					if (!service) return undefined;
+					return {
+						service,
+						mediaKind: rightKind === "sonarr" ? "series" : "movie",
+						matchType: "none",
+					};
+				})()
 			: undefined;
 
 	const target: ServiceMatch | undefined = chosen ?? fallbackChosen;
