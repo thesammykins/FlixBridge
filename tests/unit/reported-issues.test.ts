@@ -1,0 +1,340 @@
+/**
+ * Tests for Plex reported-issues remediation: report URL resolution, service
+ * matching (HD/UHD/anime aware), resolution state from comments, and the
+ * remove_and_regrab confirmation-token contract.
+ *
+ * The Plex client and arr primitives all route through fetchJson → global.fetch,
+ * so the test stubs global.fetch with createMockFetch. No network.
+ */
+
+import {
+	buildComment,
+	executeRemediation,
+	planRemediation,
+	resolutionState,
+	resolveReportMatches,
+	resolveReports,
+} from "../../src/services/plex/remediation.js";
+import { PlexReportsClient } from "../../src/services/plex/reports.js";
+import {
+	type PlexReport,
+	plexConfigFromEnv,
+} from "../../src/services/plex/reports.js";
+import {
+	assertHasData,
+	assertOk,
+	assertPropertyEquals,
+} from "../helpers/assertions.js";
+import {
+	MockRadarrService,
+	MockSonarrService,
+	createMockFetch,
+	createMockServiceConfig,
+} from "../helpers/mock-services.js";
+import { describe, test } from "../helpers/test-runner.js";
+
+const PLEX_GRAPHQL = "https://community.plex.tv/api";
+
+function reportFixture(overrides: Partial<PlexReport> = {}): PlexReport {
+	return {
+		id: "report-1",
+		message: "gib me 1080 plez",
+		url: "server://6cf8bfab123/com.plexapp.plugins.library/library/metadata/242722",
+		date: "2026-07-31T10:00:00Z",
+		commentCount: 0,
+		comments: [],
+		...overrides,
+	};
+}
+
+function metadataResponse(
+	key: string,
+	overrides: Record<string, unknown> = {},
+) {
+	return {
+		MediaContainer: {
+			Metadata: [
+				{
+					ratingKey: key,
+					type: "movie",
+					title: "Leviticus",
+					year: 2026,
+					...overrides,
+				},
+			],
+		},
+	};
+}
+
+function gqlReportsResponse(nodes: unknown[]) {
+	return {
+		data: {
+			reports: { nodes, pageInfo: { hasNextPage: false, endCursor: null } },
+		},
+	};
+}
+
+// Default stub: reports list + the single metadata item + empty comments.
+function buildFetchStub(extra: Record<string, unknown> = {}) {
+	return createMockFetch({
+		[PLEX_GRAPHQL]: gqlReportsResponse([
+			{
+				__typename: "Report",
+				id: "report-1",
+				message: "gib me 1080 plez",
+				user: { id: "u1", username: "KritxLana" },
+				url: "server://6cf8bfab123/com.plexapp.plugins.library/library/metadata/242722",
+				date: "2026-07-31T10:00:00Z",
+				commentCount: 0,
+			},
+		]),
+		"/library/metadata/242722": metadataResponse("242722"),
+		"/library/metadata/0": { MediaContainer: { Metadata: [] } },
+		"/api/v3/series": [],
+		"/api/v3/movie": [
+			{
+				id: 10,
+				title: "Leviticus",
+				year: 2026,
+				hasFile: true,
+				movieFile: { id: 99 },
+			},
+		],
+		"/api/v3/movie/lookup": [{ title: "Leviticus", year: 2026, tmdbId: 12345 }],
+		"/api/v3/qualityprofile": [
+			{ id: 1, name: "HD-1080p", upgradeAllowed: true, cutoff: 1 },
+		],
+		"/api/v3/command": { id: 1, name: "MoviesSearch" },
+		"/api/v3/moviefile/99": {},
+		...extra,
+	});
+}
+
+async function makeClient(): Promise<PlexReportsClient> {
+	const config = plexConfigFromEnv();
+	if (!config) {
+		return new PlexReportsClient({
+			baseUrl: "http://plex:32400",
+			token: "test-token",
+		});
+	}
+	return new PlexReportsClient(config);
+}
+
+await describe("Plex reported-issues remediation", [
+	test("resolutionState: no comments → unresolved; fixed marker → fixed; clarify marker → clarification_requested", () => {
+		if (resolutionState([]) !== "unresolved")
+			throw new Error("expected unresolved");
+		if (
+			resolutionState([{ id: "c1", message: "Fixed: removed broken file" }]) !==
+			"fixed"
+		)
+			throw new Error("expected fixed");
+		if (
+			resolutionState([{ id: "c1", message: "Which device is this on?" }]) !==
+			"clarification_requested"
+		)
+			throw new Error("expected clarification_requested");
+	}),
+
+	test("resolveReports: resolves URL to item and matches the right service kind", async () => {
+		const oldFetch = global.fetch;
+		global.fetch = buildFetchStub() as typeof global.fetch;
+		try {
+			const client = await makeClient();
+			const sonarr = new MockSonarrService(
+				"sonarr-hd",
+				createMockServiceConfig(),
+			);
+			const radarr = new MockRadarrService(
+				"radarr-hd",
+				createMockServiceConfig(),
+			);
+			const radarrUhd = new MockRadarrService(
+				"radarr-uhd",
+				createMockServiceConfig(),
+			);
+
+			const reports = await resolveReports(
+				client,
+				[reportFixture()],
+				[sonarr, radarr, radarrUhd],
+			);
+
+			const resolved = reports[0];
+			if (!resolved) throw new Error("no resolved report");
+			assertPropertyEquals(resolved.item?.title, "Leviticus");
+			// Movie → only radarr services considered.
+			assertPropertyEquals(resolved.matches.length, 2);
+			const exact = resolved.matches.find((m) => m.matchType === "exact");
+			if (!exact) throw new Error("no exact match");
+			assertPropertyEquals(exact.service, "radarr-hd");
+			assertPropertyEquals(exact.item?.id, 10);
+		} finally {
+			global.fetch = oldFetch;
+		}
+	}),
+
+	test("planRemediation add_or_upgrade: item not in library → add with standard profile note", async () => {
+		const oldFetch = global.fetch;
+		global.fetch = buildFetchStub({
+			"/api/v3/movie": [],
+		}) as typeof global.fetch;
+		try {
+			const client = await makeClient();
+			const radarr = new MockRadarrService(
+				"radarr-hd",
+				createMockServiceConfig(),
+			);
+			const plan = await planRemediation(
+				client,
+				reportFixture(),
+				"add_or_upgrade",
+				undefined,
+				[radarr],
+			);
+			assertOk(plan);
+			assertHasData(plan);
+			assertPropertyEquals(plan.data?.service, "radarr-hd");
+			if (!plan.data?.note.includes("add with standard quality profile")) {
+				throw new Error(`unexpected note: ${plan.data?.note}`);
+			}
+		} finally {
+			global.fetch = oldFetch;
+		}
+	}),
+
+	test("planRemediation remove_and_regrab on movie: resolves movie file id", async () => {
+		const oldFetch = global.fetch;
+		global.fetch = buildFetchStub() as typeof global.fetch;
+		try {
+			const client = await makeClient();
+			const radarr = new MockRadarrService(
+				"radarr-hd",
+				createMockServiceConfig(),
+			);
+			const plan = await planRemediation(
+				client,
+				reportFixture(),
+				"remove_and_regrab",
+				undefined,
+				[radarr],
+			);
+			assertOk(plan);
+			assertHasData(plan);
+			assertPropertyEquals(plan.data?.item?.movieFileId, 99);
+		} finally {
+			global.fetch = oldFetch;
+		}
+	}),
+
+	test("remove_and_regrab requires a confirmation token; execute fails without one", async () => {
+		const oldFetch = global.fetch;
+		global.fetch = buildFetchStub() as typeof global.fetch;
+		try {
+			const client = await makeClient();
+			const radarr = new MockRadarrService(
+				"radarr-hd",
+				createMockServiceConfig(),
+			);
+			const result = await executeRemediation(
+				client,
+				reportFixture(),
+				{ reportId: "report-1", action: "remove_and_regrab" },
+				[radarr],
+			);
+			if (result.ok) throw new Error("expected failure without token");
+			if (!("message" in result.error))
+				throw new Error("expected internal error");
+			if (!result.error.message.includes("Confirmation token")) {
+				throw new Error(`unexpected message: ${result.error.message}`);
+			}
+		} finally {
+			global.fetch = oldFetch;
+		}
+	}),
+
+	test("buildComment: comment_only default asks for specifics; fixed actions say Fixed:", () => {
+		const preview = {
+			reportId: "report-1",
+			action: "comment_only" as const,
+			service: "radarr-hd",
+			matchType: "exact" as const,
+			item: { id: 10, title: "Leviticus", year: 2026, hasFile: true },
+			resolvedTitle: "Leviticus",
+			note: "",
+		};
+		const clarify = buildComment("comment_only", preview);
+		if (!clarify.includes("more specific"))
+			throw new Error(`unexpected: ${clarify}`);
+		const fixed = buildComment("re_search", preview);
+		if (!fixed.includes("Fixed:")) throw new Error(`unexpected: ${fixed}`);
+	}),
+
+	test("episode report matches sonarr services and resolves episode file id", async () => {
+		const oldFetch = global.fetch;
+		const epReport = reportFixture({
+			message: "Wrong ep DLd",
+			url: "server://6cf8bfab123/com.plexapp.plugins.library/library/metadata/234065",
+		});
+		global.fetch = buildFetchStub({
+			"/library/metadata/234065": metadataResponse("234065", {
+				type: "episode",
+				title: "Destined",
+				grandparentTitle: "Heartbreak High (2022)",
+				parentIndex: 3,
+				index: 5,
+				year: 2026,
+			}),
+			"/api/v3/series": [
+				{
+					id: 7,
+					title: "Heartbreak High (2022)",
+					year: 2022,
+					statistics: { episodeFileCount: 12 },
+				},
+			],
+			"/api/v3/episode": [
+				{
+					id: 40,
+					seasonNumber: 3,
+					episodeNumber: 5,
+					title: "Destined",
+					hasFile: true,
+					episodeFile: { id: 88 },
+				},
+			],
+		}) as typeof global.fetch;
+		try {
+			const client = await makeClient();
+			const sonarr = new MockSonarrService(
+				"sonarr-hd",
+				createMockServiceConfig(),
+			);
+			const radarr = new MockRadarrService(
+				"radarr-hd",
+				createMockServiceConfig(),
+			);
+			const matches = await resolveReportMatches(client, epReport, [
+				sonarr,
+				radarr,
+			]);
+			const sonarrMatch = matches.find((m) => m.service === "sonarr-hd");
+			if (!sonarrMatch) throw new Error("no sonarr match");
+			assertPropertyEquals(sonarrMatch.item?.id, 7);
+
+			const plan = await planRemediation(
+				client,
+				epReport,
+				"remove_and_regrab",
+				undefined,
+				[sonarr, radarr],
+			);
+			assertOk(plan);
+			assertHasData(plan);
+			assertPropertyEquals(plan.data?.episodeFileId, 88);
+		} finally {
+			global.fetch = oldFetch;
+		}
+	}),
+]);

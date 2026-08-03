@@ -10,10 +10,15 @@ import { withMetrics } from "../metrics.js";
 import type {
 	AddData,
 	AddRequest,
+	EpisodeFileMatch,
+	EpisodeLookupData,
+	FileDeleteData,
 	GrabData,
 	HistoryData,
 	HistoryOptions,
 	ImportIssueData,
+	LibraryItemMatch,
+	LibraryLookupData,
 	ManualImportCandidatePreview,
 	ManualImportExecutionData,
 	ManualImportPreviewData,
@@ -34,6 +39,7 @@ import type {
 	RootFolderData,
 	SearchData,
 	SearchOptions,
+	SearchTriggerData,
 	ServiceConfig,
 	ServiceError,
 	SystemStatusData,
@@ -657,6 +663,188 @@ export abstract class BaseArrService {
 		}
 	}
 
+	// Find a library item by title (and optionally year). Sonarr: GET /series
+	// (list of monitored series); Radarr: GET /movie. Titles are compared
+	// case-insensitively; when a year is given a mismatched year demotes the
+	// match instead of rejecting it so callers can distinguish exact from fuzzy.
+	async lookupLibraryItem(
+		title: string,
+		year?: number,
+	): Promise<OperationResult<LibraryLookupData>> {
+		debugOperation(this.serviceName, "lookupLibraryItem", { title, year });
+		try {
+			const listEndpoint = this.id === "sonarr" ? "/series" : "/movie";
+			const response: Array<Record<string, unknown>> = await fetchJson(
+				this.buildApiUrl(listEndpoint),
+			);
+			const items = Array.isArray(response) ? response : [];
+			const needle = title.trim().toLowerCase();
+
+			const matches: LibraryItemMatch[] = items
+				.map((item) => {
+					const itemTitle = String(item.title ?? "");
+					const itemYear =
+						typeof item.year === "number" ? item.year : undefined;
+					const hasFile =
+						this.id === "sonarr"
+							? Boolean(
+									(item.statistics as { episodeFileCount?: number })
+										?.episodeFileCount,
+								)
+							: Boolean(item.hasFile);
+					return {
+						id: typeof item.id === "number" ? item.id : 0,
+						title: itemTitle,
+						year: itemYear,
+						hasFile,
+						path: typeof item.path === "string" ? item.path : undefined,
+						...(this.id === "radarr"
+							? {
+									movieFileId:
+										typeof (item.movieFile as { id?: unknown })?.id === "number"
+											? (item.movieFile as { id: number }).id
+											: undefined,
+								}
+							: {}),
+					} as LibraryItemMatch;
+				})
+				.filter(
+					(item) =>
+						item.id > 0 &&
+						(item.title.trim().toLowerCase() === needle ||
+							item.title.trim().toLowerCase().includes(needle)),
+				)
+				.sort((a, b) => {
+					// Exact title+year match first; exact title next; then fuzzy.
+					const score = (m: LibraryItemMatch) =>
+						(m.title.trim().toLowerCase() === needle ? 2 : 0) +
+						(year !== undefined && m.year === year ? 1 : 0);
+					return score(b) - score(a);
+				});
+
+			return {
+				ok: true,
+				data: {
+					service: this.serviceName,
+					mediaKind: this.mediaKind,
+					matches,
+				},
+			};
+		} catch (error) {
+			return handleError(error, this.serviceName);
+		}
+	}
+
+	// Delete a single media file by file id. Sonarr: DELETE /episodefile/{id};
+	// Radarr: DELETE /moviefile/{id}.
+	async deleteFile(fileId: number): Promise<OperationResult<FileDeleteData>> {
+		debugOperation(this.serviceName, "deleteFile", { fileId });
+		try {
+			const endpoint =
+				this.id === "sonarr"
+					? `/episodefile/${fileId}`
+					: `/moviefile/${fileId}`;
+			await fetchJson(this.buildApiUrl(endpoint), { method: "DELETE" });
+			return {
+				ok: true,
+				data: {
+					service: this.serviceName,
+					mediaKind: this.mediaKind,
+					fileId,
+					deleted: true,
+				},
+			};
+		} catch (error) {
+			return handleError(error, this.serviceName);
+		}
+	}
+
+	// Trigger an arr search for a library item so it re-grabs a replacement.
+	// Sonarr: SeriesSearch by series id; Radarr: MoviesSearch by movie id.
+	async triggerSearch(
+		itemId: number,
+	): Promise<OperationResult<SearchTriggerData>> {
+		debugOperation(this.serviceName, "triggerSearch", { itemId });
+		try {
+			const command =
+				this.id === "sonarr"
+					? { name: "SeriesSearch", seriesId: itemId }
+					: { name: "MoviesSearch", movieIds: [itemId] };
+			await fetchJson(this.buildApiUrl("/command"), {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(command),
+			});
+			return {
+				ok: true,
+				data: {
+					service: this.serviceName,
+					mediaKind: this.mediaKind,
+					triggered: true,
+					command: command.name,
+				},
+			};
+		} catch (error) {
+			return handleError(error, this.serviceName);
+		}
+	}
+
+	// Locate the episode(s) of a series matching a season/episode number so the
+	// caller can delete a specific broken episode file and re-search it.
+	// Sonarr-only: GET /episode?seriesId=... Radarr returns no matches.
+	async lookupEpisodeFile(
+		seriesId: number,
+		seasonNumber?: number,
+		episodeNumber?: number,
+	): Promise<OperationResult<EpisodeLookupData>> {
+		debugOperation(this.serviceName, "lookupEpisodeFile", {
+			seriesId,
+			seasonNumber,
+			episodeNumber,
+		});
+		if (this.id !== "sonarr") {
+			return { ok: true, data: { service: this.serviceName, matches: [] } };
+		}
+		try {
+			const response: Array<Record<string, unknown>> = await fetchJson(
+				this.buildApiUrl("/episode", { seriesId }),
+			);
+			const items = Array.isArray(response) ? response : [];
+			const matches: EpisodeFileMatch[] = items
+				.map((item) => ({
+					episodeId: typeof item.id === "number" ? item.id : 0,
+					episodeFileId:
+						typeof (item.episodeFile as { id?: unknown })?.id === "number"
+							? (item.episodeFile as { id: number }).id
+							: undefined,
+					seasonNumber:
+						typeof item.seasonNumber === "number"
+							? item.seasonNumber
+							: undefined,
+					episodeNumber:
+						typeof item.episodeNumber === "number"
+							? item.episodeNumber
+							: undefined,
+					title: typeof item.title === "string" ? item.title : undefined,
+					hasFile: Boolean(item.hasFile),
+				}))
+				.filter(
+					(item) =>
+						item.episodeId > 0 &&
+						(seasonNumber === undefined ||
+							item.seasonNumber === seasonNumber) &&
+						(episodeNumber === undefined ||
+							item.episodeNumber === episodeNumber),
+				);
+			return {
+				ok: true,
+				data: { service: this.serviceName, matches },
+			};
+		} catch (error) {
+			return handleError(error, this.serviceName);
+		}
+	}
+
 	async queueDiagnostics(
 		autoFix = true,
 	): Promise<OperationResult<QueueDiagnosticsData>> {
@@ -913,17 +1101,13 @@ export abstract class BaseArrService {
 
 			for (const target of preparation.targets) {
 				let manualImportNote: string | undefined;
-				let manualImportAttempted = false;
-				let manualImportSucceeded = false;
 
 				if (
 					target.source === "queue" &&
 					options.attemptManualImport !== false
 				) {
 					const manualResult = await this.tryManualImport(target);
-					manualImportAttempted = manualResult.attempted;
 					if (manualResult.success) {
-						manualImportSucceeded = true;
 						manualImportNote =
 							manualResult.message ?? "Manual import completed";
 						manualImportSuccesses += 1;
@@ -937,17 +1121,11 @@ export abstract class BaseArrService {
 
 				try {
 					if (target.source === "queue") {
-						try {
-							await this.removeFromQueue(target.id, {
-								removeFromClient: options.removeFromClient ?? true,
-								blocklist: options.blocklist ?? false,
-								queueTimeoutMs: options.queueTimeoutMs,
-							});
-						} catch (error) {
-							if (!(manualImportSucceeded && this.isNotFoundError(error))) {
-								throw error;
-							}
-						}
+						await this.removeFromQueue(target.id, {
+							removeFromClient: options.removeFromClient ?? true,
+							blocklist: options.blocklist ?? false,
+							queueTimeoutMs: options.queueTimeoutMs,
+						});
 					} else {
 						await this.removeLibraryItem(target.id, {
 							deleteFiles: options.deleteFiles ?? false,
@@ -964,6 +1142,24 @@ export abstract class BaseArrService {
 						message: manualImportNote,
 					});
 				} catch (error) {
+					if (this.isNotFoundError(error)) {
+						// 404 from the removal endpoint means the item is already
+						// gone (a manual-import attempt or Sonarr's own pass
+						// cleared it first). Count it as removed, not failed —
+						// otherwise bulk cleanups report hard failures for items
+						// that are simply no longer present.
+						removed += 1;
+						details.push({
+							id: target.id,
+							title: target.title,
+							source: target.source,
+							status: "removed",
+							message: manualImportNote
+								? `${manualImportNote}; item already absent`
+								: "item already absent",
+						});
+						continue;
+					}
 					failed += 1;
 					const failureMessage = manualImportNote
 						? `${manualImportNote}; ${this.describeError(error)}`

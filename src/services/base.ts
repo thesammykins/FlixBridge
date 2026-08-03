@@ -365,6 +365,53 @@ export interface MultiServiceDiagnosticsData {
 	serviceResults: QueueDiagnosticsData[];
 }
 
+// Library membership + remediation primitives (used by the Plex reported-issues
+// flow): find an item already in the library, delete its file, trigger a search
+// so the arr service re-grabs a replacement.
+export interface LibraryItemMatch {
+	id: number;
+	title: string;
+	year?: number;
+	hasFile: boolean;
+	path?: string;
+	episodeFileId?: number;
+	movieFileId?: number;
+}
+
+export interface LibraryLookupData {
+	service: string;
+	mediaKind: "series" | "movie";
+	matches: LibraryItemMatch[];
+}
+
+export interface FileDeleteData {
+	service: string;
+	mediaKind: "series" | "movie";
+	fileId: number;
+	deleted: boolean;
+}
+
+export interface SearchTriggerData {
+	service: string;
+	mediaKind: "series" | "movie";
+	triggered: boolean;
+	command?: string;
+}
+
+export interface EpisodeFileMatch {
+	episodeId: number;
+	episodeFileId?: number;
+	seasonNumber?: number;
+	episodeNumber?: number;
+	title?: string;
+	hasFile: boolean;
+}
+
+export interface EpisodeLookupData {
+	service: string;
+	matches: EpisodeFileMatch[];
+}
+
 export interface ServiceImplementation {
 	readonly id: "sonarr" | "radarr";
 	readonly serviceName: string;
@@ -400,4 +447,15 @@ export interface ServiceImplementation {
 		preparation: RemovalPreparationData,
 		options: RemovalExecutionOptions,
 	): Promise<OperationResult<RemovalResultData>>;
+	lookupLibraryItem(
+		title: string,
+		year?: number,
+	): Promise<OperationResult<LibraryLookupData>>;
+	deleteFile(fileId: number): Promise<OperationResult<FileDeleteData>>;
+	triggerSearch(itemId: number): Promise<OperationResult<SearchTriggerData>>;
+	lookupEpisodeFile(
+		seriesId: number,
+		seasonNumber?: number,
+		episodeNumber?: number,
+	): Promise<OperationResult<EpisodeLookupData>>;
 }

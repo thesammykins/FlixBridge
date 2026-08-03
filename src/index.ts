@@ -26,6 +26,17 @@ import type {
 	SabnzbdRemovalPreview,
 	SabnzbdRemovalResult,
 } from "./services/downloaders/sabnzbd.js";
+import {
+	type RemediateInput,
+	executeRemediation,
+	mintRemoveToken,
+	planRemediation,
+	resolveReports,
+} from "./services/plex/remediation.js";
+import {
+	PlexReportsClient,
+	plexConfigFromEnv,
+} from "./services/plex/reports.js";
 import { serviceRegistry } from "./services/registry.js";
 
 const FALLBACK_SERVER_VERSION = "0.3.7";
@@ -259,6 +270,43 @@ const tools = [
 			required: [],
 		},
 	},
+	{
+		name: "reported_issues",
+		description:
+			"List Plex user-reported issues (Report Issue feed), resolved to titles and matched against arr services. Returns resolution state (unresolved / clarification_requested / fixed) from comment history so callers can skip already-fixed reports.",
+		inputSchema: {
+			type: "object",
+			properties: {
+				limit: { type: "number" },
+			},
+			required: [],
+		},
+	},
+	{
+		name: "remediate_reported_issue",
+		description:
+			"Resolve a single Plex reported issue: comment_only (ask for clarification), re_search (trigger fresh search), add_or_upgrade (add with standard profile + search, or upgrade search if present), or remove_and_regrab (delete broken file + re-grab; requires dryRun first for a confirmation token). Comments back on the report explaining what was done.",
+		inputSchema: {
+			type: "object",
+			properties: {
+				reportId: { type: "string" },
+				action: {
+					type: "string",
+					enum: [
+						"comment_only",
+						"re_search",
+						"add_or_upgrade",
+						"remove_and_regrab",
+					],
+				},
+				service: { type: "string" },
+				comment: { type: "string" },
+				dryRun: { type: "boolean" },
+				confirmationToken: { type: "string" },
+			},
+			required: ["reportId", "action"],
+		},
+	},
 ];
 
 const InputSchema = z.object({
@@ -290,6 +338,11 @@ const InputSchema = z.object({
 	manualImport: z.boolean().optional(),
 	confirmationToken: z.string().optional(),
 	queueTimeoutMs: z.number().optional(),
+	reportId: z.string().optional(),
+	action: z
+		.enum(["comment_only", "re_search", "add_or_upgrade", "remove_and_regrab"])
+		.optional(),
+	comment: z.string().optional(),
 });
 
 type RemovalTargetKind = "queue" | "library" | "downloader_queue";
@@ -403,6 +456,17 @@ class ArrMcpServer {
 				);
 			} else if (name === "remove_content") {
 				result = await this.handleRemoveContent(input);
+			} else if (name === "reported_issues") {
+				result = await this.handleReportedIssues(input.limit);
+			} else if (name === "remediate_reported_issue") {
+				result = await this.handleRemediateReportedIssue({
+					reportId: input.reportId,
+					action: input.action,
+					service: input.service,
+					comment: input.comment,
+					dryRun: input.dryRun,
+					confirmationToken: input.confirmationToken,
+				});
 			} else {
 				const service = serviceRegistry.get(input.service || "");
 				if (!service) {
@@ -1438,6 +1502,89 @@ class ArrMcpServer {
 
 	async run() {
 		await this.server.connect(new StdioServerTransport());
+	}
+
+	private plexClient(): PlexReportsClient {
+		const plex = plexConfigFromEnv();
+		if (!plex) {
+			throw new McpError(
+				ErrorCode.InvalidParams,
+				"Plex not configured: set PLEX_BASE_URL and PLEX_TOKEN.",
+			);
+		}
+		return new PlexReportsClient(plex);
+	}
+
+	private async handleReportedIssues(limit?: number) {
+		const client = this.plexClient();
+		const result = await client.listReports(limit ?? 25);
+		if (!result.ok || !result.data) return result;
+
+		const services = serviceRegistry.getAll();
+		const reports = await resolveReports(client, result.data, services);
+		return {
+			ok: true,
+			data: {
+				total: reports.length,
+				reports: reports.map((r) => ({
+					id: r.id,
+					message: r.message,
+					date: r.date,
+					user: r.user,
+					item: r.item,
+					matches: r.matches,
+					comments: r.comments,
+					resolved: r.resolved,
+				})),
+			},
+		};
+	}
+
+	private async handleRemediateReportedIssue(input: RemediateInput) {
+		const client = this.plexClient();
+		if (!input.reportId || !input.action) {
+			throw new McpError(
+				ErrorCode.InvalidParams,
+				"reportId and action are required",
+			);
+		}
+
+		const listResult = await client.listReports(100);
+		if (!listResult.ok || !listResult.data) return listResult;
+		const report = listResult.data.find((r) => r.id === input.reportId);
+		if (!report) {
+			throw new McpError(
+				ErrorCode.InvalidParams,
+				`Report ${input.reportId} not found.`,
+			);
+		}
+
+		const services = serviceRegistry.getAll();
+
+		if (input.dryRun) {
+			const plan = await planRemediation(
+				client,
+				report,
+				input.action,
+				input.service,
+				services,
+			);
+			if (!plan.ok || !plan.data) return plan;
+			const confirmationToken =
+				input.action === "remove_and_regrab"
+					? mintRemoveToken(input.reportId)
+					: undefined;
+			return {
+				ok: true,
+				data: {
+					dryRun: true,
+					preview: plan.data,
+					...(confirmationToken ? { confirmationToken } : {}),
+				},
+			};
+		}
+
+		return await executeRemediation(client, report, input, services);
 	}
 }
 
