@@ -545,9 +545,8 @@ export abstract class BaseArrService {
 				}
 
 				// Smart quality profile detection based on service name and available profiles
-				const selectedProfileId =
-					await this.selectBestQualityProfile(profiles);
-				qualityProfileId = selectedProfileId ?? undefined;
+				const selected = await this.selectBestQualityProfile(profiles);
+				qualityProfileId = selected.recommended ?? undefined;
 
 				if (!qualityProfileId) {
 					throw new Error(
@@ -565,7 +564,9 @@ export abstract class BaseArrService {
 					this.buildApiUrl("/rootfolder"),
 				);
 				const first = Array.isArray(rootFolders)
-					? rootFolders.find((r) => typeof r.path === "string" && r.path.length > 0)
+					? rootFolders.find(
+							(r) => typeof r.path === "string" && r.path.length > 0,
+						)
 					: undefined;
 				if (!first?.path) {
 					throw new Error(
@@ -666,7 +667,35 @@ export abstract class BaseArrService {
 				cutoff: profile.cutoff,
 			}));
 
-			const recommendedId = await this.selectBestQualityProfile(profiles);
+			const selected = await this.selectBestQualityProfile(profiles);
+			const recommendedId = selected.recommended;
+
+			// Usage counts: how many library items use each profile. This is the
+			// metadata harnesses need to see *why* a profile is recommended —
+			// never assume a default; the library's majority is the standard.
+			const usage: Array<{
+				id: number;
+				name: string;
+				count: number;
+				pct: number;
+			}> = [];
+			let totalLibraryItems = 0;
+			for (const [id, count] of selected.usage) {
+				totalLibraryItems += count;
+			}
+			for (const [id, count] of selected.usage) {
+				const profile = profileData.find((p) => p.id === id);
+				usage.push({
+					id,
+					name: profile?.name ?? `profile ${id}`,
+					count,
+					pct:
+						totalLibraryItems > 0
+							? Math.round((count / totalLibraryItems) * 100)
+							: 0,
+				});
+			}
+			usage.sort((a, b) => b.count - a.count);
 
 			return {
 				ok: true,
@@ -676,6 +705,12 @@ export abstract class BaseArrService {
 					total: profileData.length,
 					profiles: profileData,
 					recommended: recommendedId ?? undefined,
+					recommendedName:
+						recommendedId !== null && recommendedId !== undefined
+							? profileData.find((p) => p.id === recommendedId)?.name
+							: undefined,
+					usage,
+					totalLibraryItems,
 				},
 			};
 		} catch (error) {
@@ -2035,7 +2070,7 @@ export abstract class BaseArrService {
 	// back to name-pattern matching only when the library is empty.
 	private async selectBestQualityProfile(
 		profiles: QualityProfile[],
-	): Promise<number | null> {
+	): Promise<{ recommended: number | null; usage: Map<number, number> }> {
 		try {
 			const listEndpoint = this.id === "sonarr" ? "/series" : "/movie";
 			const items: Array<{ qualityProfileId?: unknown }> = await fetchJson(
@@ -2059,7 +2094,7 @@ export abstract class BaseArrService {
 						bestCount = count;
 					}
 				}
-				if (bestId !== null) return bestId;
+				if (bestId !== null) return { recommended: bestId, usage: counts };
 			}
 		} catch {
 			// Library read failed — fall through to name heuristic.
@@ -2097,17 +2132,17 @@ export abstract class BaseArrService {
 				pattern.test(profile.name),
 			);
 			if (matchingProfile) {
-				return matchingProfile.id;
+				return { recommended: matchingProfile.id, usage: new Map() };
 			}
 		}
 
 		// If no smart match found, use the first profile but only if there's exactly one
 		// This prevents accidentally selecting a random profile when multiple exist
 		if (profiles.length === 1) {
-			return profiles[0]?.id || null;
+			return { recommended: profiles[0]?.id || null, usage: new Map() };
 		}
 
 		// Multiple profiles available but no smart match - require explicit selection
-		return null;
+		return { recommended: null, usage: new Map() };
 	}
 }

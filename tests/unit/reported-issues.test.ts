@@ -366,7 +366,10 @@ await describe("Plex reported-issues remediation", [
 		}) as typeof global.fetch;
 		try {
 			const client = await makeClient();
-			const radarr = new MockRadarrService("radarr-hd", createMockServiceConfig());
+			const radarr = new MockRadarrService(
+				"radarr-hd",
+				createMockServiceConfig(),
+			);
 			const result = await executeRemediation(
 				client,
 				reportFixture(),
@@ -374,12 +377,20 @@ await describe("Plex reported-issues remediation", [
 				[radarr],
 			);
 			if (!result.ok) {
-				throw new Error(`expected success, got: ${JSON.stringify(result.error)}`);
+				throw new Error(
+					`expected success, got: ${JSON.stringify(result.error)}`,
+				);
 			}
-			if (!result.data || typeof result.data !== "object") throw new Error("no data");
-			const data = result.data as { actions?: string[]; commentPosted?: boolean };
+			if (!result.data || typeof result.data !== "object")
+				throw new Error("no data");
+			const data = result.data as {
+				actions?: string[];
+				commentPosted?: boolean;
+			};
 			if (!(data.actions ?? []).some((a) => a.includes("added"))) {
-				throw new Error(`expected add action, got: ${JSON.stringify(data.actions)}`);
+				throw new Error(
+					`expected add action, got: ${JSON.stringify(data.actions)}`,
+				);
 			}
 			if (data.commentPosted !== true) throw new Error("comment not posted");
 		} finally {
@@ -406,7 +417,10 @@ await describe("Plex reported-issues remediation", [
 			"/api/v3/rootfolder": [{ path: "/movies" }],
 		}) as typeof global.fetch;
 		try {
-			const radarr = new MockRadarrService("radarr-hd", createMockServiceConfig());
+			const radarr = new MockRadarrService(
+				"radarr-hd",
+				createMockServiceConfig(),
+			);
 			const result = await radarr.addNew({
 				title: "Leviticus",
 				foreignId: 12345,
@@ -417,7 +431,26 @@ await describe("Plex reported-issues remediation", [
 			const profiles = await radarr.listQualityProfiles();
 			if (!profiles.ok || !profiles.data) throw new Error("profiles failed");
 			if (profiles.data.recommended !== 1) {
-				throw new Error(`expected recommended=1 (HD Bluray + WEB), got ${profiles.data.recommended}`);
+				throw new Error(
+					`expected recommended=1 (HD Bluray + WEB), got ${profiles.data.recommended}`,
+				);
+			}
+			if (profiles.data.recommendedName !== "HD Bluray + WEB") {
+				throw new Error(
+					`expected recommendedName HD Bluray + WEB, got ${profiles.data.recommendedName}`,
+				);
+			}
+			// Usage metadata must surface the library distribution.
+			const top = profiles.data.usage[0];
+			if (!top || top.id !== 1 || top.count !== 3 || top.pct !== 75) {
+				throw new Error(
+					`expected usage top = {1, 3, 75}, got ${JSON.stringify(top)}`,
+				);
+			}
+			if (profiles.data.totalLibraryItems !== 4) {
+				throw new Error(
+					`expected totalLibraryItems 4, got ${profiles.data.totalLibraryItems}`,
+				);
 			}
 		} finally {
 			global.fetch = oldFetch;

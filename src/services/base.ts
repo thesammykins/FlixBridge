@@ -182,6 +182,11 @@ export interface QualityProfileData {
 	total: number;
 	profiles: QualityProfile[];
 	recommended?: number;
+	recommendedName?: string;
+	// How many library items use each profile id — the ground truth for
+	// "what the library standard is". Empty when the library has no items.
+	usage: Array<{ id: number; name: string; count: number; pct: number }>;
+	totalLibraryItems: number;
 }
 
 export interface QueueIssueCategory {
