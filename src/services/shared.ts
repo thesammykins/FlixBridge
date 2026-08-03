@@ -555,10 +555,29 @@ export abstract class BaseArrService {
 				}
 			}
 
+			// Radarr rejects adds without a root folder; Sonarr requires one too.
+			// Discover the first configured root folder when the caller didn't
+			// supply one so adds work without forcing callers to know paths.
+			let rootFolderPath = request.rootFolderPath;
+			if (!rootFolderPath) {
+				const rootFolders: Array<{ path?: string }> = await fetchJson(
+					this.buildApiUrl("/rootfolder"),
+				);
+				const first = Array.isArray(rootFolders)
+					? rootFolders.find((r) => typeof r.path === "string" && r.path.length > 0)
+					: undefined;
+				if (!first?.path) {
+					throw new Error(
+						`No root folder configured on ${this.serviceName}; specify rootFolderPath explicitly.`,
+					);
+				}
+				rootFolderPath = first.path;
+			}
+
 			const addPayload = {
 				title: request.title,
 				[this.id === "sonarr" ? "tvdbId" : "tmdbId"]: request.foreignId,
-				rootFolderPath: request.rootFolderPath,
+				rootFolderPath,
 				qualityProfileId,
 				monitored: request.monitored ?? true,
 				...(this.id === "sonarr"

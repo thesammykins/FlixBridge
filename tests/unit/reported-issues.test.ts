@@ -337,4 +337,53 @@ await describe("Plex reported-issues remediation", [
 			global.fetch = oldFetch;
 		}
 	}),
+
+	test("add_or_upgrade execute discovers root folder when not supplied (regression: Radarr 400)", async () => {
+		const oldFetch = global.fetch;
+		const gqlMutation = JSON.stringify({
+			data: {
+				createReportComment: {
+					__typename: "ReportComment",
+					id: "comment-1",
+					message: "Fixed: added",
+					date: "2026-08-03T07:12:53Z",
+					status: "OPEN",
+					user: { id: "me", username: "AshWilliams12" },
+				},
+			},
+		});
+		global.fetch = buildFetchStub({
+			"/api/v3/movie": [],
+			"/api/v3/rootfolder": [{ path: "/movies" }],
+			"/api/v3/movie/lookup": [
+				{ title: "Leviticus", year: 2026, tmdbId: 12345, foreignId: 12345 },
+			],
+			"/api/v3/qualityprofile": [
+				{ id: 1, name: "HD-1080p", upgradeAllowed: true, cutoff: 1 },
+			],
+			"/api/v3/command": { id: 1, name: "MoviesSearch" },
+			[PLEX_GRAPHQL]: gqlMutation,
+		}) as typeof global.fetch;
+		try {
+			const client = await makeClient();
+			const radarr = new MockRadarrService("radarr-hd", createMockServiceConfig());
+			const result = await executeRemediation(
+				client,
+				reportFixture(),
+				{ reportId: "report-1", action: "add_or_upgrade" },
+				[radarr],
+			);
+			if (!result.ok) {
+				throw new Error(`expected success, got: ${JSON.stringify(result.error)}`);
+			}
+			if (!result.data || typeof result.data !== "object") throw new Error("no data");
+			const data = result.data as { actions?: string[]; commentPosted?: boolean };
+			if (!(data.actions ?? []).some((a) => a.includes("added"))) {
+				throw new Error(`expected add action, got: ${JSON.stringify(data.actions)}`);
+			}
+			if (data.commentPosted !== true) throw new Error("comment not posted");
+		} finally {
+			global.fetch = oldFetch;
+		}
+	}),
 ]);
