@@ -54,6 +54,44 @@ interface HistoryResponse {
 	totalRecords?: number;
 }
 
+// Library list response (Sonarr /series, Radarr /movie) — validated at the
+// boundary; only the fields we consume are modeled.
+const LibraryItemSchema = z.object({
+	id: z.number(),
+	title: z.string().optional(),
+	year: z.number().optional(),
+	path: z.string().optional(),
+	hasFile: z.boolean().optional(),
+	statistics: z.object({ episodeFileCount: z.number().optional() }).optional(),
+	movieFile: z.object({ id: z.number().optional() }).optional(),
+});
+
+const LibraryItemArraySchema = z.array(LibraryItemSchema);
+
+// GET /rootfolder — only the path field is consumed.
+const RootFolderSchema = z.object({ path: z.string() });
+const RootFolderArraySchema = z.array(RootFolderSchema);
+
+// A library item that must round-trip unchanged (updateQualityProfile PUTs the
+// full object back). Validate that it's an object with an id without stripping
+// unknown fields: z.record keeps everything, passthrough preserves shape.
+const LooseItemSchema = z
+	.record(z.string(), z.unknown())
+	.refine((v) => v && typeof v.id === "number", {
+		message: "item must be an object with a numeric id",
+	});
+
+// Sonarr GET /episode — fields consumed by episode-file remediation.
+const EpisodeSchema = z.object({
+	id: z.number(),
+	episodeFile: z.object({ id: z.number().optional() }).optional(),
+	seasonNumber: z.number().optional(),
+	episodeNumber: z.number().optional(),
+	title: z.string().optional(),
+	hasFile: z.boolean().optional(),
+});
+const EpisodeArraySchema = z.array(EpisodeSchema);
+
 interface HistoryRecord {
 	id: number;
 	sourceTitle?: string;
@@ -542,7 +580,7 @@ export abstract class BaseArrService {
 				);
 
 				if (!profiles || profiles.length === 0) {
-					throw new Error("No quality profiles available");
+					throw createInternalError("No quality profiles available");
 				}
 
 				// Smart quality profile detection based on service name and available profiles
@@ -550,7 +588,7 @@ export abstract class BaseArrService {
 				qualityProfileId = selected.recommended ?? undefined;
 
 				if (!qualityProfileId) {
-					throw new Error(
+					throw createInternalError(
 						`Unable to auto-select quality profile for ${this.serviceName}. Available profiles: ${profiles.map((p: QualityProfile) => `${p.name} (id: ${p.id})`).join(", ")}. Please specify qualityProfileId explicitly.`,
 					);
 				}
@@ -561,16 +599,14 @@ export abstract class BaseArrService {
 			// supply one so adds work without forcing callers to know paths.
 			let rootFolderPath = request.rootFolderPath;
 			if (!rootFolderPath) {
-				const rootFolders: Array<{ path?: string }> = await fetchJson(
+				const response: unknown = await fetchJson(
 					this.buildApiUrl("/rootfolder"),
 				);
-				const first = Array.isArray(rootFolders)
-					? rootFolders.find(
-							(r) => typeof r.path === "string" && r.path.length > 0,
-						)
-					: undefined;
-				if (!first?.path) {
-					throw new Error(
+				const parsed = RootFolderArraySchema.safeParse(response);
+				const rootFolders = parsed.success ? parsed.data : [];
+				const first = rootFolders.find((r) => r.path.length > 0);
+				if (!first) {
+					throw createInternalError(
 						`No root folder configured on ${this.serviceName}; specify rootFolderPath explicitly.`,
 					);
 				}
@@ -730,37 +766,26 @@ export abstract class BaseArrService {
 		debugOperation(this.serviceName, "lookupLibraryItem", { title, year });
 		try {
 			const listEndpoint = this.id === "sonarr" ? "/series" : "/movie";
-			const response: Array<Record<string, unknown>> = await fetchJson(
-				this.buildApiUrl(listEndpoint),
-			);
-			const items = Array.isArray(response) ? response : [];
+			const response: unknown = await fetchJson(this.buildApiUrl(listEndpoint));
+			const parsed = LibraryItemArraySchema.safeParse(response);
+			const items = parsed.success ? parsed.data : [];
 			const needle = title.trim().toLowerCase();
 
 			const matches: LibraryItemMatch[] = items
 				.map((item) => {
-					const itemTitle = String(item.title ?? "");
-					const itemYear =
-						typeof item.year === "number" ? item.year : undefined;
+					const itemTitle = item.title ?? "";
 					const hasFile =
 						this.id === "sonarr"
-							? Boolean(
-									(item.statistics as { episodeFileCount?: number })
-										?.episodeFileCount,
-								)
+							? Boolean(item.statistics?.episodeFileCount)
 							: Boolean(item.hasFile);
 					return {
-						id: typeof item.id === "number" ? item.id : 0,
+						id: item.id,
 						title: itemTitle,
-						year: itemYear,
+						year: item.year,
 						hasFile,
-						path: typeof item.path === "string" ? item.path : undefined,
+						path: item.path,
 						...(this.id === "radarr"
-							? {
-									movieFileId:
-										typeof (item.movieFile as { id?: unknown })?.id === "number"
-											? (item.movieFile as { id: number }).id
-											: undefined,
-								}
+							? { movieFileId: item.movieFile?.id }
 							: {}),
 					} as LibraryItemMatch;
 				})
@@ -858,12 +883,17 @@ export abstract class BaseArrService {
 		try {
 			const endpoint =
 				this.id === "sonarr" ? `/series/${itemId}` : `/movie/${itemId}`;
-			const item: Record<string, unknown> = await fetchJson(
-				this.buildApiUrl(endpoint),
-			);
-			if (!item || typeof item !== "object") {
-				throw new Error(`Item ${itemId} not found on ${this.serviceName}`);
+			const response: unknown = await fetchJson(this.buildApiUrl(endpoint));
+			// The PUT is a full-object replace, so the item must round-trip
+			// unchanged. Validate shape (object with an id) without stripping
+			// unknown fields the upstream API requires back.
+			const parsed = LooseItemSchema.safeParse(response);
+			if (!parsed.success) {
+				throw createInternalError(
+					`Item ${itemId} not found on ${this.serviceName}`,
+				);
 			}
+			const item = parsed.data as Record<string, unknown>;
 			item.qualityProfileId = qualityProfileId;
 			await fetchJson(this.buildApiUrl(endpoint), {
 				method: "PUT",
@@ -902,26 +932,18 @@ export abstract class BaseArrService {
 			return { ok: true, data: { service: this.serviceName, matches: [] } };
 		}
 		try {
-			const response: Array<Record<string, unknown>> = await fetchJson(
+			const response: unknown = await fetchJson(
 				this.buildApiUrl("/episode", { seriesId }),
 			);
-			const items = Array.isArray(response) ? response : [];
+			const parsed = EpisodeArraySchema.safeParse(response);
+			const items = parsed.success ? parsed.data : [];
 			const matches: EpisodeFileMatch[] = items
 				.map((item) => ({
-					episodeId: typeof item.id === "number" ? item.id : 0,
-					episodeFileId:
-						typeof (item.episodeFile as { id?: unknown })?.id === "number"
-							? (item.episodeFile as { id: number }).id
-							: undefined,
-					seasonNumber:
-						typeof item.seasonNumber === "number"
-							? item.seasonNumber
-							: undefined,
-					episodeNumber:
-						typeof item.episodeNumber === "number"
-							? item.episodeNumber
-							: undefined,
-					title: typeof item.title === "string" ? item.title : undefined,
+					episodeId: item.id,
+					episodeFileId: item.episodeFile?.id,
+					seasonNumber: item.seasonNumber,
+					episodeNumber: item.episodeNumber,
+					title: item.title,
 					hasFile: Boolean(item.hasFile),
 				}))
 				.filter(

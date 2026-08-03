@@ -96,6 +96,26 @@ export interface PlexComment {
 
 const METADATA_KEY_RE = /library\/metadata\/(\d+)/;
 
+// PMS /library/metadata response — we consume a subset of the item. Schema
+// validation keeps upstream shape drift from reaching the remediation logic.
+const PlexMetadataItemSchema = z.object({
+	type: z.string().optional(),
+	title: z.string().optional(),
+	year: z.number().optional(),
+	grandparentTitle: z.string().optional(),
+	parentTitle: z.string().optional(),
+	parentIndex: z.number().optional(),
+	index: z.number().optional(),
+});
+
+const PlexMetadataContainerSchema = z.object({
+	MediaContainer: z
+		.object({
+			Metadata: z.array(PlexMetadataItemSchema).optional(),
+		})
+		.optional(),
+});
+
 export interface PlexMetadataItem {
 	key: string;
 	type: string; // movie | show | season | episode
@@ -241,27 +261,22 @@ export class PlexReportsClient {
 					},
 				},
 			);
-			const container = payload as {
-				MediaContainer?: { Metadata?: Array<Record<string, unknown>> };
-			};
-			const meta = container.MediaContainer?.Metadata?.[0];
+			const parsed = PlexMetadataContainerSchema.safeParse(payload);
+			const meta = parsed.success
+				? parsed.data.MediaContainer?.Metadata?.[0]
+				: undefined;
 			if (!meta) {
 				return null;
 			}
 			return {
 				key,
-				type: String(meta.type ?? ""),
-				title: String(meta.title ?? ""),
-				year: typeof meta.year === "number" ? meta.year : undefined,
-				grandparentTitle:
-					typeof meta.grandparentTitle === "string"
-						? meta.grandparentTitle
-						: undefined,
-				parentTitle:
-					typeof meta.parentTitle === "string" ? meta.parentTitle : undefined,
-				parentIndex:
-					typeof meta.parentIndex === "number" ? meta.parentIndex : undefined,
-				index: typeof meta.index === "number" ? meta.index : undefined,
+				type: meta.type ?? "",
+				title: meta.title ?? "",
+				year: meta.year,
+				grandparentTitle: meta.grandparentTitle,
+				parentTitle: meta.parentTitle,
+				parentIndex: meta.parentIndex,
+				index: meta.index,
 			};
 		} catch (error) {
 			// 404 = item deleted since the report; anything else is a real error.

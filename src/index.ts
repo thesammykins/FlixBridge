@@ -1552,6 +1552,7 @@ class ArrMcpServer {
 					matches: r.matches,
 					comments: r.comments,
 					resolved: r.resolved,
+					resolutionState: r.resolutionState,
 				})),
 			},
 		};

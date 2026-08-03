@@ -30,6 +30,7 @@ export interface ResolvedReport extends PlexReport {
 	item: PlexMetadataItem | null;
 	matches: ServiceMatch[];
 	resolved: boolean;
+	resolutionState: ResolutionState;
 }
 
 export type RemediationAction =
@@ -141,6 +142,7 @@ export async function resolveReports(
 			item,
 			matches,
 			resolved: resolutionState(report.comments) === "fixed",
+			resolutionState: resolutionState(report.comments),
 		});
 	}
 	return out;
@@ -489,12 +491,23 @@ export async function executeRemediation(
 				});
 				if (!add.ok) return add;
 				const id = add.data?.id;
-				if (id !== undefined) {
-					await service.triggerSearch(id);
+				if (id === undefined) {
+					return {
+						ok: false,
+						error: {
+							kind: "internal",
+							message: `Added "${candidate.title}" but got no item id back from ${preview.service}.`,
+						},
+					};
 				}
-				actions.push(
-					`added "${candidate.title}" (id ${id ?? "?"}) with standard profile + search`,
-				);
+				const addSearch = await service.triggerSearch(id);
+				if (addSearch.ok) {
+					actions.push(
+						`added "${candidate.title}" (id ${id}) with standard profile + search`,
+					);
+				} else {
+					failures.push("add succeeded but triggerSearch failed");
+				}
 			} else {
 				const res = await service.triggerSearch(preview.item.id);
 				if (res.ok)
@@ -522,25 +535,41 @@ export async function executeRemediation(
 					},
 				};
 			}
+			let deletedFile = false;
 			if (service.id === "sonarr" && preview.episodeFileId !== undefined) {
 				const del = await service.deleteFile(preview.episodeFileId);
-				if (del.ok)
+				if (del.ok) {
 					actions.push(`deleted episode file ${preview.episodeFileId}`);
-				else failures.push("deleteFile failed");
+					deletedFile = true;
+				} else {
+					failures.push("deleteFile failed");
+				}
 			} else if (
 				service.id === "radarr" &&
 				preview.item?.movieFileId !== undefined
 			) {
 				const del = await service.deleteFile(preview.item.movieFileId);
-				if (del.ok)
+				if (del.ok) {
 					actions.push(`deleted movie file ${preview.item.movieFileId}`);
-				else failures.push("deleteFile failed");
+					deletedFile = true;
+				} else {
+					failures.push("deleteFile failed");
+				}
 			} else {
 				return {
 					ok: false,
 					error: {
 						kind: "internal",
 						message: "No file id available to remove.",
+					},
+				};
+			}
+			if (!deletedFile) {
+				return {
+					ok: false,
+					error: {
+						kind: "internal",
+						message: `File deletion failed on ${preview.service}; not re-searching (partial mutation guard).`,
 					},
 				};
 			}

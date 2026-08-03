@@ -10,6 +10,7 @@
 import {
 	buildComment,
 	executeRemediation,
+	mintRemoveToken,
 	planRemediation,
 	resolutionState,
 	resolveReportMatches,
@@ -73,6 +74,36 @@ function gqlReportsResponse(nodes: unknown[]) {
 			reports: { nodes, pageInfo: { hasNextPage: false, endCursor: null } },
 		},
 	};
+}
+
+// createMockFetch is method-agnostic (pathname only), but addNew POSTs to
+// /movie and needs an object response with an id. Wrap the stub so POST
+// /movie returns an add-shaped object while GET still returns the array.
+function withAddPost(
+	base: typeof global.fetch,
+	addedId: number,
+): typeof global.fetch {
+	return (async (input: RequestInfo | URL, init?: RequestInit) => {
+		const url =
+			typeof input === "string"
+				? input
+				: input instanceof URL
+					? input.toString()
+					: input.url;
+		const urlObj = new URL(url);
+		if (init?.method === "POST" && urlObj.pathname === "/api/v3/movie") {
+			return new Response(
+				JSON.stringify({
+					id: addedId,
+					title: "Leviticus",
+					year: 2026,
+					qualityProfileId: 1,
+				}),
+				{ status: 200, headers: { "Content-Type": "application/json" } },
+			);
+		}
+		return base(input, init);
+	}) as typeof global.fetch;
 }
 
 // Default stub: reports list + the single metadata item + empty comments.
@@ -364,6 +395,7 @@ await describe("Plex reported-issues remediation", [
 				},
 			},
 		}) as typeof global.fetch;
+		global.fetch = withAddPost(global.fetch, 2364) as typeof global.fetch;
 		try {
 			const client = await makeClient();
 			const radarr = new MockRadarrService(
@@ -514,6 +546,130 @@ await describe("Plex reported-issues remediation", [
 				throw new Error(
 					`expected PUT body with qualityProfileId 7, got: ${putBody}`,
 				);
+			}
+		} finally {
+			global.fetch = oldFetch;
+		}
+	}),
+
+	test("add_or_upgrade does not post Fixed when the follow-up search fails", async () => {
+		const oldFetch = global.fetch;
+		let commentPosted = false;
+		const base = buildFetchStub({
+			"/api/v3/movie/lookup": [
+				{ title: "Leviticus", year: 2026, tmdbId: 12345, foreignId: 12345 },
+			],
+		});
+		global.fetch = withAddPost(
+			(async (input: RequestInfo | URL, init?: RequestInit) => {
+				const url =
+					typeof input === "string"
+						? input
+						: input instanceof URL
+							? input.toString()
+							: input.url;
+				const urlObj = new URL(url);
+				if (init?.method === "POST" && urlObj.pathname === "/api/v3/command") {
+					// Simulate a failed search trigger.
+					return new Response(JSON.stringify({ error: "search failed" }), {
+						status: 500,
+						headers: { "Content-Type": "application/json" },
+					});
+				}
+				if (init?.method === "POST" && urlObj.pathname === "/api") {
+					commentPosted = true;
+				}
+				return base(input, init);
+			}) as typeof global.fetch,
+			2364,
+		) as typeof global.fetch;
+		try {
+			const client = await makeClient();
+			const radarr = new MockRadarrService(
+				"radarr-hd",
+				createMockServiceConfig(),
+			);
+			const result = await executeRemediation(
+				client,
+				reportFixture(),
+				{ reportId: "report-1", action: "add_or_upgrade" },
+				[radarr],
+			);
+			if (result.ok) {
+				throw new Error("expected failure when triggerSearch fails");
+			}
+			if (commentPosted) {
+				throw new Error("must not comment Fixed when the search failed");
+			}
+			const err = result.error as { message?: string };
+			if (!err.message?.includes("triggerSearch failed")) {
+				throw new Error(`expected triggerSearch failure, got: ${err.message}`);
+			}
+		} finally {
+			global.fetch = oldFetch;
+		}
+	}),
+
+	test("remove_and_regrab does not re-search when the file deletion fails", async () => {
+		const oldFetch = global.fetch;
+		let searchTriggered = false;
+		let commentPosted = false;
+		const base = buildFetchStub();
+		global.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+			const url =
+				typeof input === "string"
+					? input
+					: input instanceof URL
+						? input.toString()
+						: input.url;
+			const urlObj = new URL(url);
+			if (init?.method === "DELETE") {
+				return new Response(JSON.stringify({ error: "delete failed" }), {
+					status: 500,
+					headers: { "Content-Type": "application/json" },
+				});
+			}
+			if (init?.method === "POST" && urlObj.pathname === "/api/v3/command") {
+				searchTriggered = true;
+			}
+			if (init?.method === "POST" && urlObj.pathname === "/api") {
+				commentPosted = true;
+			}
+			return base(input, init);
+		}) as typeof global.fetch;
+		try {
+			const client = await makeClient();
+			const radarr = new MockRadarrService(
+				"radarr-hd",
+				createMockServiceConfig(),
+			);
+			const preview = await planRemediation(
+				client,
+				reportFixture(),
+				"remove_and_regrab",
+				undefined,
+				[radarr],
+			);
+			if (!preview.ok || !preview.data) throw new Error("plan failed");
+			const token = mintRemoveToken("report-1");
+			const result = await executeRemediation(
+				client,
+				reportFixture(),
+				{
+					reportId: "report-1",
+					action: "remove_and_regrab",
+					confirmationToken: token,
+				},
+				[radarr],
+			);
+			if (result.ok) {
+				throw new Error("expected failure when deleteFile fails");
+			}
+			if (searchTriggered) {
+				throw new Error("must not trigger search after a failed delete");
+			}
+			if (commentPosted) {
+				throw new Error("must not comment after a failed delete");
 			}
 		} finally {
 			global.fetch = oldFetch;
