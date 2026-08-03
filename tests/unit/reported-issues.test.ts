@@ -33,7 +33,8 @@ import {
 } from "../helpers/mock-services.js";
 import { describe, test } from "../helpers/test-runner.js";
 
-const PLEX_GRAPHQL = "https://community.plex.tv/api";
+// createMockFetch matches on url.pathname, so the GraphQL endpoint key is /api.
+const PLEX_GRAPHQL = "/api";
 
 function reportFixture(overrides: Partial<PlexReport> = {}): PlexReport {
 	return {
@@ -340,18 +341,6 @@ await describe("Plex reported-issues remediation", [
 
 	test("add_or_upgrade execute discovers root folder when not supplied (regression: Radarr 400)", async () => {
 		const oldFetch = global.fetch;
-		const gqlMutation = JSON.stringify({
-			data: {
-				createReportComment: {
-					__typename: "ReportComment",
-					id: "comment-1",
-					message: "Fixed: added",
-					date: "2026-08-03T07:12:53Z",
-					status: "OPEN",
-					user: { id: "me", username: "AshWilliams12" },
-				},
-			},
-		});
 		global.fetch = buildFetchStub({
 			"/api/v3/movie": [],
 			"/api/v3/rootfolder": [{ path: "/movies" }],
@@ -362,7 +351,18 @@ await describe("Plex reported-issues remediation", [
 				{ id: 1, name: "HD-1080p", upgradeAllowed: true, cutoff: 1 },
 			],
 			"/api/v3/command": { id: 1, name: "MoviesSearch" },
-			[PLEX_GRAPHQL]: gqlMutation,
+			[PLEX_GRAPHQL]: {
+				data: {
+					createReportComment: {
+						__typename: "ReportComment",
+						id: "comment-1",
+						message: "Fixed: added",
+						date: "2026-08-03T07:12:53Z",
+						status: "OPEN",
+						user: { id: "me", username: "AshWilliams12" },
+					},
+				},
+			},
 		}) as typeof global.fetch;
 		try {
 			const client = await makeClient();
@@ -382,6 +382,43 @@ await describe("Plex reported-issues remediation", [
 				throw new Error(`expected add action, got: ${JSON.stringify(data.actions)}`);
 			}
 			if (data.commentPosted !== true) throw new Error("comment not posted");
+		} finally {
+			global.fetch = oldFetch;
+		}
+	}),
+
+	test("addNew uses the library's most-used profile, not a name match (regression: HD Bluray + WEB)", async () => {
+		const oldFetch = global.fetch;
+		global.fetch = buildFetchStub({
+			// Most of the library uses qualityProfileId 1 ("HD Bluray + WEB");
+			// a few old items use 2 ("HD-720p"). The name heuristic would pick
+			// 2 first ("720p" pattern) — the library count must win.
+			"/api/v3/movie": [
+				{ id: 1, title: "Alpha", year: 2020, qualityProfileId: 1 },
+				{ id: 2, title: "Beta", year: 2021, qualityProfileId: 1 },
+				{ id: 3, title: "Gamma", year: 2022, qualityProfileId: 1 },
+				{ id: 4, title: "Delta", year: 2018, qualityProfileId: 2 },
+			],
+			"/api/v3/qualityprofile": [
+				{ id: 1, name: "HD Bluray + WEB", upgradeAllowed: true, cutoff: 1 },
+				{ id: 2, name: "HD-720p", upgradeAllowed: true, cutoff: 2 },
+			],
+			"/api/v3/rootfolder": [{ path: "/movies" }],
+		}) as typeof global.fetch;
+		try {
+			const radarr = new MockRadarrService("radarr-hd", createMockServiceConfig());
+			const result = await radarr.addNew({
+				title: "Leviticus",
+				foreignId: 12345,
+			});
+			if (!result.ok || !result.data) throw new Error("addNew failed");
+			// The addNew payload is consumed by the stub; verify the recommended
+			// profile from listQualityProfiles (same shared selection logic).
+			const profiles = await radarr.listQualityProfiles();
+			if (!profiles.ok || !profiles.data) throw new Error("profiles failed");
+			if (profiles.data.recommended !== 1) {
+				throw new Error(`expected recommended=1 (HD Bluray + WEB), got ${profiles.data.recommended}`);
+			}
 		} finally {
 			global.fetch = oldFetch;
 		}

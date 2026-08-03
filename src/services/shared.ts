@@ -545,7 +545,8 @@ export abstract class BaseArrService {
 				}
 
 				// Smart quality profile detection based on service name and available profiles
-				const selectedProfileId = this.selectBestQualityProfile(profiles);
+				const selectedProfileId =
+					await this.selectBestQualityProfile(profiles);
 				qualityProfileId = selectedProfileId ?? undefined;
 
 				if (!qualityProfileId) {
@@ -665,7 +666,7 @@ export abstract class BaseArrService {
 				cutoff: profile.cutoff,
 			}));
 
-			const recommendedId = this.selectBestQualityProfile(profiles);
+			const recommendedId = await this.selectBestQualityProfile(profiles);
 
 			return {
 				ok: true,
@@ -2028,7 +2029,42 @@ export abstract class BaseArrService {
 		);
 	}
 
-	private selectBestQualityProfile(profiles: QualityProfile[]): number | null {
+	// Pick the quality profile for a service. The library's own usage is the
+	// ground truth: the profile most existing items use is the "standard
+	// profile" (e.g. "HD Bluray + WEB" over a name-matching "HD-720p"). Fall
+	// back to name-pattern matching only when the library is empty.
+	private async selectBestQualityProfile(
+		profiles: QualityProfile[],
+	): Promise<number | null> {
+		try {
+			const listEndpoint = this.id === "sonarr" ? "/series" : "/movie";
+			const items: Array<{ qualityProfileId?: unknown }> = await fetchJson(
+				this.buildApiUrl(listEndpoint),
+			);
+			if (Array.isArray(items) && items.length > 0) {
+				const counts = new Map<number, number>();
+				for (const item of items) {
+					if (typeof item.qualityProfileId === "number") {
+						counts.set(
+							item.qualityProfileId,
+							(counts.get(item.qualityProfileId) ?? 0) + 1,
+						);
+					}
+				}
+				let bestId: number | null = null;
+				let bestCount = 0;
+				for (const [id, count] of counts) {
+					if (count > bestCount) {
+						bestId = id;
+						bestCount = count;
+					}
+				}
+				if (bestId !== null) return bestId;
+			}
+		} catch {
+			// Library read failed — fall through to name heuristic.
+		}
+
 		// Sort profiles by preference based on service name patterns and common naming
 		const serviceName = this.serviceName.toLowerCase();
 
