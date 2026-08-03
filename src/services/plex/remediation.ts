@@ -63,14 +63,21 @@ export type ResolutionState =
 	| "fixed";
 
 export function resolutionState(comments: PlexComment[]): ResolutionState {
+	// Scan the whole thread, newest signal wins. A negation anywhere after a
+	// "fixed" means the report is open again — never suppress an open report.
+	let sawFixed = false;
 	let askedClarification = false;
 	for (const c of comments) {
 		if (!c.message) continue;
-		if (FIXED_MARKERS.test(c.message) && !FIXED_NEGATIONS.test(c.message)) {
-			return "fixed";
+		const negated = FIXED_NEGATIONS.test(c.message);
+		if (FIXED_MARKERS.test(c.message) && !negated) {
+			sawFixed = true;
+		} else if (negated) {
+			return "unresolved";
 		}
 		if (CLARIFY_MARKERS.test(c.message)) askedClarification = true;
 	}
+	if (sawFixed) return "fixed";
 	if (askedClarification) return "clarification_requested";
 	return "unresolved";
 }
@@ -231,6 +238,31 @@ export async function planRemediation(
 	const rightKindService = (name: string | undefined) =>
 		name !== undefined &&
 		services.some((s) => s.serviceName === name && s.id === rightKind);
+
+	// Explicitly named wrong-kind services are a caller mistake, not a hint to
+	// silently substitute — reject loudly so the harness can fix its input.
+	if (serviceName !== undefined) {
+		const named = services.find((s) => s.serviceName === serviceName);
+		if (named && named.id !== rightKind) {
+			return {
+				ok: false,
+				error: {
+					kind: "internal",
+					message: `Service ${serviceName} is a ${named.id} service but this report needs ${rightKind}. Pass a ${rightKind} service.`,
+				},
+			};
+		}
+		if (!named) {
+			return {
+				ok: false,
+				error: {
+					kind: "internal",
+					message: `Service ${serviceName} is not registered.`,
+				},
+			};
+		}
+	}
+
 	const explicitMatch: ServiceMatch | undefined =
 		serviceName && rightKindService(serviceName)
 			? matches.find((m) => m.service === serviceName)

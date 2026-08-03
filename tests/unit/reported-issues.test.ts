@@ -699,16 +699,31 @@ await describe("Plex reported-issues remediation", [
 		) {
 			throw new Error("explicit not-fixed must stay unresolved");
 		}
+		// Newer negation beats an older fixed marker.
+		if (
+			resolutionState([
+				{ id: "c1", message: "Fixed: added to radarr-hd", date: "2026-08-01" },
+				{ id: "c2", message: "not fixed, still freezing", date: "2026-08-02" },
+			]) !== "unresolved"
+		) {
+			throw new Error("newer not-fixed must override older fixed");
+		}
 	}),
 
-	test("add_or_upgrade never falls back to a wrong-kind service", async () => {
+	test("add_or_upgrade rejects an explicitly wrong-kind service even when a correct-kind one exists", async () => {
 		const oldFetch = global.fetch;
 		global.fetch = buildFetchStub() as typeof global.fetch;
 		try {
 			const client = await makeClient();
-			// Movie report; only a sonarr service is passed explicitly.
+			// Movie report; sonarr-hd is explicitly named, but a correct-kind
+			// radarr-hd also exists. The wrong-kind name must error, not silently
+			// fall back to radarr.
 			const sonarr = new MockSonarrService(
 				"sonarr-hd",
+				createMockServiceConfig(),
+			);
+			const radarr = new MockRadarrService(
+				"radarr-hd",
 				createMockServiceConfig(),
 			);
 			const preview = await planRemediation(
@@ -716,7 +731,7 @@ await describe("Plex reported-issues remediation", [
 				reportFixture(),
 				"add_or_upgrade",
 				"sonarr-hd",
-				[sonarr],
+				[sonarr, radarr],
 			);
 			if (preview.ok) {
 				throw new Error(
@@ -724,8 +739,8 @@ await describe("Plex reported-issues remediation", [
 				);
 			}
 			const err = preview.error as { message?: string };
-			if (!err.message?.includes("radarr service matched")) {
-				throw new Error(`expected right-kind error, got: ${err.message}`);
+			if (!err.message?.includes("this report needs radarr")) {
+				throw new Error(`expected wrong-kind error, got: ${err.message}`);
 			}
 		} finally {
 			global.fetch = oldFetch;

@@ -47,6 +47,15 @@ import type {
 } from "./base.js";
 
 // API Response Types
+// GET /qualityprofile — fields consumed by profile selection and tool output.
+const QualityProfileBoundarySchema = z.object({
+	id: z.number(),
+	name: z.string(),
+	upgradeAllowed: z.boolean().optional(),
+	cutoff: z.number().optional(),
+});
+const QualityProfileBoundaryArraySchema = z.array(QualityProfileBoundarySchema);
+
 interface HistoryResponse {
 	records: HistoryRecord[];
 	page?: number;
@@ -693,12 +702,20 @@ export abstract class BaseArrService {
 	async listQualityProfiles(): Promise<OperationResult<QualityProfileData>> {
 		debugOperation(this.serviceName, "listQualityProfiles");
 		try {
-			const response: QualityProfile[] = await fetchJson(
+			const response: unknown = await fetchJson(
 				this.buildApiUrl("/qualityprofile"),
 			);
-			const profiles = Array.isArray(response) ? response : [];
+			const parsed = QualityProfileBoundaryArraySchema.safeParse(response);
+			if (!parsed.success) {
+				throw createInternalError(
+					`Quality profile response failed validation on ${this.serviceName}: ${parsed.error.issues
+						.map((i) => `${i.path.join(".")}: ${i.message}`)
+						.join("; ")}`,
+				);
+			}
+			const profiles = parsed.data;
 
-			const profileData = profiles.map((profile: QualityProfile) => ({
+			const profileData = profiles.map((profile) => ({
 				id: profile.id,
 				name: profile.name,
 				upgradeAllowed: profile.upgradeAllowed,

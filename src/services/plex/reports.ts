@@ -28,18 +28,27 @@ function gqlHeaders(
 	};
 }
 
-// GraphQL envelope: either { errors: [...] } or { data: ... }. The node
-// containers (reports/reportComments/createReportComment) are zod-validated
-// by the caller via the schema argument — never cast raw upstream data.
+// GraphQL envelope: { data: ... } on success, { errors: [...] } on failure.
+// The whole payload is schema-validated before access — the raw upstream
+// object is never cast into a typed shape.
+const GraphqlEnvelopeSchema = z.object({
+	data: z.unknown().optional(),
+	errors: z.array(z.object({ message: z.string().optional() })).optional(),
+});
+
 function parseGraphql<T>(payload: unknown, schema: z.ZodType<T>): T {
-	if (
-		payload &&
-		typeof payload === "object" &&
-		"errors" in payload &&
-		Array.isArray((payload as { errors?: unknown[] }).errors) &&
-		((payload as { errors: unknown[] }).errors.length ?? 0) > 0
-	) {
-		const message = (payload as { errors: Array<{ message?: string }> }).errors
+	const envelope = GraphqlEnvelopeSchema.safeParse(payload);
+	if (!envelope.success) {
+		throw {
+			service: "plex",
+			status: 0,
+			message: `Plex GraphQL envelope failed validation: ${envelope.error.issues
+				.map((i) => `${i.path.join(".")}: ${i.message}`)
+				.join("; ")}`,
+		} as ServiceError;
+	}
+	if (envelope.data.errors && envelope.data.errors.length > 0) {
+		const message = envelope.data.errors
 			.map((e) => e.message ?? "unknown error")
 			.join("; ");
 		throw {
@@ -48,8 +57,7 @@ function parseGraphql<T>(payload: unknown, schema: z.ZodType<T>): T {
 			message: `Plex GraphQL error: ${message}`,
 		} as ServiceError;
 	}
-	const data = (payload as { data?: unknown }).data;
-	const parsed = schema.safeParse(data);
+	const parsed = schema.safeParse(envelope.data.data);
 	if (!parsed.success) {
 		throw {
 			service: "plex",
