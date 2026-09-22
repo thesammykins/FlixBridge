@@ -9,6 +9,10 @@
 
 FlixBridge is a Model Context Protocol (MCP) server that bridges AI assistants with media management services. It provides a unified interface for monitoring downloads, managing libraries, and automating media workflows.
 
+If Flixbridge is useful to you, you can support its development.
+
+<a href="https://ko-fi.com/sammykins/tip"><img src="https://cdn.prod.website-files.com/5c14e387dab576fe667689cf/670f5a01c01ea9191809398c_support_me_on_kofi_blue.avif" alt="Support Flixbridge on Ko-fi" height="32"></a>
+
 ## ✨ Key Features
 
 - **🎬 Multi-Service Support** - TV shows, movies, and download clients
