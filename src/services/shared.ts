@@ -291,6 +291,10 @@ const QueueStatusSchema = z.union([
 
 const NullableStringSchema = z.string().nullable().optional();
 const QueueImportScopeSchema = z.object({
+	downloadClient: NullableStringSchema,
+	downloadClientName: NullableStringSchema,
+	trackedDownloadState: NullableStringSchema,
+	trackedDownloadStatus: NullableStringSchema,
 	seriesId: z.number().int().positive().nullish(),
 	movieId: z.number().int().positive().nullish(),
 	episodeId: z.number().int().positive().nullish(),
@@ -375,6 +379,7 @@ const FolderSchema = z.object({
 
 const SeriesSchema = z.object({
 	id: z.number(),
+	tvdbId: z.number().optional(),
 	title: z.string(),
 	monitored: z.boolean().optional(),
 	path: z.string().optional(),
@@ -388,6 +393,7 @@ const SeriesSchema = z.object({
 
 const MovieSchema = z.object({
 	id: z.number(),
+	tmdbId: z.number().optional(),
 	title: z.string(),
 	monitored: z.boolean().optional(),
 	path: z.string().optional(),
@@ -1403,7 +1409,11 @@ export abstract class BaseArrService {
 				};
 			}
 
-			const targets: RemovalTargetDetails[] = [];
+			const targets: (RemovalTargetDetails & {
+				libraryScope:
+					| z.infer<typeof SeriesSchema>
+					| z.infer<typeof MovieSchema>;
+			})[] = [];
 			const missing: number[] = [];
 
 			for (const id of normalizedIds) {
@@ -1413,6 +1423,10 @@ export abstract class BaseArrService {
 							this.buildApiUrl(`/series/${id}`),
 						);
 						const series = SeriesSchema.parse(response);
+						if (series.id !== id)
+							throw createInternalError(
+								"Library response target identity mismatch",
+							);
 						targets.push({
 							id: series.id,
 							source: "library",
@@ -1421,12 +1435,17 @@ export abstract class BaseArrService {
 							monitored: series.monitored,
 							hasFile: (series.statistics?.episodeFileCount || 0) > 0,
 							path: series.path,
+							libraryScope: series,
 						});
 					} else {
 						const response = await this.fetchJson(
 							this.buildApiUrl(`/movie/${id}`),
 						);
 						const movie = MovieSchema.parse(response);
+						if (movie.id !== id)
+							throw createInternalError(
+								"Library response target identity mismatch",
+							);
 						targets.push({
 							id: movie.id,
 							source: "library",
@@ -1435,6 +1454,7 @@ export abstract class BaseArrService {
 							monitored: movie.monitored,
 							hasFile: movie.hasFile ?? Boolean(movie.movieFile),
 							path: movie.path,
+							libraryScope: movie,
 						});
 					}
 				} catch (error) {
@@ -1482,6 +1502,39 @@ export abstract class BaseArrService {
 
 			for (const target of preparation.targets) {
 				let manualImportNote: string | undefined;
+				const refreshed = await this.prepareRemoval(target.source, [target.id]);
+				if (
+					refreshed.ok &&
+					target.source === "queue" &&
+					options.attemptManualImport === false &&
+					refreshed.data?.missingIds.includes(target.id)
+				) {
+					// A shared download may have cleared a later approved queue ID.
+					removed += 1;
+					details.push({
+						id: target.id,
+						title: target.title,
+						source: target.source,
+						status: "removed",
+						message: "Item already absent from a complete queue snapshot",
+					});
+					continue;
+				}
+				if (
+					!refreshed.ok ||
+					JSON.stringify(refreshed.data?.targets[0]) !== JSON.stringify(target)
+				) {
+					failed += 1;
+					details.push({
+						id: target.id,
+						title: target.title,
+						source: target.source,
+						status: "failed",
+						message:
+							"Removal target changed or could not be refreshed; repeat preview and confirmation",
+					});
+					continue;
+				}
 
 				if (
 					target.source === "queue" &&
@@ -1537,6 +1590,10 @@ export abstract class BaseArrService {
 							deleteFiles: options.deleteFiles ?? false,
 							addImportExclusion: options.addImportExclusion ?? false,
 						});
+						if (!(await this.isLibraryItemAbsent(target.id)))
+							throw createInternalError(
+								"Library removal could not be verified from a successful snapshot",
+							);
 					}
 
 					removed += 1;
@@ -1550,10 +1607,11 @@ export abstract class BaseArrService {
 				} catch (error) {
 					if (
 						this.isNotFoundError(error) &&
-						(target.source !== "queue" ||
-							(await this.waitForQueueItemToClear(target.id)))
+						(target.source === "queue"
+							? await this.waitForQueueItemToClear(target.id)
+							: await this.isLibraryItemAbsent(target.id))
 					) {
-						// A queue 404 still needs a complete absence readback.
+						// A DELETE 404 still needs an independent absence readback.
 						removed += 1;
 						details.push({
 							id: target.id,
@@ -1990,6 +2048,20 @@ export abstract class BaseArrService {
 		}
 	}
 
+	private async isLibraryItemAbsent(id: number): Promise<boolean> {
+		try {
+			// ARR library list endpoints return the whole library, not a paged queue.
+			const items = LibraryItemArraySchema.parse(
+				await this.fetchJson(
+					this.buildApiUrl(this.id === "sonarr" ? "/series" : "/movie"),
+				),
+			);
+			return !items.some((item) => item.id === id);
+		} catch {
+			return false;
+		}
+	}
+
 	private isNotFoundError(error: unknown): boolean {
 		return (
 			error !== null &&
@@ -2334,7 +2406,8 @@ export abstract class BaseArrService {
 		candidate: ManualImportCandidatePreview,
 		target: ImportTarget,
 	): boolean {
-		if (candidate.rejectionReasons.length > 0) return false;
+		if (target.manualReviewRequired || candidate.rejectionReasons.length > 0)
+			return false;
 		const positiveId = (id: number | undefined) =>
 			Number.isInteger(id) && (id ?? 0) > 0;
 		if (
