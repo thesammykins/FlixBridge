@@ -21,7 +21,14 @@ For each selected ARR service:
 3. `queue_diagnostics`: `service`, `autoFix:false`. Use `import_issues` with `service` and `history_detail` with `service`, optional `page`, `pageSize`, `since` (string) for context.
 4. Optional `all_services_diagnostics`: `autoFix:false`. Cross-check its `serviceResults` against discovery and successful per-service reads: failed ARR reads produce `ok:false`, `data.incomplete:true` and `data.errors`; successful subtotals are not a complete baseline.
 5. Optional `download_status`: `services` (string array), explicit `includeDownloader` (boolean), and discovered `downloader` (string) when included. Its totals/status counts are not proof of full queue coverage or every service's health.
-6. Optional `server_metrics`: pass a discovered `service` and optional `detailed` (boolean). Although the advertised schema makes `service` optional, current dispatch requires a registered service; do not rely on an unscoped call.
+6. Optional `server_metrics`: omit `service` for global process metrics, or pass a discovered `service` for scoped metrics; optional `detailed` adds recent/exported data. These metrics do not prove upstream health.
+
+Sonarr policy is per instance. Offline `list_services` exposes configured `apiPolicy`;
+`system_status.data.api` separates advertised families, verified status reads and
+effective operation routes. Omission stays v3; strict `5` blocks unported removals,
+file deletion, import issues and diagnostic auto-fix. `auto` visibly uses reviewed
+v3 routes for those workflows. `library_statistics` is a read-only v5 feature with
+no legacy/Radarr scan fallback. Do not change policy merely to bypass a guard.
 
 Require structured `ok:true` and expected data, not just transport success. Authentication, timeouts and omitted results mean unknown/failed, never clean.
 
@@ -32,7 +39,7 @@ Compare queue identity, title, download association and available `downloadClien
 - `quality_downgrade` / not-an-upgrade: confirm the reason really says the download cannot improve the existing file; propose bounded queue cleanup, not library deletion.
 - `import_blocked_id_match`, `sample_detection_ambiguous`, `episode_pack_mismatch`: manual review, not automatic cleanup. A sample label or rejected pack alone does not justify deleting files.
 - Retry only the exact approved queue items using `queue_grab` with `service` and numeric `ids`. It has no preview/token mechanism; establish identity with fresh read-only evidence first.
-- Manual import: preview `manual_import` with `service`, positive integer queue `ids`, `dryRun:true`. Inspect `preview.items`, missing IDs and media mappings. Require `safeToImport:true` and exactly one unrejected, completely mapped candidate per approved item. Independently compare media identity and path with the queue target: the baseline safety flag does not establish that binding. Unsafe/ambiguous candidates stay untouched.
+- Manual import: preview `manual_import` with `service`, positive integer queue `ids`, `dryRun:true`. Inspect `preview.items`, missing IDs and media mappings. Require `safeToImport:true` and exactly one unrejected, completely mapped candidate per approved item. The implementation binds exact media/episode set, path and download identity; independently review that scope and current manual-review warnings rather than treating a safety flag as authority. Unsafe/ambiguous candidates stay untouched.
 
 ## Preview → authorization → execution → readback
 
@@ -42,7 +49,7 @@ For `manual_import` or `remove_content`:
 2. Obtain explicit authorization. Preserve the service, IDs, target and options exactly; never broaden a batch. ARR IDs must be positive integers; downloader IDs remain exact strings, not ARR IDs.
 3. Execute with `dryRun:false` and the returned `confirmationToken` in the same server session. These tokens expire after five minutes and are consumed on execution; re-preview after expiry, restart or scope changes. Never invent or reuse tokens.
 4. Read the exact targets back via `queue_list` and appropriate history/status evidence; inspect per-item execution results even when outer `ok:true`. Already-absent removal results require readback, not another deletion.
-5. Strict import execution requires completed command readback and complete queue absence; failed/unverified default import retains the download. Explicit authorized discard needs a fresh preview with `manualImport:false`. Imports are asynchronous. If an item remains immediately after execution, allow bounded processing time and re-read before retrying. Queue clearance plus matching import history is stronger evidence than an accepted command. Report pending/unverified instead of duplicating an import.
+5. Strict import execution requires completed command, complete queue absence and changed positive library-file identity; failed/unverified default import retains the download. Explicit authorized discard needs a fresh preview with `manualImport:false`. Imports are asynchronous. If an item remains immediately after execution, allow bounded processing time and re-read before retrying. Queue clearance plus matching import history is stronger evidence than an accepted command. Report pending/unverified instead of duplicating an import.
 
 For bounded queue cleanup, `remove_content` accepts `service`, `target:"queue"`, `ids`, `dryRun` and options. Set options explicitly in both preview and execute: `deleteFiles:false`, `addImportExclusion:false`, `removeFromClient:false`, `blocklist:false`, `removeFromDownloader:false`, `allowManualRemoval:false`, `manualImport:false` is a conservative proposal, not a guarantee that ARR removal leaves a queue entry absent. Explain and authorize any change to these flags. The default `removeFromClient:true` removes from the client and `manualImport` defaults to enabled; do not inherit them accidentally. Manual-review override requires separate approval and a new preview with `allowManualRemoval:true`.
 

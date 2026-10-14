@@ -54,6 +54,9 @@ Use the right media kind (Radarr for movies; Sonarr for series/episodes). Automa
 - Verify target-specific activity using `history_detail` and `queue_list` for the selected service, plus refreshed report matches as available. Allow bounded time for asynchronous searches/imports. An accepted search is not a replacement download, import or fixed playback. Do not infer deletion from stale Plex metadata or series-level `hasFile` alone; if exact file verification is unavailable through tools, use an authorized service UI or report it unverified.
 - Auto-generated “Pending:” comments classify submitted media work as `pending`, not `fixed`. Report both thread state and actual media progress separately; never promise playback is repaired without evidence.
 - Deletion/addition can succeed before search or comment fails. On partial failure, stop and read back what changed; never blindly replay a destructive action. Seek authorization for any further recovery. Respect state guards rather than bypassing them.
+- Retained clients scope snapshot/active guards to the exact configured server/token
+  across tool calls. Restart/server reconstruction and token rotation are not durable
+  replay recovery; inspect prior work before retrying even if the report is unchanged.
 
 ## Privacy and final report
 
