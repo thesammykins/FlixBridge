@@ -46,8 +46,8 @@ await describe("Removal workflow cancellation", [
 			assert.equal(deletions, 1);
 			assert.equal(
 				reads,
-				2,
-				"no verification read should start after cancellation",
+				3,
+				"one preview, one pre-delete refresh and one verification read; none after cancellation",
 			);
 			assert.equal(result.data?.removed, 0);
 		} finally {
