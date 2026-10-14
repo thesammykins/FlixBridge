@@ -57,16 +57,13 @@ export async function fetchJson<T>(
 		const origin = target.origin;
 		const headers = new Headers(fetchOptions.headers);
 		if (!headers.has("Accept")) headers.set("Accept", "application/json");
-		let requestMethod = method;
-		let body = fetchOptions.body;
 		let response: Response;
 		for (let hop = 0; ; hop++) {
 			if (controller.signal.aborted) await aborted;
 			response = await Promise.race([
 				fetch(target.toString(), {
 					...fetchOptions,
-					method: requestMethod,
-					body,
+					method,
 					headers,
 					redirect: "manual",
 					signal: controller.signal,
@@ -76,20 +73,15 @@ export async function fetchJson<T>(
 			if (![301, 302, 303, 307, 308].includes(response.status)) break;
 			const location = response.headers.get("location");
 			await response.body?.cancel();
+			if (!["GET", "HEAD"].includes(method.toUpperCase()))
+				throw createInternalError(
+					"Mutation HTTP redirect rejected; not replayed",
+				);
 			if (!location || hop >= 5)
 				throw createInternalError("Invalid or excessive HTTP redirect");
 			const next = new URL(location, target);
 			if (next.origin !== origin || next.username || next.password)
 				throw createInternalError("Unsafe HTTP redirect rejected");
-			if (
-				(response.status === 303 && requestMethod !== "HEAD") ||
-				([301, 302].includes(response.status) && requestMethod === "POST")
-			) {
-				requestMethod = "GET";
-				body = undefined;
-				headers.delete("content-type");
-				headers.delete("content-length");
-			}
 			target = next;
 		}
 

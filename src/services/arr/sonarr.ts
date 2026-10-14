@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { z } from "zod";
 import { createInternalError, handleError } from "../../core.js";
+import { requestSignal } from "../../request-context.js";
 import type {
 	OperationResult,
 	ServiceConfig,
@@ -192,24 +193,26 @@ export class SonarrService
 			age < DISCOVERY_MAX_AGE_MS
 		)
 			return this.discovery;
-		if (!this.discovering) {
-			this.discovering = (async () => {
-				const parsed = DiscoverySchema.safeParse(
-					await this.fetchJson(this.buildDiscoveryUrl()),
+		const load = async () => {
+			const parsed = DiscoverySchema.safeParse(
+				await this.fetchJson(this.buildDiscoveryUrl()),
+			);
+			if (!parsed.success)
+				throw createInternalError(
+					"Sonarr API discovery failed validation; check the URL base and configured API policy",
 				);
-				if (!parsed.success)
-					throw createInternalError(
-						"Sonarr API discovery failed validation; check the URL base and configured API policy",
-					);
-				const info = {
-					...parsed.data,
-					at: Date.now(),
-					verified: new Set<Family>(),
-				};
-				this.discovery = info;
-				return info;
-			})();
-		}
+			const info = {
+				...parsed.data,
+				at: Date.now(),
+				verified: new Set<Family>(),
+			};
+			this.discovery = info;
+			return info;
+		};
+		// ponytail: cancelable cold callers probe independently; share completed results.
+		// Signal-free callers retain in-flight deduplication without a caller owner.
+		if (requestSignal.getStore()) return load();
+		this.discovering ??= load();
 		try {
 			return await this.discovering;
 		} finally {
@@ -226,21 +229,18 @@ export class SonarrService
 			throw createInternalError(
 				`Sonarr API v${family} is not advertised; review this instance's API policy`,
 			);
-		if (!this.verifying.has(family)) {
-			this.verifying.set(
-				family,
-				(async () => {
-					const status = await this.fetchJson(
-						`${this.buildDiscoveryUrl()}/v${family}/system/status`,
-					);
-					if (!StatusSchema.safeParse(status).success)
-						throw createInternalError(
-							`Sonarr API v${family} status failed validation`,
-						);
-					info.verified.add(family);
-				})(),
+		const probe = async () => {
+			const status = await this.fetchJson(
+				`${this.buildDiscoveryUrl()}/v${family}/system/status`,
 			);
-		}
+			if (!StatusSchema.safeParse(status).success)
+				throw createInternalError(
+					`Sonarr API v${family} status failed validation`,
+				);
+			info.verified.add(family);
+		};
+		if (requestSignal.getStore()) return probe();
+		if (!this.verifying.has(family)) this.verifying.set(family, probe());
 		try {
 			await this.verifying.get(family);
 		} finally {
