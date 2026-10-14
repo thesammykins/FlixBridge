@@ -40,7 +40,9 @@
 - Preserve partial aggregate data/errors. Empty pages with positive totals, ambiguous
   IDs and missing readbacks cannot prove absence or a clean stack.
 - Plex destruction needs a unique exact media/file target and rederived token plan.
-  Read media and comment outcomes separately; process-local guards die on restart; the Plex snapshot guard is client-local.
+  Read media and comment outcomes separately. Retained account/client ownership
+  protects replay across tool calls, but process-local guards die on restart or
+  server reconstruction; token rotation creates a distinct configured identity.
 - See [safe usage](docs/usage.md) and [security limits](docs/security-audit.md).
 
 ## Verification and public changes

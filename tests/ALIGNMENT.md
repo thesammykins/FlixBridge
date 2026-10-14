@@ -15,6 +15,9 @@ actual output; do not carry old totals or source line numbers forward.
 | Aggregates preserve incomplete coverage | `unit/aggregate-completeness.test.ts`, dispatch safety tests | Whole-library health from a bounded page |
 | Cancellation reaches adapter timers | `unit/removal-cancellation.test.ts`, real MCP EOF during accepted DELETE verification | Rollback of commands the upstream already accepted |
 | Fresh release build excludes stale output | `unit/build-output.test.ts` | Sanitization of all public source/history or package contents |
+| Removal and manual import re-check current safety evidence | `unit/removal-freshness.test.ts` | Atomic upstream compare-and-delete or restoration after an accepted mutation |
+| Plex replay ownership survives tool-call boundaries | `unit/plex-dispatch-replay.test.ts` | Durable idempotency across restart/server reconstruction/token rotation |
+| Strict mutations cannot redirect into another API family; discovery cancellation isolates siblings | `unit/route-isolation.test.ts` | Universal SSRF protection or rollback of accepted upstream work |
 | Ordinary CI cannot publish | `unit/release-policy.test.ts` | A remote workflow change being active before it is merged |
 
 ## Fixture provenance and review

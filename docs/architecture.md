@@ -36,6 +36,11 @@ reviewed workflows when current is v5. Discovery/status verification is cached f
 five minutes. URL base paths are preserved. A workflow and its preview/execution
 retain one family; failed writes are never replayed on another family.
 
+Cold discovery/status probes with request cancellation run independently so one
+caller's cancellation cannot fail a sibling. Completed per-instance results are
+cached; signal-free callers also deduplicate in-flight probes. There are no detached
+background discovery tasks or discovery timers.
+
 Removal, import issues, file deletion and diagnostics auto-fix intentionally remain
 v3; strict v5 rejects them before writes. Direct imports, read diagnostics, profiles,
 add/search/queue grab/search commands and read-only statistics have reviewed v5
@@ -53,11 +58,11 @@ Diagnostics default to read-only (`autoFix:false`). Clients should keep the flag
 
 Plex combines account reports from `community.plex.tv` with metadata from the configured PMS, then matches against ARR libraries. Resolution is inferred from a bounded comment history; it is not a playback test or a native report-close operation. Remediation actions can search, add, delete a file and post comments. Only `remove_and_regrab` has a ten-minute concrete-plan-bound token; it binds the concrete report/action/service/library item/movie file/episode file/resolved title. All actions execute unless callers explicitly send `dryRun:true`.
 
-Plex destruction rejects fuzzy/ambiguous media/file targets and rederives the destructive token plan. Pending comments block rework and a process-local execution set blocks concurrent report actions. A client-local snapshot submission guard only protects reused client objects; MCP calls create fresh clients, so partial comment failure does not reliably block later tool-call replay. Process-local maps, metrics and tokens are not durable audit records or cross-process locks. Async upstream commands and separate comment writes can produce partial outcomes; callers must inspect returned detail and read back affected systems before retries or success claims.
+Plex destruction rejects fuzzy/ambiguous media/file targets and rederives the destructive token plan. Pending comments block rework. Dispatch retains private clients per exact configured server/token identity; client-scoped active and snapshot guards therefore protect sequential and concurrent tool calls without one account blocking another. Accepted media work followed by comment failure returns safe local partial-mutation guidance. Guards do not survive server reconstruction/restart, and token rotation creates a distinct configured identity. Process-local maps, metrics and tokens are not durable audit records or cross-process locks. Async upstream commands and separate comment writes can produce partial outcomes; callers must inspect returned detail and read back affected systems before retries or success claims.
 
 ## Development and packaging
 
-`npm run dev` runs source through tsx. `npm run build` compiles/typechecks to `dist/`; `npm start` runs that build. The published npm executable runs its packaged `dist/index.js`, not an arbitrary local checkout. The package allowlist currently includes dist, README and license, not repository scripts/docs/skills.
+`npm run dev` runs source through tsx. `npm run build` removes stale `dist/` output before compiling/typechecking; `prepack` rebuilds, and `npm start` runs that build. The published npm executable runs its packaged `dist/index.js`, not an arbitrary local checkout. The package allowlist currently includes dist, README and license, not repository scripts/docs/skills.
 
 Use `npm run build && npm run check && npm test` for runtime changes. Tests use the custom unit runner and Node MCP wire/client/HTTP tests, not Jest/Vitest. Live scripts require a separately authorized stack: `npm run smoke` calls diagnostics with the read-only default in this source and enables debug output; it is not an offline CI gate. For prose-only changes, validate links/examples and compare claims with source; runtime changes still require the full gates.
 
