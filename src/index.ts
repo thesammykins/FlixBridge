@@ -1,19 +1,22 @@
 #!/usr/bin/env node
 
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { readFileSync, realpathSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import {
-	CallToolRequestSchema,
-	ErrorCode,
-	ListToolsRequestSchema,
-	McpError,
-} from "@modelcontextprotocol/sdk/types.js";
+	ProtocolErrorCode as ErrorCode,
+	ProtocolError as McpError,
+	Server,
+	type Tool,
+} from "@modelcontextprotocol/server";
+import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { z } from "zod";
 import { loadConfigFromEnvOnly } from "./config.js";
+import { createInternalError, serializeError } from "./core.js";
 import { debugToolTiming } from "./debug.js";
+import { VersionCheckedServer } from "./mcp-version.js";
 import { metricsCollector } from "./metrics.js";
+import { ToolAdmission } from "./request-context.js";
 import type {
 	ManualImportPreviewData,
 	OperationResult,
@@ -39,29 +42,16 @@ import {
 } from "./services/plex/reports.js";
 import { serviceRegistry } from "./services/registry.js";
 
-const FALLBACK_SERVER_VERSION = "0.3.7";
-
 function readServerVersion(): string {
-	try {
-		const packageJson = JSON.parse(
-			readFileSync(new URL("../package.json", import.meta.url), "utf8"),
-		) as { version?: unknown };
-		if (
-			typeof packageJson.version === "string" &&
-			packageJson.version.length > 0
-		) {
-			return packageJson.version;
-		}
-	} catch {
-		// fall back to known release version
-	}
-
-	return FALLBACK_SERVER_VERSION;
+	const packageJson: unknown = JSON.parse(
+		readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+	);
+	return z.object({ version: z.string().min(1) }).parse(packageJson).version;
 }
 
 const SERVER_VERSION = readServerVersion();
 
-const tools = [
+const tools: Tool[] = [
 	{
 		name: "list_services",
 		description:
@@ -321,25 +311,152 @@ const tools = [
 			required: ["service", "itemId", "qualityProfileId"],
 		},
 	},
+	{
+		name: "library_statistics",
+		description:
+			"Read Sonarr API v5 library counts, disk usage and quality/tag breakdowns",
+		inputSchema: {
+			type: "object",
+			properties: { service: { type: "string" } },
+			required: ["service"],
+		},
+	},
 ];
 
-const InputSchema = z.object({
-	service: z.string().optional(),
-	title: z.string().optional(),
-	page: z.number().optional(),
-	pageSize: z.number().optional(),
-	ids: z.array(z.union([z.string(), z.number()])).optional(),
-	since: z.string().optional(),
-	limit: z.number().optional(),
-	query: z.string().optional(),
-	foreignId: z.number().optional(),
-	rootFolderPath: z.string().optional(),
-	qualityProfileId: z.number().optional(),
+// Envelope guarantee only: service-specific data remains deliberately unconstrained.
+const outputSchema: NonNullable<Tool["outputSchema"]> = {
+	type: "object",
+	required: ["ok"],
+	additionalProperties: false,
+	properties: {
+		ok: { type: "boolean" },
+		data: {},
+		error: {
+			type: "object",
+			required: ["message"],
+			additionalProperties: false,
+			properties: {
+				message: { type: "string" },
+				service: { type: "string" },
+				status: { type: "number" },
+				kind: { type: "string" },
+				code: { type: "string" },
+			},
+		},
+	},
+};
+const writeTools = new Set([
+	"queue_grab",
+	"remove_content",
+	"manual_import",
+	"add_new",
+	"queue_diagnostics",
+	"all_services_diagnostics",
+	"remediate_reported_issue",
+	"update_quality_profile",
+]);
+const OutputEnvelope = z
+	.object({
+		ok: z.boolean(),
+		data: z.unknown().optional(),
+		error: z
+			.object({
+				message: z.string(),
+				service: z.string().optional(),
+				status: z.number().optional(),
+				kind: z.string().optional(),
+				code: z.string().optional(),
+			})
+			.strict()
+			.optional(),
+	})
+	.strict();
+for (const tool of tools) {
+	tool.outputSchema = outputSchema;
+	tool.inputSchema.additionalProperties = false;
+	for (const [name, property] of Object.entries(
+		tool.inputSchema.properties ?? {},
+	)) {
+		const field = property as Record<string, unknown>;
+		if (field.type === "number")
+			Object.assign(field, {
+				type: "integer",
+				minimum: name === "queueTimeoutMs" ? 1000 : 1,
+				maximum:
+					name === "queueTimeoutMs"
+						? 60000
+						: ["limit", "pageSize"].includes(name)
+							? 1000
+							: Number.MAX_SAFE_INTEGER,
+			});
+		if (field.type === "string")
+			Object.assign(field, { minLength: 1, maxLength: 4096 });
+		if (name === "ids")
+			Object.assign(field, {
+				minItems: 1,
+				maxItems: 1000,
+				items: {
+					type:
+						tool.name === "remove_content" ? ["integer", "string"] : "integer",
+					minimum: 1,
+					maximum: Number.MAX_SAFE_INTEGER,
+					minLength: 1,
+					maxLength: 256,
+				},
+			});
+		if (name === "services")
+			Object.assign(field, {
+				maxItems: 100,
+				items: { type: "string", minLength: 1, maxLength: 256 },
+			});
+	}
+	const readOnlyHint = !writeTools.has(tool.name);
+	tool.annotations = {
+		readOnlyHint,
+		openWorldHint: !["list_services", "server_metrics"].includes(tool.name),
+		...(!readOnlyHint && {
+			destructiveHint: tool.name !== "add_new",
+			idempotentHint: false,
+		}),
+	};
+}
+
+export const InputSchema = z.object({
+	service: z.string().min(1).max(4096).optional(),
+	title: z.string().min(1).max(4096).optional(),
+	page: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
+	pageSize: z.number().int().positive().max(1000).optional(),
+	ids: z
+		.array(
+			z.union([
+				z.string().min(1).max(256),
+				z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+			]),
+		)
+		.min(1)
+		.max(1000)
+		.optional(),
+	since: z.string().min(1).max(4096).optional(),
+	limit: z.number().int().positive().max(1000).optional(),
+	query: z.string().min(1).max(4096).optional(),
+	foreignId: z
+		.number()
+		.int()
+		.positive()
+		.max(Number.MAX_SAFE_INTEGER)
+		.optional(),
+	rootFolderPath: z.string().min(1).max(4096).optional(),
+	qualityProfileId: z
+		.number()
+		.int()
+		.positive()
+		.max(Number.MAX_SAFE_INTEGER)
+		.optional(),
 	monitored: z.boolean().optional(),
 	autoFix: z.boolean().optional(),
-	services: z.array(z.string()).optional(),
+	services: z.array(z.string().min(1).max(256)).max(100).optional(),
 	includeDownloader: z.boolean().optional(),
-	downloader: z.string().optional(),
+	downloader: z.string().min(1).max(4096).optional(),
 	detailed: z.boolean().optional(),
 	target: z.enum(["queue", "library", "downloader_queue"]).optional(),
 	dryRun: z.boolean().optional(),
@@ -350,14 +467,14 @@ const InputSchema = z.object({
 	removeFromDownloader: z.boolean().optional(),
 	allowManualRemoval: z.boolean().optional(),
 	manualImport: z.boolean().optional(),
-	confirmationToken: z.string().optional(),
-	queueTimeoutMs: z.number().optional(),
-	reportId: z.string().optional(),
-	itemId: z.number().optional(),
+	confirmationToken: z.string().min(1).max(4096).optional(),
+	queueTimeoutMs: z.number().int().min(1000).max(60000).optional(),
+	reportId: z.string().min(1).max(4096).optional(),
+	itemId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
 	action: z
 		.enum(["comment_only", "re_search", "add_or_upgrade", "remove_and_regrab"])
 		.optional(),
-	comment: z.string().optional(),
+	comment: z.string().min(1).max(4096).optional(),
 });
 
 type RemovalTargetKind = "queue" | "library" | "downloader_queue";
@@ -405,210 +522,323 @@ type ConfirmationRecord =
 
 const CONFIRMATION_TTL_MS = 5 * 60 * 1000;
 
-class ArrMcpServer {
-	private server = new Server(
-		{
-			name: "arr-mcp",
-			version: SERVER_VERSION,
-		},
-		{
-			capabilities: {
-				tools: {},
+export class ArrMcpServer {
+	private admission = new ToolAdmission();
+	private buildServer(era: "legacy" | "modern") {
+		const ServerClass = era === "modern" ? VersionCheckedServer : Server;
+		const server = new ServerClass(
+			{
+				name: "arr-mcp",
+				version: SERVER_VERSION,
 			},
-		},
-	);
+			{
+				capabilities: {
+					tools: {},
+				},
+			},
+		);
+		this.registerHandlers(server);
+		return server;
+	}
 	private config?: {
 		services: Record<string, ServiceConfig>;
 		downloaders?: Record<string, SabnzbdConfig>;
 	};
 	private pendingConfirmations: Map<string, ConfirmationRecord> = new Map();
 
-	constructor() {
-		this.server.setRequestHandler(ListToolsRequestSchema, async () => ({
+	private registerHandlers(server: Server) {
+		server.setRequestHandler("tools/list", async () => ({
 			tools,
 		}));
 
-		this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
+		server.setRequestHandler("tools/call", async (request, ctx) => {
 			const { name, arguments: args } = request.params;
-			const input = InputSchema.parse(args);
-
-			let result: unknown;
-
-			// Handle multi-service tools
-			if (name === "list_services") {
-				result = await debugToolTiming(name, "info", async () => {
-					const services = serviceRegistry.getAllNames();
-					const downloaders = serviceRegistry.getAllDownloaderNames();
-					return {
-						ok: true,
-						data: {
-							services: services.map((name) => ({
-								name,
-								type:
-									serviceRegistry
-										.get(name)
-										?.constructor.name?.replace("Service", "")
-										.toLowerCase() || "unknown",
-							})),
-							downloaders: downloaders.map((name) => ({
-								name,
-								type: "sabnzbd",
-							})),
-							summary: {
-								totalServices: services.length,
-								totalDownloaders: downloaders.length,
-							},
-						},
-					};
-				});
-			} else if (name === "all_services_diagnostics") {
-				result = await debugToolTiming(name, "multi", () =>
-					this.runAllServicesDiagnostics(input.autoFix ?? true),
+			const tool = tools.find((tool) => tool.name === name);
+			if (!tool) throw new McpError(ErrorCode.InvalidParams, "Unknown tool");
+			try {
+				const input = this.parseToolInput(tool, args);
+				return this.toolResult(
+					await this.admission.run(ctx.mcpReq.signal, () =>
+						this.executeTool(name, input),
+					),
 				);
-			} else if (name === "download_status") {
-				result = await debugToolTiming(name, "multi", () =>
-					this.runDownloadStatus(input),
-				);
-			} else if (name === "remove_content") {
-				result = await this.handleRemoveContent(input);
-			} else if (name === "reported_issues") {
-				result = await this.handleReportedIssues(input.limit);
-			} else if (name === "remediate_reported_issue") {
-				result = await this.handleRemediateReportedIssue({
-					reportId: input.reportId,
-					action: input.action,
-					service: input.service,
-					comment: input.comment,
-					dryRun: input.dryRun,
-					confirmationToken: input.confirmationToken,
-				});
-			} else if (name === "update_quality_profile") {
-				result = await this.handleUpdateQualityProfile(input);
-			} else {
-				const service = serviceRegistry.get(input.service || "");
-				if (!service) {
-					throw new McpError(
-						ErrorCode.InvalidParams,
-						`Unknown service: ${input.service}. Available services: ${serviceRegistry.getAllNames().join(", ")}`,
-					);
+			} catch (error) {
+				if (
+					error instanceof McpError &&
+					error.code === ErrorCode.InvalidParams
+				) {
+					return this.toolResult({
+						ok: false,
+						error: createInternalError(error.message),
+					});
 				}
-
-				result = await debugToolTiming(
-					name,
-					input.service || "unknown",
-					async () => {
-						switch (name) {
-							case "system_status":
-								return await service.systemStatus();
-							case "queue_list":
-								return await service.queueList({
-									page: input.page,
-									pageSize: input.pageSize,
-								});
-							case "queue_grab":
-								if (!input.ids || input.ids.length === 0) {
-									throw new McpError(
-										ErrorCode.InvalidParams,
-										"Missing or empty ids array",
-									);
-								}
-								return await service.queueGrab(
-									this.normalizeNumericIds(this.normalizeIdStrings(input.ids)),
-								);
-							case "manual_import":
-								return await this.handleManualImport(input);
-							case "root_folders":
-								return await service.rootFolderList();
-							case "history_detail":
-								return await service.historyDetail({
-									page: input.page,
-									pageSize: input.pageSize,
-									since: input.since,
-								});
-							case "search":
-								if (!input.query) {
-									throw new McpError(
-										ErrorCode.InvalidParams,
-										"Missing query parameter",
-									);
-								}
-								return await service.search(input.query, {
-									limit: input.limit,
-								});
-							case "add_new":
-								if (!input.title || !input.foreignId) {
-									throw new McpError(
-										ErrorCode.InvalidParams,
-										"Missing required parameters: title and foreignId",
-									);
-								}
-								return await service.addNew({
-									title: input.title,
-									foreignId: input.foreignId,
-									rootFolderPath: input.rootFolderPath,
-									qualityProfileId: input.qualityProfileId,
-									monitored: input.monitored,
-								});
-							case "import_issues":
-								return await service.importIssues();
-							case "quality_profiles":
-								return await service.listQualityProfiles();
-							case "queue_diagnostics":
-								return await service.queueDiagnostics(input.autoFix);
-							case "server_metrics": {
-								if (input.service) {
-									const serviceMetrics = metricsCollector.getServiceMetrics(
-										input.service,
-									);
-									if (!serviceMetrics) {
-										throw new McpError(
-											ErrorCode.InvalidParams,
-											`No metrics found for service: ${input.service}`,
-										);
-									}
-									return {
-										ok: true,
-										data: {
-											service: input.service,
-											...serviceMetrics,
-											health: metricsCollector.getHealthStatus(),
-										},
-									};
-								}
-								const summary = metricsCollector.getSummary();
-								const health = metricsCollector.getHealthStatus();
-								return {
-									ok: true,
-									data: {
-										...summary,
-										health,
-										...(input.detailed && {
-											recentOperations:
-												metricsCollector.getRecentOperations(10),
-											exportedMetrics: metricsCollector.exportMetrics(),
-										}),
-									},
-								};
-							}
-							default:
-								throw new McpError(
-									ErrorCode.MethodNotFound,
-									`Unknown tool: ${name}`,
-								);
-						}
-					},
+				console.error("Tool execution failed");
+				throw new McpError(
+					ErrorCode.InternalError,
+					"Unexpected internal error",
 				);
 			}
-
-			return {
-				content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-			};
 		});
 	}
 
-	private async runAllServicesDiagnostics(autoFix = true) {
+	private parseToolInput(
+		tool: Tool,
+		args: Record<string, unknown> = {},
+	): z.infer<typeof InputSchema> {
+		for (const field of tool.inputSchema.required ?? []) {
+			if (args[field] === undefined)
+				throw new McpError(
+					ErrorCode.InvalidParams,
+					`Missing required field: ${field}`,
+				);
+		}
+		const fields = Object.keys(tool.inputSchema.properties ?? {});
+		if (Object.keys(args).some((field) => !fields.includes(field)))
+			throw new McpError(
+				ErrorCode.InvalidParams,
+				"Unknown argument: use only the tool's advertised fields",
+			);
+		const parsed = InputSchema.safeParse(args);
+		if (!parsed.success)
+			throw new McpError(
+				ErrorCode.InvalidParams,
+				`Invalid field: ${parsed.error.issues.map((issue) => issue.path[0]).join(", ")}`,
+			);
+		const input = parsed.data;
+		if (
+			input.ids &&
+			tool.name !== "remove_content" &&
+			input.ids.some((id) => typeof id !== "number")
+		)
+			throw new McpError(
+				ErrorCode.InvalidParams,
+				"ids must contain positive integers",
+			);
+		if (
+			tool.name === "remove_content" &&
+			input.ids &&
+			input.target !== "downloader_queue" &&
+			!(input.downloader && !input.service)
+		)
+			this.normalizeNumericIds(this.normalizeIdStrings(input.ids));
+		return input;
+	}
+
+	private toolResult(result: unknown) {
+		const structuredContent = OutputEnvelope.parse(
+			JSON.parse(
+				JSON.stringify(result, (key, value: unknown) => {
+					if (
+						["raw", "cause", "apiKey", "password", "accessToken"].includes(key)
+					)
+						return undefined;
+					if (key === "error" && value !== undefined && value !== null)
+						return typeof value === "string"
+							? "Operation failed"
+							: serializeError(value);
+					return value;
+				}),
+			),
+		) as Record<string, unknown>;
+		return {
+			content: [
+				{
+					type: "text" as const,
+					text: JSON.stringify(structuredContent, null, 2),
+				},
+			],
+			structuredContent,
+			...(structuredContent.ok === false && { isError: true }),
+		};
+	}
+
+	private async executeTool(name: string, input: z.infer<typeof InputSchema>) {
+		let result: unknown;
+
+		// Handle multi-service tools
+		if (name === "list_services") {
+			result = await debugToolTiming(name, "info", async () => {
+				const services = serviceRegistry.getAllNames();
+				const downloaders = serviceRegistry.getAllDownloaderNames();
+				return {
+					ok: true,
+					data: {
+						services: services.map((name) => ({
+							name,
+							type: serviceRegistry.get(name)?.id ?? "unknown",
+							...(serviceRegistry.get(name)?.id === "sonarr" && {
+								apiPolicy: this.config?.services[name]?.apiVersion ?? "legacy",
+							}),
+						})),
+						downloaders: downloaders.map((name) => ({
+							name,
+							type: "sabnzbd",
+						})),
+						summary: {
+							totalServices: services.length,
+							totalDownloaders: downloaders.length,
+						},
+					},
+				};
+			});
+		} else if (name === "all_services_diagnostics") {
+			result = await debugToolTiming(name, "multi", () =>
+				this.runAllServicesDiagnostics(input.autoFix ?? false),
+			);
+		} else if (name === "download_status") {
+			result = await debugToolTiming(name, "multi", () =>
+				this.runDownloadStatus(input),
+			);
+		} else if (name === "remove_content") {
+			result = await this.handleRemoveContent(input);
+		} else if (name === "reported_issues") {
+			result = await this.handleReportedIssues(input.limit);
+		} else if (name === "remediate_reported_issue") {
+			result = await this.handleRemediateReportedIssue({
+				reportId: input.reportId,
+				action: input.action,
+				service: input.service,
+				comment: input.comment,
+				dryRun: input.dryRun,
+				confirmationToken: input.confirmationToken,
+			});
+		} else if (name === "update_quality_profile") {
+			result = await this.handleUpdateQualityProfile(input);
+		} else if (name === "server_metrics") {
+			result = this.serverMetrics(input);
+		} else {
+			const service = serviceRegistry.get(input.service || "");
+			if (!service) {
+				throw new McpError(
+					ErrorCode.InvalidParams,
+					"Unknown service. Use list_services to discover configured services.",
+				);
+			}
+
+			result = await debugToolTiming(
+				name,
+				input.service || "unknown",
+				async () => {
+					switch (name) {
+						case "library_statistics":
+							return service.libraryStatistics
+								? await service.libraryStatistics()
+								: {
+										ok: false,
+										error: createInternalError(
+											"Library statistics is not supported by this service",
+										),
+									};
+						case "system_status":
+							return await service.systemStatus();
+						case "queue_list":
+							return await service.queueList({
+								page: input.page,
+								pageSize: input.pageSize,
+							});
+						case "queue_grab":
+							if (!input.ids || input.ids.length === 0) {
+								throw new McpError(
+									ErrorCode.InvalidParams,
+									"Missing or empty ids array",
+								);
+							}
+							return await service.queueGrab(
+								this.normalizeNumericIds(this.normalizeIdStrings(input.ids)),
+							);
+						case "manual_import":
+							return await this.handleManualImport(input);
+						case "root_folders":
+							return await service.rootFolderList();
+						case "history_detail":
+							return await service.historyDetail({
+								page: input.page,
+								pageSize: input.pageSize,
+								since: input.since,
+							});
+						case "search":
+							if (!input.query) {
+								throw new McpError(
+									ErrorCode.InvalidParams,
+									"Missing query parameter",
+								);
+							}
+							return await service.search(input.query, {
+								limit: input.limit,
+							});
+						case "add_new":
+							if (!input.title || !input.foreignId) {
+								throw new McpError(
+									ErrorCode.InvalidParams,
+									"Missing required parameters: title and foreignId",
+								);
+							}
+							return await service.addNew({
+								title: input.title,
+								foreignId: input.foreignId,
+								rootFolderPath: input.rootFolderPath,
+								qualityProfileId: input.qualityProfileId,
+								monitored: input.monitored,
+							});
+						case "import_issues":
+							return await service.importIssues();
+						case "quality_profiles":
+							return await service.listQualityProfiles();
+						case "queue_diagnostics":
+							return await service.queueDiagnostics(input.autoFix ?? false);
+						default:
+							throw new McpError(
+								ErrorCode.MethodNotFound,
+								`Unknown tool: ${name}`,
+							);
+					}
+				},
+			);
+		}
+
+		return result;
+	}
+
+	private serverMetrics(input: z.infer<typeof InputSchema>) {
+		if (input.service) {
+			const serviceMetrics = metricsCollector.getServiceMetrics(input.service);
+			if (!serviceMetrics) {
+				throw new McpError(
+					ErrorCode.InvalidParams,
+					"No metrics found for requested service",
+				);
+			}
+			return {
+				ok: true,
+				data: {
+					service: input.service,
+					...serviceMetrics,
+					health: metricsCollector.getHealthStatus(),
+				},
+			};
+		}
+		const summary = metricsCollector.getSummary();
+		const health = metricsCollector.getHealthStatus();
+		return {
+			ok: true,
+			data: {
+				...summary,
+				health,
+				...(input.detailed && {
+					recentOperations: metricsCollector.getRecentOperations(10),
+					exportedMetrics: metricsCollector.exportMetrics(),
+				}),
+			},
+		};
+	}
+
+	private async runAllServicesDiagnostics(autoFix = false) {
 		const allServices = serviceRegistry.getAll();
 		const serviceResults = [];
+		const errors: Array<{
+			service: string;
+			error: ReturnType<typeof serializeError>;
+		}> = [];
 
 		let totalQueueItems = 0;
 		let totalIssuesFound = 0;
@@ -626,18 +856,26 @@ class ArrMcpServer {
 					totalFixed += diagnostics.data.summary.fixed;
 					totalFailed += diagnostics.data.summary.failed;
 					totalRequiresManual += diagnostics.data.summary.requiresManual;
-				}
+				} else
+					errors.push({
+						service: service.serviceName,
+						error: serializeError(
+							diagnostics.ok ? undefined : diagnostics.error,
+						),
+					});
 			} catch (error) {
-				console.error(
-					`Failed to run diagnostics for ${service.serviceName}:`,
-					error,
-				);
+				errors.push({
+					service: service.serviceName,
+					error: serializeError(error),
+				});
 			}
 		}
 
 		return {
-			ok: true,
+			ok: errors.length === 0,
 			data: {
+				incomplete: errors.length > 0,
+				errors,
 				totalServices: allServices.length,
 				servicesScanned: allServices.map((s) => s.serviceName),
 				overallSummary: {
@@ -663,6 +901,10 @@ class ArrMcpServer {
 			input.downloader || Object.keys(this.config?.downloaders || {})[0];
 
 		const serviceResults = [];
+		const errors: Array<{
+			service: string;
+			error: ReturnType<typeof serializeError>;
+		}> = [];
 		let totalQueued = 0;
 		let totalDownloading = 0;
 		let totalCompletedPendingImport = 0;
@@ -670,7 +912,16 @@ class ArrMcpServer {
 		// Get arr service data
 		for (const serviceName of targetServices) {
 			const service = serviceRegistry.get(serviceName);
-			if (!service) continue;
+			if (!service) {
+				errors.push({
+					service: serviceName,
+					error: serializeError({
+						kind: "internal",
+						message: "Unknown requested service",
+					}),
+				});
+				continue;
+			}
 
 			try {
 				const queueResult = await service.queueList();
@@ -691,16 +942,33 @@ class ArrMcpServer {
 						service: serviceName,
 						mediaKind: queueData.mediaKind,
 						total: queueData.total,
+						observed: queueData.items.length,
+						truncated: queueData.truncated,
 						downloading,
 						pending,
 					});
+					if (queueData.truncated)
+						errors.push({
+							service: serviceName,
+							error: serializeError(
+								createInternalError(
+									"Queue snapshot is partial; downloading and pending counts describe observed items only",
+								),
+							),
+						});
 
 					totalQueued += queueData.total;
 					totalDownloading += downloading;
 					totalCompletedPendingImport += pending;
-				}
+				} else
+					errors.push({
+						service: serviceName,
+						error: serializeError(
+							queueResult.ok ? undefined : queueResult.error,
+						),
+					});
 			} catch (error) {
-				console.error(`Failed to get queue data for ${serviceName}:`, error);
+				errors.push({ service: serviceName, error: serializeError(error) });
 			}
 		}
 
@@ -732,19 +1000,37 @@ class ArrMcpServer {
 							remainingSizeMB: queueResult.data.remainingSizeMB,
 							items: queueResult.data.items.length,
 						};
+					} else {
+						for (const result of [statusResult, queueResult]) {
+							if (!result.ok || !result.data)
+								errors.push({
+									service: downloaderName,
+									error: serializeError(result.ok ? undefined : result.error),
+								});
+						}
 					}
 				} catch (error) {
-					console.error(
-						`Failed to get downloader data for ${downloaderName}:`,
-						error,
-					);
+					errors.push({
+						service: downloaderName,
+						error: serializeError(error),
+					});
 				}
+			} else {
+				errors.push({
+					service: downloaderName,
+					error: serializeError({
+						kind: "internal",
+						message: "Unknown requested downloader",
+					}),
+				});
 			}
 		}
 
 		return {
-			ok: true,
+			ok: errors.length === 0,
 			data: {
+				incomplete: errors.length > 0,
+				errors,
 				services: targetServices,
 				totals: {
 					queued: totalQueued,
@@ -780,7 +1066,7 @@ class ArrMcpServer {
 		if (!service) {
 			throw new McpError(
 				ErrorCode.InvalidParams,
-				`Unknown service ${serviceName}`,
+				"Unknown service. Use list_services to discover configured services.",
 			);
 		}
 
@@ -915,9 +1201,7 @@ class ArrMcpServer {
 		if (!service) {
 			throw new McpError(
 				ErrorCode.InvalidParams,
-				`Unknown service: ${serviceName}. Available services: ${serviceRegistry
-					.getAllNames()
-					.join(", ")}`,
+				"Unknown service. Use list_services to discover configured services.",
 			);
 		}
 
@@ -1121,7 +1405,11 @@ class ArrMcpServer {
 			);
 		}
 
-		if (record.removeFromDownloader !== removeFromDownloader) {
+		if (
+			record.removeFromDownloader !== removeFromDownloader ||
+			record.downloaderName !== downloaderName ||
+			record.downloaderDeleteData !== downloaderDeleteData
+		) {
 			throw new McpError(
 				ErrorCode.InvalidParams,
 				"Downloader removal option changed since dry run.",
@@ -1198,12 +1486,24 @@ class ArrMcpServer {
 					ok: false,
 					error: {
 						kind: "internal",
-						message: `Downloader ${record.downloaderName} no longer available`,
+						message: `Downloader ${record.downloaderName} no longer available; ARR removal already executed`,
 					},
 				};
 			}
 
-			const downloadIds = record.downloaderDownloadIds;
+			const removedIds = new Set(
+				execution.data.details
+					.filter((item) => item.status === "removed")
+					.map((item) => item.id),
+			);
+			const downloadIds = record.downloaderDownloadIds.filter((id) => {
+				const targets = record.preparation.targets.filter(
+					(item) => item.downloadId === id,
+				);
+				return (
+					targets.length > 0 && targets.every((item) => removedIds.has(item.id))
+				);
+			});
 
 			if (downloadIds.length > 0) {
 				const removal = await downloader.removeQueueItems(
@@ -1211,7 +1511,11 @@ class ArrMcpServer {
 					record.downloaderDeleteData,
 				);
 				if (!removal.ok || !removal.data) {
-					return removal;
+					return {
+						ok: false,
+						error: serializeError(removal.ok ? undefined : removal.error),
+						data: { result: execution.data, downloaderResult: removal.data },
+					};
 				}
 				downloaderResult = removal.data;
 				if (downloaderResult.missingIds.length > 0) {
@@ -1246,7 +1550,9 @@ class ArrMcpServer {
 		}
 
 		return {
-			ok: true,
+			ok:
+				execution.data.failed === 0 &&
+				!downloaderResult?.details.some((item) => item.status === "failed"),
 			data: {
 				mode: "execute",
 				service: serviceName,
@@ -1279,9 +1585,7 @@ class ArrMcpServer {
 		if (!downloader) {
 			throw new McpError(
 				ErrorCode.InvalidParams,
-				`Unknown downloader: ${downloaderName}. Available downloaders: ${serviceRegistry
-					.getAllDownloaderNames()
-					.join(", ")}`,
+				"Unknown downloader. Use list_services to discover configured downloaders.",
 			);
 		}
 
@@ -1385,16 +1689,16 @@ class ArrMcpServer {
 	private normalizeIdStrings(ids: Array<string | number>): string[] {
 		return Array.from(
 			new Set(
-				ids
-					.map((value) => String(value ?? "").trim())
-					.filter((value) => value.length > 0),
+				ids.map((value) => String(value)).filter((value) => value.length > 0),
 			),
 		).sort((a, b) => a.localeCompare(b));
 	}
 
 	private normalizeNumericIds(idStrings: string[]): number[] {
-		const numeric = idStrings.map((value) => Math.trunc(Number(value)));
-		if (numeric.some((value) => !Number.isFinite(value) || value <= 0)) {
+		const numeric = idStrings.map((value) =>
+			/^[1-9]\d*$/.test(value) ? Number(value) : Number.NaN,
+		);
+		if (numeric.some((value) => !Number.isSafeInteger(value) || value <= 0)) {
 			throw new McpError(
 				ErrorCode.InvalidParams,
 				"IDs must be positive integers for arr services",
@@ -1518,7 +1822,15 @@ class ArrMcpServer {
 	}
 
 	async run() {
-		await this.server.connect(new StdioServerTransport());
+		const handle = serveStdio(({ era }) => this.buildServer(era), {
+			legacy: "serve",
+			onerror: () => console.error("MCP transport error"),
+		});
+		const close = () => {
+			void handle.close();
+		};
+		process.once("SIGINT", close);
+		process.once("SIGTERM", close);
 	}
 
 	private plexClient(): PlexReportsClient {
@@ -1573,7 +1885,7 @@ class ArrMcpServer {
 		if (!report) {
 			throw new McpError(
 				ErrorCode.InvalidParams,
-				`Report ${input.reportId} not found.`,
+				"Requested report not found.",
 			);
 		}
 
@@ -1590,7 +1902,7 @@ class ArrMcpServer {
 			if (!plan.ok || !plan.data) return plan;
 			const confirmationToken =
 				input.action === "remove_and_regrab"
-					? mintRemoveToken(input.reportId)
+					? mintRemoveToken(input.reportId, plan.data)
 					: undefined;
 			return {
 				ok: true,
@@ -1624,7 +1936,7 @@ class ArrMcpServer {
 		if (!service) {
 			throw new McpError(
 				ErrorCode.InvalidParams,
-				`Service ${input.service} not found.`,
+				"Requested service not found. Use list_services to discover configured services.",
 			);
 		}
 		return await service.updateQualityProfile(
@@ -1642,7 +1954,11 @@ async function main() {
 }
 
 // Always execute main() - this is an MCP server meant to be run directly
-main().catch((error) => {
-	console.error("💥 Failed to start ARR MCP Server:", error);
-	process.exit(1);
-});
+if (
+	process.argv[1] &&
+	import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href
+)
+	main().catch((error) => {
+		console.error("💥 Failed to start ARR MCP Server:", error);
+		process.exit(1);
+	});

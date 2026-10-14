@@ -1,205 +1,72 @@
-# Flix-Bridge Test Suite
+# Tests
 
-Comprehensive test suite for validating MCP server tools against the Sonarr/Radarr v3 API specification.
+The suite uses Node assertions, the small TypeScript runner in
+`helpers/test-runner.ts`, and Node's built-in test runner for MCP wire/client tests.
+No test framework is needed. These checks are offline: mocked fetch responses or
+synthetic loopback HTTP servers exercise the product without accessing media services.
 
-## Structure
+## Commands
 
-```
-tests/
-├── unit/                   # Unit tests for individual service methods
-│   ├── service-discovery.test.ts
-│   ├── queue-operations.test.ts
-│   ├── system-operations.test.ts
-│   └── queue-diagnostics.test.ts
-├── integration/            # Integration tests for MCP tools (planned)
-├── fixtures/               # Mock API response data
-│   ├── sonarr-responses.ts
-│   └── radarr-responses.ts
-├── helpers/                # Test utilities
-│   ├── assertions.ts       # Custom assertion helpers
-│   ├── mock-services.ts    # Mock service implementations
-│   └── test-runner.ts      # Minimal test runner
-└── run-all.ts              # Main test entry point
-```
-
-## Running Tests
-
-```bash
-# Run all unit tests
+```sh
+npm ci --include=dev --ignore-scripts
+npm run build
+npm run check
 npm test
-
-# Run unit tests explicitly
-npm run test:unit
-
-# Run specific test file (development)
-tsx tests/unit/queue-operations.test.ts
 ```
 
-## Test Philosophy
+- `npm test` runs `test:unit`, then builds and runs `test:mcp`.
+- `npm run test:unit` imports every sorted `unit/*.test.ts` and prints the summary.
+- `npm run test:mcp` builds, then runs `mcp-*.test.mjs`.
+- To run one TypeScript suite, print the shared runner summary explicitly. Importing
+  a suite alone can record a failure without setting a failing process exit:
 
-### Minimal Dependencies
-- Uses Node.js built-in `assert` module
-- No external test frameworks (Jest, Vitest, etc.)
-- Aligns with project's minimal dependency philosophy
-
-### API Specification Driven
-- Fixtures based on official Sonarr/Radarr v3 OpenAPI specs
-- Tests validate against actual API response structures
-- Ensures compatibility with both service types
-
-### Multi-Service Testing
-- Tests cover both Sonarr (series) and Radarr (movies)
-- Validates cross-service compatibility
-- Ensures consistent behavior across service types
-
-## Writing Tests
-
-### Basic Test Structure
-
-```typescript
-import { describe, test } from "../helpers/test-runner.js";
-import { assertOk, assertHasData } from "../helpers/assertions.js";
-import { MockSonarrService } from "../helpers/mock-services.js";
-
-await describe("Feature Name", [
-  test("should do something", async () => {
-    // Setup
-    const service = new MockSonarrService("sonarr-main");
-
-    // Execute
-    const result = await service.someMethod();
-
-    // Assert
-    assertOk(result);
-    assertHasData(result);
-  })
-]);
+```sh
+node --import tsx --input-type=module -e 'await import("./tests/unit/sonarr-api.test.ts"); const {testRunner}=await import("./tests/helpers/test-runner.ts"); testRunner.printSummary();'
+node --test --test-name-pattern='unsupported versions' tests/mcp-wire.test.mjs
 ```
 
-### Using Mock Services
+Do not run live `scripts/` as a substitute for tests. Some contact configured
+services and can mutate state; inspect them and obtain separate scoped authority.
 
-```typescript
-// Create mock service
-const service = new MockSonarrService("test-service");
+## Boundaries covered
 
-// Override specific endpoint responses
-service.setMockResponse("/queue", {
-  totalRecords: 0,
-  records: []
-});
+- Sonarr legacy/explicit-v3/explicit-v5/auto policy, discovery, family routing,
+  URL bases, repeated queries, nullable DTOs, pack scope, frozen workflow plans,
+  strict unsupported behavior and read-only statistics.
+- Radarr/SAB/Plex semantics and negative mutation cases: scope, candidate identity,
+  freshness, incomplete snapshots, pending work, exact readback and no timeout replay.
+- Central HTTP limits, redirects, credential-safe errors and cancellation through
+  fetch, body reads and verification delays.
+- Actual stdio subprocesses: modern MCP `2026-07-28`, legacy initialization,
+  metadata/version errors, tool/input/output contracts, bounded admission,
+  cancellation/EOF/signals and installed-bin entry behavior.
+- Clean build output and publication-free verification CI.
 
-// Use predefined fixtures
-service.setStuckQueueItems();
-service.setManualImportRejected();
-```
+Read [the verification map](ALIGNMENT.md) for limitations. Test totals belong to a
+specific run/revision; this file deliberately does not carry a timeless green badge.
 
-### Custom Assertions
+## Package and actual-client checks
 
-The test suite provides specialized assertions:
+`tests/mcp-client.test.mjs` uses the installed split SDK client in legacy, automatic
+modern and pinned-modern modes. Set `MCP_TEST_BIN` to an installed package's
+`node_modules/.bin/flixbridge` to exercise that exact package in wire/client tests.
 
-```typescript
-// Response structure
-assertOk(result);                    // result.ok === true
-assertHasData(result);               // result.data exists
-assertHasError(result);              // result.error exists
+Optional `MCP_LEGACY_CLIENT_ROOT` points to an external test installation with
+`mcp-sdk-1-29` (npm alias for SDK 1.29.0) and `@modelcontextprotocol/sdk` 1.32.1.
+Those historical clients are test consumers, not runtime dependencies. Without the
+variable, those two extra client cells do not run; do not report them as verified.
+Fault-injection/corrupted-metadata fixtures still target their declared local
+fixture artifacts, even when ordinary product checks use the installed-bin override.
 
-// Service metadata
-assertServiceName(data, "sonarr-main");
-assertMediaKind(data, "series");
+## Adding regressions
 
-// Data validation
-assertArrayLength(arr, 5);
-assertArrayNotEmpty(arr);
-assertPropertyEquals(obj, "key", value);
+Write a failing check at the changed seam, observe its failure, then make the
+smallest correction. Prefer actual service methods with synthetic fetch responses
+for routing and mutation safety. A mock replacing the changed method cannot prove
+it works. Label source-derived fixtures as synthetic and pin their upstream source;
+never introduce private payloads, endpoints or credentials into fixtures.
 
-// Domain-specific
-assertQueueItem(item);
-assertValidForeignId(id, "series");
-assertValidQualityProfile(profile);
-assertValidRootFolder(folder);
-```
-
-## Test Coverage
-
-### Completed
-- ✅ Service Discovery (`list_services`)
-- ✅ Queue Operations (`queue_list`, `queue_grab`)
-- ✅ System Operations (`system_status`, `root_folders`)
-- ✅ Queue Diagnostics (issue detection, auto-fix)
-
-### Planned
-- ⏳ Media Management (`search`, `add_new`, `quality_profiles`)
-- ⏳ History Operations (`history_detail`, `import_issues`)
-- ⏳ Content Removal (`remove_content` with confirmation workflow)
-- ⏳ Download Status (multi-service aggregation)
-- ⏳ Integration Tests (full MCP tool workflows)
-
-## Fixtures
-
-### Sonarr Fixtures
-Located in `fixtures/sonarr-responses.ts`:
-- `sonarrSystemStatus` - System status response
-- `sonarrQueueResponse` - Queue with 3 items
-- `sonarrQueueStuckItems` - Queue with diagnostic issues
-- `sonarrSeriesLookup` - Search results
-- `sonarrQualityProfiles` - Quality profile configurations
-- `sonarrRootFolders` - Storage configuration
-- `sonarrHistoryResponse` - History events
-- `sonarrManualImportCandidates` - Importable files
-- `sonarrManualImportRejected` - Rejected imports
-
-### Radarr Fixtures
-Located in `fixtures/radarr-responses.ts`:
-- Similar structure to Sonarr with movie-specific data
-- Custom format upgrade scenarios
-- 4K quality profiles
-
-## Debugging Tests
-
-### Enable Verbose Output
-```bash
-# Run with debug logging (if implemented)
-FLIX_BRIDGE_DEBUG=1 npm test
-```
-
-### Run Single Test File
-```bash
-tsx tests/unit/queue-operations.test.ts
-```
-
-### Inspect Mock Responses
-```typescript
-const service = new MockSonarrService("test");
-console.log(service.getMockResponse("/queue"));
-```
-
-## Contributing
-
-When adding new tests:
-
-1. **Create fixtures first** - Add API responses to `fixtures/`
-2. **Use descriptive names** - Test names should explain what they validate
-3. **Follow AAA pattern** - Arrange, Act, Assert
-4. **Test both services** - Validate Sonarr and Radarr where applicable
-5. **Use assertions** - Leverage custom assertions for clarity
-
-## CI/CD Integration
-
-Tests can be integrated into CI/CD pipelines:
-
-```yaml
-# Example GitHub Actions workflow
-- name: Run tests
-  run: npm test
-
-- name: Check test coverage
-  run: npm run test:unit
-```
-
-## Future Enhancements
-
-- [ ] Integration tests for full MCP tool workflows
-- [ ] E2E tests with actual Sonarr/Radarr instances
-- [ ] Test coverage reporting
-- [ ] Performance benchmarks
-- [ ] Visual test reports
+For release claims, rebuild and test after the final merge, inspect the exact npm
+manifest/tarball, install it in a fresh consumer and retain source/artifact identity.
+Live-provider behavior, playback, recovery after restart and remote CI are separate
+claims requiring their own evidence and authority.

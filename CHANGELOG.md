@@ -48,16 +48,16 @@
 
 ## [Unreleased]
 
-### Added
-- `list_services` tool for discovering all configured services and downloaders
-- Service discovery workflow that must be called before using other tools
-- Enhanced documentation with service discovery requirements
-- Test script for validating list_services functionality
-
-### Updated
-- All documentation now emphasizes calling `list_services` first
-- API reference includes comprehensive service discovery section
-- Usage guide updated with service discovery workflow
+### 1.0 candidate — not a publication claim
+- Serve current MCP `2026-07-28` and legacy stdio through SDK 2.3.1, with a modern version guard, matching structured/text envelopes, strict tool arguments, conservative mutation annotations, bounded admission and request cancellation.
+- Select Sonarr API policy per instance: omitted legacy v3, verified explicit `3`/`5`, or reviewed `auto` routes. Preserve reverse-proxy prefixes and freeze workflow family; never replay writes across families.
+- Add read-only `library_statistics` for Sonarr API v5. Retain the existing 19 tool names/required inputs; unsupported legacy/Radarr statistics performs no library scan.
+- Expose offline configured Sonarr policy in `list_services` and advertised/verified/effective-operation metadata in `system_status`. Removal, import issues, file deletion and auto-fix remain v3; strict v5 blocks them before writes.
+- Bind manual imports to exact media/download/path scope, refresh fingerprints before submission and require completed command, complete queue absence and changed library-file IDs. Retain legacy failed status/counts with additive pending evidence; guards are process-local, not restart-safe journals.
+- Keep diagnostics read-only by default. Preserve aggregate errors/partial data and reject incomplete or ambiguous downloader snapshots; queue DELETE 404 still requires complete absence readback.
+- Require unique exact Plex destructive targets and rederived token plans; label submitted work Pending and guard pending threads/concurrent execution. Client-local snapshot guards do not prevent cross-call replay after comment failure. Media and comment outcomes remain separate.
+- Reconcile public configuration, transport, safety, migration and rollback docs; replace stale contribution scaffolding with operational constraints. Keep sanitized examples and upstream support link.
+- Keep CI verification-only on Node 20/22/24 (engine minimum 20.0.0). Final artifact review, live authorization and publication approval remain separate; local/offline checks do not prove playback or production compatibility.
 
 ## [0.2.10] - 2025-08-23
 

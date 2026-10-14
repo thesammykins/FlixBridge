@@ -6,8 +6,8 @@
 // what title/type the user complained about, then match to arr services.
 
 import { z } from "zod";
-import { fetchJson, handleError } from "../../core.js";
-import type { OperationResult, ServiceError } from "../base.js";
+import { createInternalError, fetchJson, handleError } from "../../core.js";
+import type { OperationResult } from "../base.js";
 
 export interface PlexConfig {
 	baseUrl: string;
@@ -43,33 +43,20 @@ const GraphqlEnvelopeSchema = z
 function parseGraphql<T>(payload: unknown, schema: z.ZodType<T>): T {
 	const envelope = GraphqlEnvelopeSchema.safeParse(payload);
 	if (!envelope.success) {
-		throw {
-			service: "plex",
-			status: 0,
-			message: `Plex GraphQL envelope failed validation: ${envelope.error.issues
-				.map((i) => `${i.path.join(".")}: ${i.message}`)
-				.join("; ")}`,
-		} as ServiceError;
+		throw createInternalError(
+			"Plex GraphQL envelope failed validation; expected data or errors. Check provider compatibility before retrying.",
+		);
 	}
 	if (envelope.data.errors && envelope.data.errors.length > 0) {
-		const message = envelope.data.errors
-			.map((e) => e.message ?? "unknown error")
-			.join("; ");
-		throw {
-			service: "plex",
-			status: 0,
-			message: `Plex GraphQL error: ${message}`,
-		} as ServiceError;
+		throw createInternalError(
+			"Plex GraphQL request failed; check account permissions and provider compatibility. Upstream details withheld.",
+		);
 	}
 	const parsed = schema.safeParse(envelope.data.data);
 	if (!parsed.success) {
-		throw {
-			service: "plex",
-			status: 0,
-			message: `Plex GraphQL response failed validation: ${parsed.error.issues
-				.map((i) => `${i.path.join(".")}: ${i.message}`)
-				.join("; ")}`,
-		} as ServiceError;
+		throw createInternalError(
+			"Plex GraphQL response failed validation; required result fields missing or invalid. Check provider compatibility before retrying.",
+		);
 	}
 	return parsed.data;
 }

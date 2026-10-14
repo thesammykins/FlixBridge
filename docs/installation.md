@@ -1,143 +1,83 @@
-# Installation & Setup
+# Installation
 
-> **📖 Flix-Bridge Documentation**  
-> [← Back to README](../README.md) | [Next: Configuration →](configuration.md)
+Requires Node.js 20 or later, npm, an MCP client supporting stdio, and a reachable Sonarr or Radarr instance with an API key. SABnzbd and Plex are optional integrations, not standalone startup configurations.
 
-Get Flix-Bridge up and running in minutes.
+## npm release
 
-## Requirements
-
-- **Node.js 20.0.0** or later
-- Access to one or more of the following services:
-  - TV series management service (Sonarr-compatible API)  
-  - Movie management service (Radarr-compatible API)
-  - Download client (SABnzbd-compatible API)
-
-## Quick Installation
-
-### From npm (Recommended)
+Run the published package without a source checkout:
 
 ```bash
-# Install globally
-npm install -g @thesammykins/flixbridge
-
-# Or install locally in your project
-npm install @thesammykins/flixbridge
+npx -y @thesammykins/flixbridge
 ```
 
-### From Source (Development)
+Supply [environment variables](configuration.md) first. To install the executable globally:
 
 ```bash
-# Clone and setup
+npm install -g @thesammykins/flixbridge
+flixbridge
+```
+
+Or install locally and use the local executable via `npx flixbridge` from that project. The npm artifact contains built `dist/`, README and license; it does not provide repository scripts, tests, docs or skills. Do not run `npm run build`, `npm run dev`, or `npm run smoke` as package-install instructions. Pin a chosen published version for repeatable deployments; a source checkout can have tools absent from the installed release.
+
+## Source checkout
+
+```bash
 git clone https://github.com/thesammykins/FlixBridge.git
 cd FlixBridge
-npm install
+npm ci --include=dev --ignore-scripts
 npm run build
-```
-
-## Configuration
-
-Configure via environment variables (v0.3.x+):
-
-```bash
-# Slug-based configuration for multiple instances (recommended)
-export SONARR_MAIN_URL="http://localhost:8989"
-export SONARR_MAIN_API_KEY="your-main-sonarr-api-key"
-export SONARR_4K_URL="http://localhost:8990"
-export SONARR_4K_API_KEY="your-4k-sonarr-api-key"
-
-export RADARR_HD_URL="http://localhost:7878"
-export RADARR_HD_API_KEY="your-hd-radarr-api-key"
-export RADARR_UHD_URL="http://localhost:7879"
-export RADARR_UHD_API_KEY="your-uhd-radarr-api-key"
-
-# Optional downloader
-export SABNZBD_MAIN_URL="http://localhost:8080"
-export SABNZBD_MAIN_API_KEY="your-sabnzbd-api-key"
-```
-
-Or use single-instance fallback for simple setups:
-
-```bash
-# Single instance fallback
-export SONARR_URL="http://localhost:8989"
-export SONARR_API_KEY="your-sonarr-api-key"
-export RADARR_URL="http://localhost:7878"
-export RADARR_API_KEY="your-radarr-api-key"
-export SABNZBD_URL="http://localhost:8080"
-export SABNZBD_API_KEY="your-sabnzbd-api-key"
-```
-
-## Finding Your API Keys
-
-### For Sonarr/Radarr
-1. Open your service's web interface
-2. Go to **Settings → General**  
-3. Copy the **API Key** from the Security section
-
-### For SABnzbd
-1. Open SABnzbd web interface
-2. Go to **Config → General**
-3. Copy the **API Key** (generate if empty)
-
-## Verification
-
-Test your setup:
-
-```bash
-# If installed from source
-SONARR_MAIN_URL=http://localhost:8989 SONARR_MAIN_API_KEY=... \
-RADARR_HD_URL=http://localhost:7878 RADARR_HD_API_KEY=... \
-npm run smoke
-
-# With detailed debug output
-FLIX_BRIDGE_DEBUG=1 SONARR_MAIN_URL=... SONARR_MAIN_API_KEY=... \
-RADARR_HD_URL=... RADARR_HD_API_KEY=... npm run dev
-```
-
-You should see output like:
-```
-✅ sonarr-main: System Status - OK (v4.0.0.746)
-✅ radarr-hd: System Status - OK (v5.3.6.8612) 
-✅ sabnzbd-main: Connection test - OK
-```
-
-## Running the Server
-
-### With npm Package
-```bash
-# Basic run with slug-based env vars
-SONARR_MAIN_URL=http://localhost:8989 SONARR_MAIN_API_KEY=... \
-RADARR_HD_URL=http://localhost:7878 RADARR_HD_API_KEY=... \
-SABNZBD_MAIN_URL=http://localhost:8080 SABNZBD_MAIN_API_KEY=... \
- npx @thesammykins/flixbridge
-
-# Or single-instance fallback
-SONARR_URL=http://localhost:8989 SONARR_API_KEY=... \
-RADARR_URL=http://localhost:7878 RADARR_API_KEY=... \
- npx @thesammykins/flixbridge
-
-# Debug mode
-FLIX_BRIDGE_DEBUG=1 npx @thesammykins/flixbridge
-```
-
-### From Source (Development)
-```bash
-# Development mode
-npm run dev
-
-# Production mode  
 npm start
-
-# Debug mode
-FLIX_BRIDGE_DEBUG=1 npm run dev
 ```
 
-## Next Steps
+`npm start` runs `node dist/index.js` and needs a successful build. `npm run dev` runs `tsx src/index.ts` with development dependencies. Rebuild after source changes before running `dist/`.
 
-- **[Configuration →](configuration.md)** - Learn about advanced configuration options
-- **[Usage →](usage.md)** - Set up MCP clients and start using Flix-Bridge
-- **[Multi-Instance →](multi-instance.md)** - Configure multiple service instances
+For a client-managed source deployment use `command: "node"` and `args: ["/absolute/path/to/FlixBridge/dist/index.js"]`. Use absolute executable paths too if the client's PATH does not contain Node/npm. Running `npx @thesammykins/flixbridge` still selects the npm package, not this checkout.
 
----
-*Part of the [Flix-Bridge](../README.md) documentation*
+## MCP client setup and verification
+
+See the [README configuration example](../README.md#connect-an-mcp-client); client configuration locations and restart procedures are client-specific. Supply credentials to the launched process: GUI clients need not inherit shell exports.
+
+1. Restart/reconnect the configured MCP server and discover its tools.
+2. Call `list_services`; confirm exact instance names.
+3. Call `system_status` and `queue_list` for each intended ARR service. Use `queue_diagnostics` with explicit `autoFix:false` if inspecting import problems. For Plex, call `reported_issues` after configuring its variables.
+
+The server communicates over stdin/stdout; it is not an HTTP endpoint. Waiting silently for an MCP client is normal. EOF on stdin closes the server. Logs go to stderr; do not redirect them into the protocol stream. Current MCP `2026-07-28` and legacy initialization are served by the SDK; see [transport details](api-reference.md#transport-and-validation). Cancelling a request does not undo work already accepted by ARR/Plex/SABnzbd.
+
+## Migration and rollback
+
+1. Record the deployed package/source version, launch command and exact configured
+   instance names privately. Keep the previous artifact/configuration available;
+   take upstream backups under your normal Sonarr/Radarr operational policy.
+2. Build/check/test the reviewed candidate in an isolated checkout. Pin the chosen
+   artifact in the client; do not assume an unversioned `npx` command selects it.
+   Reconnect the server and discover tools before using new fields/tools.
+3. Leave Sonarr `API_VERSION` omitted to preserve v3 without new discovery requests.
+   Opt in per instance only after reviewing [routes/limitations](configuration.md#sonarr-api-policy).
+   Explicit `3` is not omission: it adds discovery/verification. Read `list_services`
+   policy and `system_status` metadata, then baseline queues/diagnostics with
+   `autoFix:false`; failed/partial coverage is not a clean baseline.
+4. Refresh all previews after restart, policy changes or drift. Obtain separate
+   authority for mutations; inspect command and exact-target readback before any
+   retry. Pending imports are not automatically resumed. Preserve their downloads.
+5. To roll back software, restore the previous reviewed artifact and configuration,
+   reconnect and repeat read-only checks. To restore legacy routing, remove **all**
+   policy aliases for that instance (setting `3` still opts into discovery).
+
+Rollback does not undo media deletion, adds, profile changes, searches or comments.
+Stopping/cancelling the server may leave upstream commands running. Inspect pending
+work in the upstream API/UI first; restart loses tokens and process-local replay
+guards. Any compensating write or backup restore needs its own authority. Do not
+blindly replay a v5 failure against v3 or downgrade just to bypass an unported guard.
+CI is verification-only; release publication requires separate maintainer approval.
+
+## Source checks
+
+```bash
+npm run build
+npm run check
+npm test
+```
+
+These are local development gates; unit tests use mocks and MCP tests exercise local boundaries, not live service credentials. `npm run smoke` contacts configured services and enables debug logging. Its diagnostics call inherits the read-only default in this source; that does not make every other live script safe or provide production verification. Inspect scripts and use only an authorized test stack, not a default production health check.
+
+Deploy reusable playbooks separately from [skills/README.md](../skills/README.md). See [usage](usage.md) and [troubleshooting](troubleshooting.md).

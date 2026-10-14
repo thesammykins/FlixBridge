@@ -1,207 +1,119 @@
-# Configuration Guide
+# Configuration
 
-> **📖 Flix-Bridge Documentation**  
-> [← Installation](installation.md) | [Next: Usage →](usage.md)
+FlixBridge reads the process environment only. It does not load `config.json`, JSON-in-env mappings, or `.env` files. Supply variables through your MCP client's environment settings or an external launcher. At least one complete Sonarr or Radarr URL/key pair is required; SABnzbd-only and Plex-only setups cannot start the server.
 
-Comprehensive guide to configuring Flix-Bridge for your environment.
+## Single instance
 
-## Overview
+| Kind | URL | Credential | Discovered name |
+| --- | --- | --- | --- |
+| Sonarr | `SONARR_URL` | `SONARR_API_KEY` | `sonarr` |
+| Radarr | `RADARR_URL` | `RADARR_API_KEY` | `radarr` |
+| SABnzbd (optional) | `SABNZBD_URL` | `SABNZBD_API_KEY` | `sabnzbd` |
 
-Flix-Bridge v0.3.x uses environment-only configuration with slug-based discovery, tried in this order:
-
-1. Slug-based Environment Variables: `SONARR_<SLUG>_URL`, `RADARR_<SLUG>_URL`, etc.
-2. Single-instance fallback: `SONARR_URL`, `RADARR_URL`, etc.
-
-Slug-based and single-instance variables can be mixed. When names overlap, slug-based instances take precedence over fallback names.
-
-Slug-based variables may also use a `FLIX_BRIDGE_` prefix and `_KEY` suffix, for example `FLIX_BRIDGE_SONARR_HD_URL` with `FLIX_BRIDGE_SONARR_HD_KEY`.
-Single-instance fallback variables may also use the same prefix, for example `FLIX_BRIDGE_SABNZBD_URL` with `FLIX_BRIDGE_SABNZBD_KEY`.
-
-No file-based configuration or JSON mapping is required.
-
-## Method 1: Slug-based Environment Variables (Recommended)
-
-Define multiple instances using slug-based patterns. Each service type uses a pattern like `<SERVICE>_<SLUG>_<FIELD>`:
-
-Supported key fields are `_API_KEY` and `_KEY`. The `FLIX_BRIDGE_` prefix is optional for slug-based variables.
-
-### Basic Slug Configuration
-
-```bash
-# Sonarr instances
-export SONARR_MAIN_URL="http://localhost:8989"
-export SONARR_MAIN_API_KEY="your-main-sonarr-key"
-export SONARR_4K_URL="http://localhost:8990"
-export SONARR_4K_API_KEY="your-4k-sonarr-key"
-
-# Radarr instances
-export RADARR_HD_URL="http://localhost:7878"
-export RADARR_HD_API_KEY="your-hd-radarr-key"
-export RADARR_UHD_URL="http://localhost:7879"
-export RADARR_UHD_API_KEY="your-uhd-radarr-key"
-
-# SABnzbd downloaders (optional)
-export SABNZBD_MAIN_URL="http://localhost:8080"
-export SABNZBD_MAIN_API_KEY="your-sabnzbd-key"
-export SABNZBD_MAIN_NAME="SABnzbd Main"
-```
-
-Equivalent prefixed variables are also accepted:
-
-```bash
-export FLIX_BRIDGE_SONARR_HD_URL="http://localhost:8989"
-export FLIX_BRIDGE_SONARR_HD_KEY="your-hd-sonarr-key"
-export FLIX_BRIDGE_RADARR_UHD_URL="http://localhost:7879"
-export FLIX_BRIDGE_RADARR_UHD_KEY="your-uhd-radarr-key"
-export FLIX_BRIDGE_SABNZBD_MAIN_URL="http://localhost:8080"
-export FLIX_BRIDGE_SABNZBD_MAIN_KEY="your-sabnzbd-key"
-```
-
-### Service Naming Rules
-
-- Service names are derived as `<service>-<slug>` (slug lowercased, `_` → `-`)
-- `SONARR_MAIN_URL` → service name: `sonarr-main`
-- `RADARR_4K_URL` → service name: `radarr-4k`
-- `SABNZBD_MAIN_URL` → downloader name: `sabnzbd-main`
-
-### Custom Service Names
-
-Override the derived name with the `_NAME` variable:
-
-```bash
-export SONARR_ANIME_URL="http://localhost:8991"
-export SONARR_ANIME_API_KEY="your-anime-key"
-export SONARR_ANIME_NAME="sonarr-japanese-content"  # Custom name
-```
-
-**Important**: Custom names must still contain "sonarr" or "radarr" for proper service detection.
-
-## Method 2: Single-Instance Fallback
-
-For simple setups with one instance of each service, use these standard variables:
+`_KEY` is an alias for `_API_KEY`. `FLIX_BRIDGE_` prefixed aliases are supported for these three kinds. Single-instance fallback precedence is unprefixed URL before prefixed URL; credentials are unprefixed `_API_KEY`, unprefixed `_KEY`, prefixed `_API_KEY`, then prefixed `_KEY`. Avoid defining competing aliases.
 
 ```bash
 export SONARR_URL="http://localhost:8989"
-export SONARR_API_KEY="your-sonarr-api-key"
+export SONARR_API_KEY="replace-with-sonarr-api-key"
 export RADARR_URL="http://localhost:7878"
-export RADARR_API_KEY="your-radarr-api-key"
-export SABNZBD_URL="http://localhost:8080"
-export SABNZBD_API_KEY="your-sabnzbd-api-key"
+export RADARR_API_KEY="replace-with-radarr-api-key"
 ```
 
-Equivalent prefixed fallback variables are also accepted:
+Use URLs reachable from the server process, not necessarily from your browser. Do not append `/api/v3` or `/api/v5`; retain any configured reverse-proxy base path. ARR API keys are available in Settings → General; SABnzbd uses its full API key from Config → General, not the NZB-only key. Do not commit credentials.
+
+## Multiple instances
+
+Use `<KIND>_<SLUG>_URL`, `<KIND>_<SLUG>_API_KEY` (or `_KEY`), and optional `<KIND>_<SLUG>_NAME`, where kind is `SONARR`, `RADARR`, or `SABNZBD`. Slugs match uppercase letters, digits and underscores. The optional `FLIX_BRIDGE_` prefix is accepted.
+
+Names default to lowercase `<kind>-<slug>`, with underscores converted to hyphens. ARR custom names must contain their correct `sonarr` or `radarr` keyword; avoid including both. A SABnzbd slug `_NAME` changes the registry name, not just a label. Single-instance `SABNZBD_NAME` changes its display label but leaves its registry name `sabnzbd`.
+
+Fallback and slug entries are merged; slug entries overwrite matching fallback names. Duplicate names within the ARR slug map and wrong-kind/ambiguous ARR names fail configuration. Fallback-name collisions still merge by overwrite, and SABnzbd names can overwrite: assign unique names. URL/key slug alias conflicts depend on environment iteration order, not a guaranteed alias priority. Incomplete pairs are ignored. See [multi-instance setup](multi-instance.md).
+
+## Sonarr API policy
+
+For the pinned upstream contract comparison and follow-on feature proposals, see
+[Sonarr v3 → v5 changes](sonarr-api-changes.md).
+
+Set `SONARR_API_VERSION` for the fallback instance, or `SONARR_<SLUG>_API_VERSION`
+for one slug. `FLIX_BRIDGE_SONARR_API_VERSION` and
+`FLIX_BRIDGE_SONARR_<SLUG>_API_VERSION` are aliases. Values are exactly `3`, `5`,
+or `auto`: no whitespace, empty value, `v5`, or application-version number.
+Conflicting policy aliases fail startup; equal aliases are accepted. The fallback
+policy does not implicitly apply to other slugs. `API_VERSION` on Radarr or SABnzbd
+is rejected; Plex has no such selector.
+
+| Policy | Behavior |
+| --- | --- |
+| Omitted | Legacy v3, no `/api` discovery; keeps existing deployment routing |
+| `3` | Authenticated `/api` discovery plus advertised-v3/status verification; not the same as omission |
+| `5` | Discovery plus advertised-v5/status verification; unported workflows fail before writes |
+| `auto` | Uses v5 for reviewed workflows only when current is `v5`; otherwise uses advertised v3 where reviewed. No speculative future-family routing |
+
+Discovery validates `current`/`deprecated`; a family is verified with its read-only
+`/system/status` response (`appName: Sonarr`, nonempty version). Authentication,
+network, schema or route failures are errors, not permission to downgrade. The
+five-minute cache is per instance. A workflow's reads/writes/readback use one family;
+previewed imports/removals retain that family through execution. No failed write is
+replayed on a different family.
+
+### Reviewed routes and limits
+
+| Workflow | v5 route/contract | `auto` / strict `5` |
+| --- | --- | --- |
+| Status, queue, root folders, history | `/system/status`, `/queue`, `/rootfolder`, `/history` or `/history/since?date=...` | Reviewed v5 |
+| Read-only diagnostics | `/queue`, reviewed v5 evidence fields | Reviewed v5; `autoFix:true` is separate |
+| Search, profiles and library/file lookup | `/series/lookup`, `/qualityprofile`, `/series`, `/episode` and file reads | Reviewed v5 |
+| Add and profile update | `/series` POST, full-object GET/PUT/readback; add requires one exact TVDB lookup with validated language/seasonType | Reviewed v5; invalid metadata fails before POST |
+| Queue grab and search command | `/queue/grab/{id}` or `/queue/grab/bulk`, `/command` | Reviewed v5; acceptance is not completion |
+| Manual import | `/manualimport` with plural `downloadIds`, v5 rejection `message`/`type`; POST `/command` with `ManualImport` | Reviewed v5; reprocessing is not execution |
+| Library statistics | GET `/statistics` | v5 only; unsupported on omitted/`3` or v3-only `auto`, no library scan |
+| `import_issues` | `/wanted/missing` workflow remains v3 | `auto`: advertised/verified v3; strict `5`: unsupported |
+| Queue/library removal, file deletion, diagnostics auto-fix | `prepareRemoval`, `executeRemoval`, `deleteFile`, `queueDiagnosticsAutoFix` remain v3 | `auto`: advertised/verified v3; strict `5`: unsupported |
+
+Thus a v5-current instance with advertised v3 may intentionally use both families
+across **different** operations, never within a frozen workflow. `remove_content`
+remains v3 even if it attempts an import internally; direct `manual_import` can use
+v5. Plex `remove_and_regrab` depends on unported file deletion and is not supported
+under strict v5; search/add actions use reviewed routes but still require authority.
+Radarr stays v3; SABnzbd and Plex keep their own APIs. No general administration tools
+are added. Application version, advertised API, verified family and operation support
+are distinct facts.
+
+`list_services.data.services[].apiPolicy` reports configured Sonarr policy offline; it does not probe upstream.
+`system_status.data.api` reports `configuredPolicy` (`legacy`, `3`, `5`, or `auto`),
+advertised `current`/`deprecated`, `verifiedFamilies` and `effectiveOperations`
+(`3`, `5` or `unsupported`). Omitted policy has no advertised current family. The map
+expresses routing policy, not proof every endpoint was exercised.
 
 ```bash
-export FLIX_BRIDGE_SONARR_URL="http://localhost:8989"
-export FLIX_BRIDGE_SONARR_KEY="your-sonarr-api-key"
-export FLIX_BRIDGE_RADARR_URL="http://localhost:7878"
-export FLIX_BRIDGE_RADARR_KEY="your-radarr-api-key"
-export FLIX_BRIDGE_SABNZBD_URL="http://localhost:8080"
-export FLIX_BRIDGE_SABNZBD_KEY="your-sabnzbd-api-key"
+export SONARR_MAIN_API_VERSION="auto"
+export SONARR_4K_API_VERSION="3"
 ```
 
-## Service Naming Rules
+Use `auto` only after reviewing these limits for that instance; do not add a policy
+merely to copy an example. See [migration and rollback](installation.md#migration-and-rollback).
 
-Important: Service names must contain keywords for proper detection:
-
-- Names containing "sonarr" → TV series management instances
-- Names containing "radarr" → Movie management instances
-
-Examples:
-- `sonarr-main`, `sonarr-4k`, `sonarr-anime` ✅
-- `radarr-hd`, `radarr-uhd`, `radarr-kids` ✅
-- `tv-manager`, `movie-server` ❌ (won't be detected)
-
-## Common Use Cases
-
-### Simple Local Development
-
-Use single-instance fallback variables:
+## Plex reported issues
 
 ```bash
-export SONARR_URL="http://localhost:8989"
-export SONARR_API_KEY="development-key"
-export RADARR_URL="http://localhost:7878"
-export RADARR_API_KEY="development-key"
+export PLEX_BASE_URL="http://localhost:32400"
+export PLEX_TOKEN="replace-with-plex-account-token"
 ```
 
-### Docker Compose
+`PLEX_URL` is a fallback alias for `PLEX_BASE_URL`. `PLEX_TOKEN` has no `_API_KEY`, slug, or `FLIX_BRIDGE_` alias. Plex is configured separately from the ARR/SABnzbd registry; `list_services` does not enumerate it.
 
-```yaml
-services:
-  flix-bridge:
-    image: flix-bridge
-    environment:
-      # Single instance setup
-      - SONARR_URL=http://sonarr:8989
-      - SONARR_API_KEY=${SONARR_API_KEY}
-      - RADARR_URL=http://radarr:7878
-      - RADARR_API_KEY=${RADARR_API_KEY}
-      # Or multi-instance setup
-      - SONARR_HD_URL=http://sonarr-hd:8989
-      - SONARR_HD_API_KEY=${SONARR_HD_KEY}
-      - SONARR_4K_URL=http://sonarr-4k:8990
-      - SONARR_4K_API_KEY=${SONARR_4K_KEY}
-```
+The token must authorize both the reported-issue account feed at `https://community.plex.tv/api` and the configured Plex Media Server's metadata. The same token is used for both. Network access to the cloud feed and PMS is required. This is the user Report Issue feed, not PMS server error logs. Keep the token secret and do not put it in example URLs.
 
-### Multi-Instance Setup
+## Debugging and changes
 
-Use slug-based variables for multiple service instances:
+`FLIX_BRIDGE_DEBUG=1` enables stderr debug logging. Restart the client-managed server after changing environment variables; configured instance discovery occurs at startup; opted-in Sonarr API-family discovery is lazy and cached for five minutes. There is no supported timeout/retry environment setting or built-in automatic HTTP retry. Review and redact debug output before sharing it.
 
-```bash
-# Multiple quality tiers
-export SONARR_HD_URL="http://sonarr-hd:8989"
-export SONARR_HD_API_KEY="hd-key"
-export SONARR_4K_URL="http://sonarr-4k:8990"
-export SONARR_4K_API_KEY="4k-key"
+Next: [installation](installation.md) · [usage](usage.md) · [troubleshooting](troubleshooting.md).
 
-# Multiple content types
-export SONARR_ANIME_URL="http://sonarr-anime:8991"
-export SONARR_ANIME_API_KEY="anime-key"
-export RADARR_KIDS_URL="http://radarr-kids:7879"
-export RADARR_KIDS_API_KEY="kids-key"
-```
+## URL and HTTP security
 
-## Troubleshooting Configuration
+ARR/SABnzbd configuration accepts HTTP(S) URLs only, without userinfo, query or fragment; invalid complete pairs fail configuration rather than being silently repaired. ARR reverse-proxy base paths are preserved: `https://media.example/sonarr` discovers `/sonarr/api` and calls `/sonarr/api/v3/...` or `/sonarr/api/v5/...`. Plex validates its configuration separately; inspect the deployed implementation before assuming identical restrictions.
 
-### Configuration Not Loading
+Shared HTTP requests follow only same-origin redirects, at most five hops; userinfo/cross-origin redirects are rejected before forwarding credentials. The default five-second timeout covers response-body reads as well as fetch/redirects. Bodies are capped at 8 MiB. Some operations override timeout (queue DELETE accepts `queueTimeoutMs` 1000–60000); there is no general timeout/size environment knob. Redirect method semantics may turn POST into GET for 301/302/303.
 
-1. Ensure environment variables follow the correct pattern: `<SERVICE>_<SLUG>_<FIELD>`
-2. For single instances, use: `SONARR_URL`, `RADARR_URL`, `SABNZBD_URL`
-3. Check that both URL and API_KEY are set for each service
-4. Verify slugs use only uppercase letters, numbers, and underscores
-
-### Service Connection Issues
-
-1. Verify base URLs are accessible
-2. Test API keys manually:
-   ```bash
-   curl -H "X-Api-Key: your-api-key" http://localhost:8989/api/v3/system/status
-   ```
-3. Check for trailing slashes in URLs (they're automatically removed)
-
-### Debug Configuration Loading
-
-Enable debug logging to see service discovery:
-
-```bash
-export FLIX_BRIDGE_DEBUG=1
-npm run dev
-```
-
-You'll see output like:
-```
-[Config] Discovered Sonarr service: sonarr-hd (slug: HD)
-[Config] Discovered Radarr service: radarr-uhd (slug: UHD)
-[Config] Total discovered services: 2
-```
-
----
-
-**Next Steps:**
-- **[Usage →](usage.md)** - Set up MCP clients and start using Flix-Bridge
-- **[Multi-Instance →](multi-instance.md)** - Advanced multi-instance configurations
-- **[Troubleshooting →](troubleshooting.md)** - Common issues and solutions
-
----
-*Part of the [Flix-Bridge](../README.md) documentation*
+HTTP is still allowed for trusted local deployments; HTTPS and network isolation remain operator responsibilities. Same-origin redirects are not a hostname allowlist, DNS-rebinding defense or general SSRF prevention. Keep credentialed URLs under operator control. See [security evidence and remaining limitations](security-audit.md).

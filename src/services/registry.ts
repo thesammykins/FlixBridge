@@ -9,6 +9,19 @@ export class ServiceRegistry {
 
 	register(serviceName: string, config: ServiceConfig): void {
 		const serviceType = this.detectServiceType(serviceName);
+		if (this.services.has(serviceName))
+			throw new Error("Duplicate service name");
+		if (config.apiVersion !== undefined) {
+			if (serviceType !== "sonarr")
+				throw new Error("API policy is supported only for Sonarr");
+			if (
+				config.apiVersion !== "auto" &&
+				config.apiVersion !== 3 &&
+				config.apiVersion !== 5
+			) {
+				throw new Error("Invalid Sonarr API policy");
+			}
+		}
 
 		let service: ServiceImplementation;
 		if (serviceType === "sonarr") {
@@ -66,6 +79,8 @@ export class ServiceRegistry {
 
 	private detectServiceType(serviceName: string): "sonarr" | "radarr" {
 		const name = serviceName.toLowerCase();
+		if (name.includes("sonarr") && name.includes("radarr"))
+			throw new Error("Ambiguous service type");
 
 		if (name.includes("sonarr")) {
 			return "sonarr";

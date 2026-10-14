@@ -24,6 +24,8 @@ export interface ServiceMatch {
 	mediaKind: "series" | "movie";
 	matchType: "exact" | "title" | "none";
 	item?: LibraryItemMatch;
+	ambiguous?: boolean;
+	lookupFailed?: boolean;
 }
 
 export interface ResolvedReport extends PlexReport {
@@ -55,17 +57,19 @@ const FIXED_MARKERS = /\b(fixed|resolved|regrabb?ed|replaced|upgraded|done)\b/i;
 const FIXED_NEGATIONS =
 	/\b(not\s+(fixed|resolved|done)|still\s+(broken|freezing|cutting|cut|failing|glitch)|never\s+fixed|doesn'?t\s+work|unresolved)\b/i;
 const CLARIFY_MARKERS =
-	/\b(more specific|clarif|what exactly|which device|user-side)\b/i;
+	/\b(more specific|clarif|what exactly|which device|user-side|pinpoint|reply with)\b/i;
 
 export type ResolutionState =
 	| "unresolved"
+	| "pending"
 	| "clarification_requested"
 	| "fixed";
 
 export function resolutionState(comments: PlexComment[]): ResolutionState {
 	// Newest signal wins. Sort newest-first (comments without a parseable date
-	// sort last) and return on the first recognized resolution signal; an older
-	// "not fixed" must not override a newer "Fixed".
+	// sort last). A clarification ask only means "waiting for the user" while it
+	// is the newest comment; once the user replies on top of it, the report
+	// needs action again (unresolved) rather than staying stuck in limbo.
 	const ordered = [...comments].sort((a, b) => {
 		const da = Date.parse(a.date ?? "");
 		const db = Date.parse(b.date ?? "");
@@ -74,6 +78,11 @@ export function resolutionState(comments: PlexComment[]): ResolutionState {
 		if (Number.isNaN(db)) return -1;
 		return db - da;
 	});
+	const newest = ordered.find((c) => c.message)?.message;
+	if (newest && /^Pending:/i.test(newest)) return "pending";
+	if (newest && CLARIFY_MARKERS.test(newest)) {
+		return "clarification_requested";
+	}
 	for (const c of ordered) {
 		if (!c.message) continue;
 		const negated = FIXED_NEGATIONS.test(c.message);
@@ -81,9 +90,6 @@ export function resolutionState(comments: PlexComment[]): ResolutionState {
 			return "fixed";
 		}
 		if (negated) return "unresolved";
-		if (CLARIFY_MARKERS.test(c.message)) {
-			return "clarification_requested";
-		}
 	}
 	return "unresolved";
 }
@@ -103,8 +109,9 @@ export async function resolveReportMatches(
 	client: PlexReportsClient,
 	report: PlexReport,
 	services: ServiceImplementation[],
+	resolvedItem?: PlexMetadataItem,
 ): Promise<ServiceMatch[]> {
-	const item = await client.resolveReportUrl(report.url);
+	const item = resolvedItem ?? (await client.resolveReportUrl(report.url));
 	if (!item) return [];
 
 	const wantSonarr = item.type !== "movie";
@@ -121,10 +128,20 @@ export async function resolveReportMatches(
 				service: service.serviceName,
 				mediaKind: mediaKindFor(service.id),
 				matchType: "none",
+				lookupFailed: true,
 			});
 			continue;
 		}
-		const best = result.data.matches[0];
+		// Episode year is its air year, not the series premiere year.
+		const matchYear =
+			item.type === "episode" || item.type === "season" ? undefined : item.year;
+		const exactMatches = result.data.matches.filter(
+			(match) =>
+				match.title.trim().toLowerCase() === title.trim().toLowerCase() &&
+				(matchYear === undefined || match.year === matchYear),
+		);
+		const best =
+			exactMatches.length === 1 ? exactMatches[0] : result.data.matches[0];
 		if (!best) {
 			matches.push({
 				service: service.serviceName,
@@ -133,14 +150,13 @@ export async function resolveReportMatches(
 			});
 			continue;
 		}
-		const exact =
-			best.title.trim().toLowerCase() === title.trim().toLowerCase() &&
-			(item.year === undefined || best.year === item.year);
+		const exact = exactMatches.length === 1;
 		matches.push({
 			service: service.serviceName,
 			mediaKind: mediaKindFor(service.id),
 			matchType: exact ? "exact" : "title",
 			item: best,
+			ambiguous: exactMatches.length > 1,
 		});
 	}
 	return matches;
@@ -155,7 +171,7 @@ export async function resolveReports(
 	for (const report of reports) {
 		const item = await client.resolveReportUrl(report.url);
 		const matches = item
-			? await resolveReportMatches(client, report, services)
+			? await resolveReportMatches(client, report, services, item)
 			: [];
 		out.push({
 			...report,
@@ -193,12 +209,31 @@ export interface RemediationPreview {
 // Confirmation tokens for destructive actions, keyed by report id. The dry-run
 // mints a token; execute must present it. TTL keeps stale tokens from lingering.
 const CONFIRMATION_TTL_MS = 10 * 60 * 1000;
-const removeTokens = new Map<string, { token: string; expiresAt: number }>();
+const removeTokens = new Map<
+	string,
+	{ token: string; expiresAt: number; plan: string }
+>();
 
-export function mintRemoveToken(reportId: string): string {
+function removalBinding(preview: RemediationPreview): string {
+	return JSON.stringify([
+		preview.reportId,
+		preview.action,
+		preview.service,
+		preview.item?.id,
+		preview.item?.movieFileId,
+		preview.episodeFileId,
+		preview.resolvedTitle,
+	]);
+}
+
+export function mintRemoveToken(
+	reportId: string,
+	preview: RemediationPreview,
+): string {
 	const token = randomUUID();
 	removeTokens.set(reportId, {
 		token,
+		plan: removalBinding(preview),
 		expiresAt: Date.now() + CONFIRMATION_TTL_MS,
 	});
 	return token;
@@ -207,13 +242,15 @@ export function mintRemoveToken(reportId: string): string {
 export function verifyRemoveToken(
 	reportId: string,
 	token: string | undefined,
+	preview: RemediationPreview,
 ): boolean {
 	const entry = removeTokens.get(reportId);
 	if (!entry || entry.expiresAt < Date.now()) {
 		removeTokens.delete(reportId);
 		return false;
 	}
-	if (entry.token !== token) return false;
+	if (entry.token !== token || entry.plan !== removalBinding(preview))
+		return false;
 	removeTokens.delete(reportId);
 	return true;
 }
@@ -227,6 +264,15 @@ export async function planRemediation(
 	serviceName: string | undefined,
 	services: ServiceImplementation[],
 ): Promise<OperationResult<RemediationPreview>> {
+	if (resolutionState(report.comments) === "pending")
+		return {
+			ok: false,
+			error: {
+				kind: "internal",
+				message:
+					"Report remediation is pending; inspect existing work before any replay",
+			},
+		};
 	const item = await client.resolveReportUrl(report.url);
 	if (!item) {
 		return {
@@ -239,7 +285,7 @@ export async function planRemediation(
 		};
 	}
 
-	const matches = await resolveReportMatches(client, report, services);
+	const matches = await resolveReportMatches(client, report, services, item);
 	const rightKind = item.type === "movie" ? "radarr" : "sonarr";
 	const rightKindService = (name: string | undefined) =>
 		name !== undefined &&
@@ -274,6 +320,30 @@ export async function planRemediation(
 			? matches.find((m) => m.service === serviceName)
 			: undefined;
 	const chosen = explicitMatch ?? bestMatch(matches);
+	if (
+		action === "remove_and_regrab" &&
+		(!chosen?.item ||
+			!Number.isSafeInteger(chosen.item.id) ||
+			chosen.item.id <= 0 ||
+			chosen.matchType !== "exact" ||
+			chosen.ambiguous ||
+			chosen.lookupFailed ||
+			(!serviceName &&
+				(matches.filter((match) => match.matchType === "exact" && match.item)
+					.length !== 1 ||
+					matches.some((match) => match.lookupFailed))) ||
+			!["movie", "episode"].includes(item.type) ||
+			(item.type === "movie" && !Number.isInteger(item.year)) ||
+			(item.type === "episode" && !item.grandparentTitle?.trim()))
+	)
+		return {
+			ok: false,
+			error: {
+				kind: "internal",
+				message:
+					"Destructive remediation requires a unique exact media identity in a reviewed service; fuzzy or ambiguous targets are retained",
+			},
+		};
 
 	// For add_or_upgrade a missing match is expected: no service holds the item
 	// yet, so fall back to the first service of the right kind (or the explicit
@@ -386,16 +456,35 @@ export async function planRemediation(
 			}
 			let episodeFileId: number | undefined;
 			if (service.id === "sonarr" && item.type === "episode") {
+				if (
+					!Number.isInteger(item.parentIndex) ||
+					(item.parentIndex ?? -1) < 0 ||
+					!Number.isInteger(item.index) ||
+					(item.index ?? 0) <= 0
+				)
+					return {
+						ok: false,
+						error: {
+							kind: "internal",
+							message: "Explicit valid season and episode coordinates required",
+						},
+					};
 				const epResult = await service.lookupEpisodeFile(
 					target.item.id,
 					item.parentIndex,
 					item.index,
 				);
-				const ep = epResult.ok
-					? epResult.data?.matches.find((m) => m.hasFile)
-					: undefined;
-				episodeFileId = ep?.episodeFileId;
-				if (episodeFileId === undefined) {
+				const ep =
+					epResult.ok && epResult.data?.matches.length === 1
+						? epResult.data.matches[0]
+						: undefined;
+				episodeFileId =
+					ep?.hasFile &&
+					ep.seasonNumber === item.parentIndex &&
+					ep.episodeNumber === item.index
+						? ep.episodeFileId
+						: undefined;
+				if (!Number.isInteger(episodeFileId) || (episodeFileId ?? 0) <= 0) {
 					return {
 						ok: false,
 						error: {
@@ -404,7 +493,12 @@ export async function planRemediation(
 						},
 					};
 				}
-			} else if (service.id === "radarr" && !target.item.movieFileId) {
+			} else if (
+				service.id === "radarr" &&
+				(!target.item.hasFile ||
+					!Number.isSafeInteger(target.item.movieFileId) ||
+					(target.item.movieFileId ?? 0) <= 0)
+			) {
 				return {
 					ok: false,
 					error: {
@@ -433,14 +527,14 @@ export function buildComment(
 	const title = preview.item?.title ?? preview.resolvedTitle;
 	switch (action) {
 		case "re_search":
-			return `Fixed: triggered a fresh search for "${title}" in ${preview.service}.`;
+			return `Pending: triggered a fresh search for "${title}" in ${preview.service}.`;
 		case "add_or_upgrade":
 			if (preview.note.includes("exists")) {
-				return `Fixed: triggered a quality upgrade search for "${title}" in ${preview.service}.`;
+				return `Pending: triggered a quality upgrade search for "${title}" in ${preview.service}.`;
 			}
-			return `Fixed: added "${title}" to ${preview.service} with the standard quality profile and triggered a search.`;
+			return `Pending: added "${title}" to ${preview.service} with the standard quality profile and triggered a search.`;
 		case "remove_and_regrab":
-			return `Fixed: removed the broken file for "${title}" in ${preview.service} and triggered a re-grab.`;
+			return `Pending: removed the broken file for "${title}" in ${preview.service} and triggered a re-grab.`;
 		case "comment_only":
 			return (
 				extra ??
@@ -449,13 +543,96 @@ export function buildComment(
 	}
 }
 
+const executingReports = new Set<string>();
+// ponytail: client-local snapshot guard; durable journal needed across restarts when comments fail.
+const attemptedReports = new WeakMap<PlexReportsClient, Map<string, string>>();
+
 export async function executeRemediation(
 	client: PlexReportsClient,
 	report: PlexReport,
 	input: RemediateInput,
 	services: ServiceImplementation[],
 ): Promise<OperationResult<unknown>> {
+	if (executingReports.has(report.id))
+		return {
+			ok: false,
+			error: {
+				kind: "internal",
+				message: "Report remediation already in progress.",
+			},
+		};
+	if (
+		attemptedReports.get(client)?.get(report.id) ===
+		JSON.stringify(report.comments)
+	)
+		return {
+			ok: false,
+			error: {
+				kind: "internal",
+				message:
+					"Report remediation already submitted for this snapshot; inspect pending or partial work before replay",
+			},
+		};
+	executingReports.add(report.id);
+	try {
+		return await executeRemediationUnlocked(client, report, input, services);
+	} finally {
+		executingReports.delete(report.id);
+	}
+}
+
+async function executeRemediationUnlocked(
+	client: PlexReportsClient,
+	report: PlexReport,
+	input: RemediateInput,
+	services: ServiceImplementation[],
+): Promise<OperationResult<unknown>> {
+	// Enforcement layer: never re-work a report the comment thread already
+	// settled. The harness prompt is advisory; this guard is the hard stop so
+	// a sloppy run cannot spam the user or redo completed remediation.
+	const state = resolutionState(report.comments);
+	if (state === "pending")
+		return {
+			ok: false,
+			error: {
+				kind: "internal",
+				message:
+					"Report remediation is pending; inspect existing work before any replay",
+			},
+		};
+	if (state === "fixed") {
+		return {
+			ok: false,
+			error: {
+				kind: "internal",
+				message: `Report ${report.id} is already resolved (comment thread says fixed). Skipping to avoid re-doing completed work. If it regressed, the user's reply saying it is still broken will re-open it.`,
+			},
+		};
+	}
+	if (state === "clarification_requested" && input.action === "comment_only") {
+		return {
+			ok: false,
+			error: {
+				kind: "internal",
+				message: `Report ${report.id} already has a clarification request waiting on the user. Skipping comment_only to avoid duplicate asks.`,
+			},
+		};
+	}
+
 	if (input.action === "comment_only") {
+		// Never post an ask about media that no longer exists: if the report's
+		// item doesn't resolve (deleted/expired since the report), a
+		// clarification comment is noise the user can't act on.
+		const item = await client.resolveReportUrl(report.url);
+		if (!item) {
+			return {
+				ok: false,
+				error: {
+					kind: "internal",
+					message: `Report ${report.id} media could not be resolved (deleted/expired from Plex). Nothing actionable — skipping comment_only.`,
+				},
+			};
+		}
 		const message =
 			input.comment ??
 			"Could you be more specific about what's wrong (which device, what happens, which episode/time)? That helps me pinpoint the issue.";
@@ -493,6 +670,11 @@ export async function executeRemediation(
 
 	const actions: string[] = [];
 	const failures: string[] = [];
+	const markMutation = () => {
+		const attempts = attemptedReports.get(client) ?? new Map<string, string>();
+		attempts.set(report.id, JSON.stringify(report.comments));
+		attemptedReports.set(client, attempts);
+	};
 
 	try {
 		if (action === "add_or_upgrade") {
@@ -538,6 +720,7 @@ export async function executeRemediation(
 						},
 					};
 				}
+				markMutation();
 				const add = await service.addNew({
 					title: candidate.title,
 					foreignId: candidate.foreignId,
@@ -564,6 +747,7 @@ export async function executeRemediation(
 					failures.push("add succeeded but triggerSearch failed");
 				}
 			} else {
+				markMutation();
 				const res = await service.triggerSearch(preview.item.id);
 				if (res.ok)
 					actions.push(`triggered upgrade search (${res.data?.command})`);
@@ -575,12 +759,13 @@ export async function executeRemediation(
 					ok: false,
 					error: { kind: "internal", message: "No library item to search." },
 				};
+			markMutation();
 			const res = await service.triggerSearch(preview.item.id);
 			if (res.ok) actions.push(`triggered search (${res.data?.command})`);
 			else failures.push("triggerSearch failed");
 		} else if (action === "remove_and_regrab") {
 			// Destructive: only with a token minted by the dry-run.
-			if (!verifyRemoveToken(report.id, input.confirmationToken)) {
+			if (!verifyRemoveToken(report.id, input.confirmationToken, preview)) {
 				return {
 					ok: false,
 					error: {
@@ -591,6 +776,7 @@ export async function executeRemediation(
 				};
 			}
 			let deletedFile = false;
+			markMutation();
 			if (service.id === "sonarr" && preview.episodeFileId !== undefined) {
 				const del = await service.deleteFile(preview.episodeFileId);
 				if (del.ok) {
@@ -656,6 +842,14 @@ export async function executeRemediation(
 		// Comment back explaining what was done.
 		const comment = buildComment(action, preview, actions.join("; "));
 		const commentResult = await client.createReportComment(report.id, comment);
+		if (!commentResult.ok)
+			return {
+				ok: false,
+				error: {
+					kind: "internal",
+					message: `Partial failure: accepted remediation but report comment failed (${actions.join("; ")})`,
+				},
+			};
 		return {
 			ok: true,
 			data: {

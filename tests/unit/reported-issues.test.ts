@@ -154,6 +154,66 @@ async function makeClient(): Promise<PlexReportsClient> {
 }
 
 await describe("Plex reported-issues remediation", [
+	test("concurrent execution of one report is rejected", async () => {
+		const oldFetch = global.fetch;
+		global.fetch = buildFetchStub() as typeof global.fetch;
+		try {
+			const client = await makeClient();
+			const service = new MockRadarrService(
+				"radarr-hd",
+				createMockServiceConfig(),
+			);
+			const first = executeRemediation(
+				client,
+				reportFixture(),
+				{ action: "re_search" },
+				[service],
+			);
+			const second = await executeRemediation(
+				client,
+				reportFixture(),
+				{ action: "re_search" },
+				[service],
+			);
+			await first;
+			if (second.ok || !second.error.message.includes("in progress"))
+				throw new Error("concurrent mutation must be rejected");
+		} finally {
+			global.fetch = oldFetch;
+		}
+	}),
+	test("episode removal requires coordinates", async () => {
+		const oldFetch = global.fetch;
+		global.fetch = buildFetchStub({
+			"/library/metadata/242722": metadataResponse("242722", {
+				type: "episode",
+				grandparentTitle: "Show",
+			}),
+			"/api/v3/series": [{ id: 7, title: "Show", year: 2026 }],
+			"/api/v3/episode": [
+				{
+					id: 1,
+					seasonNumber: 1,
+					episodeNumber: 1,
+					hasFile: true,
+					episodeFileId: 99,
+				},
+			],
+		}) as typeof global.fetch;
+		try {
+			const result = await planRemediation(
+				await makeClient(),
+				reportFixture(),
+				"remove_and_regrab",
+				undefined,
+				[new MockSonarrService("sonarr-hd", createMockServiceConfig())],
+			);
+			if (result.ok)
+				throw new Error("missing coordinates must not pick first file");
+		} finally {
+			global.fetch = oldFetch;
+		}
+	}),
 	test("resolutionState: no comments → unresolved; fixed marker → fixed; clarify marker → clarification_requested", () => {
 		if (resolutionState([]) !== "unresolved")
 			throw new Error("expected unresolved");
@@ -167,6 +227,148 @@ await describe("Plex reported-issues remediation", [
 			"clarification_requested"
 		)
 			throw new Error("expected clarification_requested");
+	}),
+
+	test("resolutionState: clarification only counts while it is the newest comment; a user reply on top re-opens the report", () => {
+		const ask = {
+			id: "c1",
+			message: "Which device is this on?",
+			date: "2026-08-04T20:00:00Z",
+		};
+		const reply = {
+			id: "c2",
+			message: "on my iPad, episode 3",
+			date: "2026-08-04T06:00:00Z",
+		};
+		// Ask has the later date (newest) → waiting on the user.
+		if (resolutionState([reply, ask]) !== "clarification_requested")
+			throw new Error("expected clarification_requested while ask is newest");
+		// User replied after the ask → actionable again (would otherwise be
+		// stuck forever and skipped by the daily cron).
+		if (
+			resolutionState([
+				{ ...ask, date: "2026-08-04T06:00:00Z" },
+				{ ...reply, date: "2026-08-04T20:00:00Z" },
+			]) !== "unresolved"
+		)
+			throw new Error("expected unresolved after user reply");
+		// User saying still-broken on top of a Fixed: re-opens it too.
+		if (
+			resolutionState([
+				{ id: "c1", message: "Fixed: added", date: "2026-08-03T07:00:00Z" },
+				{ id: "c2", message: "still broken", date: "2026-08-04T20:00:00Z" },
+			]) !== "unresolved"
+		)
+			throw new Error("expected unresolved after still-broken reply");
+		// Custom clarify asks must also be recognized (regression: a custom
+		// "Which episode/series was wrong?" ask was not, so the next run
+		// re-asked with the default message on top).
+		if (
+			resolutionState([
+				{
+					id: "c3",
+					message:
+						"Which episode/series was wrong? Can't pinpoint it from this report — reply with the show and episode number and I'll re-grab the right one.",
+				},
+			]) !== "clarification_requested"
+		)
+			throw new Error("expected clarification_requested for custom ask");
+	}),
+
+	test("executeRemediation refuses comment_only when a clarification is already waiting", async () => {
+		const oldFetch = global.fetch;
+		global.fetch = buildFetchStub() as typeof global.fetch;
+		try {
+			const client = await makeClient();
+			const radarr = new MockRadarrService(
+				"radarr-hd",
+				createMockServiceConfig(),
+			);
+			const result = await executeRemediation(
+				client,
+				reportFixture({
+					comments: [
+						{
+							id: "c1",
+							message: "Could you be more specific about what's wrong?",
+							date: "2026-08-04T06:00:00Z",
+						},
+					],
+				}),
+				{ reportId: "report-1", action: "comment_only" },
+				[radarr],
+			);
+			if (result.ok) throw new Error("expected refusal");
+			if (!("message" in result.error))
+				throw new Error("expected internal error");
+			if (!result.error.message.includes("duplicate asks")) {
+				throw new Error(`unexpected message: ${result.error.message}`);
+			}
+		} finally {
+			global.fetch = oldFetch;
+		}
+	}),
+
+	test("executeRemediation refuses comment_only when the report's media is gone (deleted/expired)", async () => {
+		const oldFetch = global.fetch;
+		global.fetch = buildFetchStub({
+			"/library/metadata/242722": { MediaContainer: { Metadata: [] } },
+		}) as typeof global.fetch;
+		try {
+			const client = await makeClient();
+			const radarr = new MockRadarrService(
+				"radarr-hd",
+				createMockServiceConfig(),
+			);
+			const result = await executeRemediation(
+				client,
+				reportFixture(),
+				{ reportId: "report-1", action: "comment_only" },
+				[radarr],
+			);
+			if (result.ok) throw new Error("expected refusal");
+			if (!("message" in result.error))
+				throw new Error("expected internal error");
+			if (!result.error.message.includes("could not be resolved")) {
+				throw new Error(`unexpected message: ${result.error.message}`);
+			}
+		} finally {
+			global.fetch = oldFetch;
+		}
+	}),
+
+	test("executeRemediation refuses all actions on a fixed report", async () => {
+		const oldFetch = global.fetch;
+		global.fetch = buildFetchStub() as typeof global.fetch;
+		try {
+			const client = await makeClient();
+			const radarr = new MockRadarrService(
+				"radarr-hd",
+				createMockServiceConfig(),
+			);
+			const result = await executeRemediation(
+				client,
+				reportFixture({
+					comments: [
+						{
+							id: "c1",
+							message: "Fixed: added Leviticus with the standard profile",
+							date: "2026-08-03T07:00:00Z",
+						},
+					],
+				}),
+				{ reportId: "report-1", action: "add_or_upgrade" },
+				[radarr],
+			);
+			if (result.ok) throw new Error("expected refusal");
+			if (!("message" in result.error))
+				throw new Error("expected internal error");
+			if (!result.error.message.includes("already resolved")) {
+				throw new Error(`unexpected message: ${result.error.message}`);
+			}
+		} finally {
+			global.fetch = oldFetch;
+		}
 	}),
 
 	test("resolveReports: resolves URL to item and matches the right service kind", async () => {
@@ -286,7 +488,7 @@ await describe("Plex reported-issues remediation", [
 		}
 	}),
 
-	test("buildComment: comment_only default asks for specifics; fixed actions say Fixed:", () => {
+	test("buildComment: comment_only asks for specifics; accepted searches are pending", () => {
 		const preview = {
 			reportId: "report-1",
 			action: "comment_only" as const,
@@ -300,7 +502,16 @@ await describe("Plex reported-issues remediation", [
 		if (!clarify.includes("more specific"))
 			throw new Error(`unexpected: ${clarify}`);
 		const fixed = buildComment("re_search", preview);
-		if (!fixed.includes("Fixed:")) throw new Error(`unexpected: ${fixed}`);
+		if (!fixed.startsWith("Pending:")) throw new Error(`unexpected: ${fixed}`);
+		if (resolutionState([{ id: "pending", message: fixed }]) !== "pending")
+			throw new Error("accepted search must stay pending");
+		if (
+			resolutionState([
+				{ id: "p", message: fixed, date: "2026-08-01" },
+				{ id: "r", message: "on my iPad", date: "2026-08-02" },
+			]) !== "unresolved"
+		)
+			throw new Error("new user reply must reopen pending report");
 	}),
 
 	test("episode report matches sonarr services and resolves episode file id", async () => {
@@ -333,7 +544,9 @@ await describe("Plex reported-issues remediation", [
 					episodeNumber: 5,
 					title: "Destined",
 					hasFile: true,
-					episodeFile: { id: 88 },
+					// Live Sonarr /episode list responses carry the flat id and
+					// no nested episodeFile object — fixture mirrors that.
+					episodeFileId: 88,
 				},
 			],
 		}) as typeof global.fetch;
@@ -516,7 +729,7 @@ await describe("Plex reported-issues remediation", [
 						id: 2364,
 						title: "Leviticus",
 						year: 2026,
-						qualityProfileId: 3,
+						qualityProfileId: putBody ? 7 : 3,
 						path: "/movies/Leviticus (2026)",
 					}),
 					{ status: 200, headers: { "Content-Type": "application/json" } },
@@ -651,7 +864,7 @@ await describe("Plex reported-issues remediation", [
 				[radarr],
 			);
 			if (!preview.ok || !preview.data) throw new Error("plan failed");
-			const token = mintRemoveToken("report-1");
+			const token = mintRemoveToken("report-1", preview.data);
 			const result = await executeRemediation(
 				client,
 				reportFixture(),
@@ -719,6 +932,63 @@ await describe("Plex reported-issues remediation", [
 		}
 	}),
 
+	test("removal token rejects changed concrete plan", async () => {
+		const oldFetch = global.fetch;
+		global.fetch = buildFetchStub() as typeof global.fetch;
+		try {
+			const client = await makeClient();
+			const radarr = new MockRadarrService(
+				"radarr-hd",
+				createMockServiceConfig(),
+			);
+			const plan = await planRemediation(
+				client,
+				reportFixture(),
+				"remove_and_regrab",
+				undefined,
+				[radarr],
+			);
+			if (!plan.ok || !plan.data) throw new Error("plan failed");
+			const token = mintRemoveToken("report-1", plan.data);
+			global.fetch = buildFetchStub({
+				"/api/v3/movie": [
+					{
+						id: 10,
+						title: "Leviticus",
+						year: 2026,
+						hasFile: true,
+						movieFile: { id: 100 },
+					},
+				],
+			}) as typeof global.fetch;
+			const result = await executeRemediation(
+				client,
+				reportFixture(),
+				{ action: "remove_and_regrab", confirmationToken: token },
+				[radarr],
+			);
+			if (result.ok || !result.error.message.includes("Confirmation token"))
+				throw new Error("must reject plan drift before deletion");
+		} finally {
+			global.fetch = oldFetch;
+		}
+	}),
+	test("search accepted but comment failed reports partial failure", async () => {
+		const oldFetch = global.fetch;
+		global.fetch = buildFetchStub() as typeof global.fetch;
+		try {
+			const result = await executeRemediation(
+				await makeClient(),
+				reportFixture(),
+				{ action: "re_search" },
+				[new MockRadarrService("radarr-hd", createMockServiceConfig())],
+			);
+			if (result.ok || !result.error.message.includes("comment"))
+				throw new Error("comment failure must not be success");
+		} finally {
+			global.fetch = oldFetch;
+		}
+	}),
 	test("malformed GraphQL envelope is rejected, not cast", async () => {
 		const oldFetch = global.fetch;
 		global.fetch = createMockFetch({

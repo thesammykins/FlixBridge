@@ -1,968 +1,209 @@
-# API Reference
+# API reference
 
-> **📖 Flix-Bridge Documentation**
-> [← Usage](usage.md) | [Next: Multi-Instance →](multi-instance.md)
+This reference describes the working source in `src/index.ts`, `src/services/shared.ts`, `src/services/downloaders/sabnzbd.ts` and `src/services/plex/`. Installed releases may differ: discover their actual schemas. Call `list_services` first and use exact returned names. Examples are illustrative inputs, not results from a live stack.
 
-Complete reference for all available Flix-Bridge tools with examples and response formats.
+This reference describes the integrated 1.0 candidate: 20 tools, including additive read-only `library_statistics`. Existing 19 tool names and required inputs are retained. It is not a publication or live-compatibility attestation. See [Sonarr per-instance policy and reviewed routes](configuration.md#sonarr-api-policy); no general upstream administration tools are exposed.
 
-> **Production Safety Note**: Use `queue_diagnostics` and `all_services_diagnostics` with `autoFix:false` for read-only production baselines. Their default is `autoFix:true`, which can retry downloads, trigger manual imports, or remove not-an-upgrade queue items.
+## Transport and validation
 
-> **ℹ️ API Version Note**: This documentation is based on the Sonarr/Radarr v3 API specification. The v3 API is compatible with both v3 and v4 versions of Sonarr/Radarr applications. Flix-Bridge is designed to be extensible to other *arr services (Lidarr, Readarr, etc.) in the future.
+MCP `tools/call` returns the same `{ok,data?,error?}` envelope in `structuredContent` and JSON `content[].text`; outer `ok:false` sets `isError:true`. Known-tool argument validation errors use a failed envelope; unknown tools/methods and malformed wire requests can be protocol errors. Unexpected internal failures return a generic MCP error. Aggregates can return `ok:false` **with useful partial data**. Per-item operations may have outer `ok:true` despite `failed`/`skipped` entries; inspect details, not transport success. Neither `service` nor `mediaKind` is universal. Errors may be service errors (`service`, `status`, `message`, optional `code`) or internal errors (`kind:"internal"`, `message`). Do not depend on an invented universal error-code enum.
 
-## Table of Contents
+The MCP boundary enforces advertised required fields, rejects unknown arguments and uses bounded Zod validation:
 
-- [Service Discovery](#service-discovery)
-  - [list_services](#list_services)
-- [Core Operations](#core-operations)
-  - [system_status](#system_status)
-  - [queue_list](#queue_list)
-  - [queue_grab](#queue_grab)
-  - [remove_content](#remove_content)
-  - [manual_import](#manual_import)
-  - [root_folders](#root_folders)
-- [Media Management](#media-management)
-  - [search](#search)
-  - [add_new](#add_new)
-  - [quality_profiles](#quality_profiles)
-  - [history_detail](#history_detail)
-  - [import_issues](#import_issues)
-- [Diagnostics & Monitoring](#diagnostics--monitoring)
-  - [queue_diagnostics](#queue_diagnostics)
-  - [all_services_diagnostics](#all_services_diagnostics)
-  - [download_status](#download_status)
-  - [server_metrics](#server_metrics)
+- Numeric IDs, `page`, `foreignId`, `itemId`, `qualityProfileId` are positive safe integers. ARR string IDs accepted by `remove_content` must match `^[1-9]\d*$`; use numeric IDs for advertised ARR inputs. No fractions, zero, negative values, whitespace or repaired identifiers.
+- `ids`: nonempty, at most 1000 entries; string entries are 1–256 characters. `pageSize` and `limit`: positive integers, at most 1000. `services`: at most 100 names of 1–256 characters.
+- Other input strings are nonempty and at most 4096 characters. `queueTimeoutMs`: integer 1000–60000.
+- Only the tool’s advertised fields are accepted at the MCP boundary. Additional scope/confirmation checks apply at dispatch. Send documented fields rather than internal option names.
 
-## Service Discovery
+The runtime uses SDK `@modelcontextprotocol/server` 2.3.1 `serveStdio` with legacy
+serving enabled. Current MCP `2026-07-28` uses modern discovery/per-request protocol
+metadata, without requiring legacy `initialize`; a version guard rejects unsupported
+modern versions even after a supported request. Legacy initialization supports
+`2024-10-07`, `2024-11-05`, `2025-03-26`, `2025-06-18` and `2025-11-25`.
+No HTTP transport or streaming/task workflow is exposed.
 
-> **⚠️ Important**: Always call `list_services` first to discover available services before using any other tools.
+At most four tool calls execute concurrently, with sixteen waiting slots. Queue
+saturation fails rather than starting more work. Cancellation removes waiting work
+and propagates to active HTTP/body reads and verification delays; it does not undo
+an accepted upstream write. Inspect exact state before retrying cancelled work.
+Tool annotations are conservative for conditional mutations: diagnostics/import/
+removal remain write-capable even when preview/read-only flags are used.
+
+Optional means omission is permitted, **not** that the tool is read-only. All mutations require operator authority; tokens do not grant consent.
+
+## Tool inventory
 
 ### list_services
 
-List all configured services and downloaders. This tool provides discovery of available services and must be called before using any service-specific operations.
-
-**Input:**
-```json
-{}
-```
-
-**Output:**
-```json
-{
-  "ok": true,
-  "data": {
-    "services": [
-      {
-        "name": "sonarr-hd",
-        "type": "sonarr"
-      },
-      {
-        "name": "sonarr-4k",
-        "type": "sonarr"
-      },
-      {
-        "name": "radarr-main",
-        "type": "radarr"
-      }
-    ],
-    "downloaders": [
-      {
-        "name": "sabnzbd-main",
-        "type": "sabnzbd"
-      }
-    ],
-    "summary": {
-      "totalServices": 3,
-      "totalDownloaders": 1
-    }
-  }
-}
-```
-
-**Parameters:**
-- None required
-
-**Usage Notes:**
-- This tool requires no service parameter unlike all other tools
-- Use the service names returned here for all subsequent tool calls
-- Service names are determined by your environment variable configuration
-- Service types help identify whether a service is Sonarr or Radarr
-
-## Core Operations
+Input `{}`. Read-only. Output `data.services:[{name,type,apiPolicy?}]`, with `type` from adapter identity and Sonarr-only offline `apiPolicy:"legacy"|3|5|"auto"` (no upstream discovery), `downloaders:[{name,type:"sabnzbd"}]`, `summary:{totalServices,totalDownloaders}`. Plex is not enumerated here.
 
 ### system_status
 
-Get system status and health information for a specific service.
+Required `service:string`. Output `{service,name,version,isHealthy}`. `isHealthy:true` means a valid status response, not a comprehensive upstream health audit. The current mapper does not return `startTime`. Sonarr adds `api:{configuredPolicy,current?,deprecated,verifiedFamilies,effectiveOperations}`. Advertised families, status-verified families and effective per-operation routes are distinct; this is not a full capability audit.
 
-> **Service Compatibility:** Works with both Sonarr and Radarr instances. Response format is identical across services.
+### library_statistics
 
-**Input:**
+Required `service:string`. Read-only, Sonarr API v5 only: GET `/api/v5/statistics`
+(with configured base path), using explicit `5` or reviewed v5 `auto` routing.
+Output `{service,apiFamily:5,statistics}`. The validated statistics object includes
+series/season/episode/file counts, `sizeOnDisk`, and `qualityProfileStatistics`,
+`qualityStatistics`, `tagStatistics` arrays. Counts must be nonnegative safe integers;
+malformed/null responses fail, never synthesize zero totals.
+
+Unsupported on Radarr, omitted/explicit `3`, or a v3-only `auto` instance. There is
+no legacy library scan/fallback and no statistics mutation. Discovery/status probes
+may precede the read for opted-in Sonarr policies; statistics is not playback proof.
+
 ```json
-{
-  "service": "sonarr-main"
-}
-```
-
-**Output:**
-```json
-{
-  "ok": true,
-  "data": {
-    "service": "sonarr-main",
-    "name": "Sonarr",
-    "version": "4.0.0.746",
-    "isHealthy": true,
-    "startTime": "2024-01-15T10:30:00Z"
-  }
-}
-```
-
-**Multi-Instance Examples:**
-```json
-// Check 4K instance
-{"service": "radarr-4k"}
-
-// Check anime instance
-{"service": "sonarr-anime"}
+{"service":"sonarr-main"}
 ```
 
 ### queue_list
 
-List items in the download queue with status and progress information.
+Required `service:string`; optional `page:number`, `pageSize:number`. Omitted pagination is delegated to ARR; FlixBridge does not apply a universal 25-item default.
 
-> **Service Compatibility:** Works with both Sonarr and Radarr instances. The `mediaKind` field in responses indicates whether items are "series" (Sonarr) or "movie" (Radarr).
+Output `{service,mediaKind,total,items,truncated}`. Items contain `id,title,status,mediaKind` and optional `progressPct,protocol,estimatedCompletionTime,downloadId,outputPath,downloadClient,trackedDownloadState,trackedDownloadStatus,statusMessages,errorMessage`. Status messages retain upstream title/message/messages fields. `total` uses upstream `totalRecords` when supplied. `truncated:true` includes missing totals, a returned-record count different from total, or a page other than 1. Paginate and deduplicate for complete coverage; a page cannot prove absence elsewhere.
 
-**Input:**
 ```json
-{
-  "service": "sonarr-main",
-  "page": 1,
-  "pageSize": 25
-}
+{"service":"sonarr-main","page":1,"pageSize":100}
 ```
-
-**Output:**
-```json
-{
-  "ok": true,
-  "data": {
-    "service": "sonarr-main",
-    "mediaKind": "series",
-    "total": 5,
-    "items": [
-      {
-        "id": 123,
-        "title": "Sample.TV.Series.S01E01",
-        "status": "downloading",
-        "progressPct": 75,
-        "mediaKind": "series",
-        "protocol": "usenet",
-        "estimatedCompletionTime": "2024-01-15T11:30:00Z"
-      }
-    ],
-    "truncated": false
-  }
-}
-```
-
-**Parameters:**
-- `service` (required): Service instance name
-- `page` (optional): Page number for pagination (default: 1)
-- `pageSize` (optional): Number of items per page (default: 25, API default: 10)
-
-**Diagnosing Stuck Items:**
-- Sonarr/Radarr attach `statusMessages` to each queue entry. The raw payload (available via `GET /api/v3/queue` or `GET /api/v3/queue/details`) looks like:
-  ```json
-  {
-    "status": "completed",
-    "errorMessage": "Automatic import is not possible.",
-    "statusMessages": [
-      {
-        "title": "Downloaded - Unable to Import",
-        "messages": ["Manual investigation required", "Additional details here"]
-      }
-    ]
-  }
-  ```
-  **Note:** `statusMessages` is an array where each object contains:
-  - `title` (string): Summary of the issue
-  - `messages` (array of strings): Detailed messages about the issue
-- `queue_list` keeps the response lightweight. For richer explanations use [`queue_diagnostics`](#queue_diagnostics) (we surface normalized messages derived from these fields) or query the queue endpoint directly when you need the exact text.
-- Torrent jobs do not expose the original payload through the manual-import API. You may see `statusMessages` explaining the failure, but follow-up actions (copying files, retriggering import) must be handled by your download client or through the service UI.
 
 ### queue_grab
 
-Force grab/retry download of specific queued items.
-
-**API Endpoints:**
-- Single item: `POST /api/v3/queue/grab/{id}`
-- Bulk operation: `POST /api/v3/queue/grab/bulk`
-
-**Single Item:**
-```json
-{
-  "service": "sonarr-main",
-  "ids": [123]
-}
-```
-
-**Multiple Items (Bulk):**
-```json
-{
-  "service": "radarr-4k",
-  "ids": [456, 789, 101112]
-}
-```
-
-**Output:**
-```json
-{
-  "ok": true,
-  "data": {
-    "service": "sonarr-main",
-    "mediaKind": "series",
-    "grabbed": 1,
-    "ids": [123]
-  }
-}
-```
+Required `service:string`, `ids:number[]`. Immediate mutation with no preview/token. Uses single or bulk ARR queue grab. Output `{service,mediaKind,grabbed,ids}` counts submitted IDs, not completed downloads. Verify exact queue/history state before retrying.
 
 ### remove_content
 
-Remove items from queue or library with optional preview and confirmation workflow.
+Advertised required field: `ids:(number|string)[]`. Runtime scope requires `service` for ARR or `downloader` for `downloader_queue`.
 
-**API Endpoints:**
-- Queue deletion: `DELETE /api/v3/queue/{id}`
-- Library deletion (Sonarr): `DELETE /api/v3/series/{id}`
-- Library deletion (Radarr): `DELETE /api/v3/movie/{id}`
+| Input | Default / meaning |
+| --- | --- |
+| `service:string` | Required for ARR queue/library scopes |
+| `downloader:string` | Required for downloader scope or linked cleanup |
+| `target:string` | `queue`; inferred `downloader_queue` when downloader supplied without service; explicit enum `queue`, `library`, `downloader_queue` |
+| `ids:(number|string)[]` | Required; ARR positive integers, SABnzbd exact string IDs |
+| `dryRun:boolean` | `true` |
+| `confirmationToken:string` | Required when `dryRun:false` |
+| `deleteFiles:boolean` | `false`; library files or SABnzbd data for downloader cleanup |
+| `addImportExclusion:boolean` | `false`; library scope |
+| `removeFromClient:boolean` | `true`; ARR queue scope |
+| `blocklist:boolean` | `false`; ARR queue scope |
+| `removeFromDownloader:boolean` | `false`; linked SABnzbd cleanup for ARR queue |
+| `allowManualRemoval:boolean` | `false`; explicit manual-review override |
+| `manualImport:boolean` | `true`; attempt safe import before queue removal |
+| `queueTimeoutMs:number` | Omitted uses 5000 ms for queue DELETE; valid range 1000–60000 |
 
-**Preview Mode (dryRun: true - default):**
+ARR preview output includes `mode:"dry_run",service,target,options,preview,confirmationToken,nextAction` and optional `notes,downloader,downloadIds,downloaderPreview`; `removeFromDownloader` is explicit. `preview` contains `service,mediaKind,kind,requestedIds,missingIds,targets,notes?`. Targets include identity, title, source, status/path/download association and manual-review evidence as applicable. Returned `options.attemptManualImport` corresponds to input `manualImport`; it is not an additional input field.
+
+ARR execute output includes `mode:"execute",service,target,result,removeFromDownloader` plus optional downloader/result/preview/notes. `result` contains `service,mediaKind,kind,removed,failed,skipped,missingIds,details,notes?`; detail statuses are `removed` or `failed`. Missing preview IDs are skipped. Outer `ok:false` can accompany per-item results or linked cleanup failure.
+
+Downloader preview output: `mode:"dry_run",scope:"downloader",downloader,deleteData,preview,confirmationToken`. Downloader execute: `mode:"execute",scope:"downloader",downloader,deleteData,result`. Downloader preview contains `downloader,requestedIds,missingIds,items`; items use `nzoId,title,status,progressPct,sizeMB,sizeLeftMB,eta` as mapped. Execute result contains `downloader,removed,failed,missingIds,details`; details use `id,title,status:"removed"|"failed"|"skipped",message?`. Inspect result counts and read back SABnzbd independently.
+
+Import/removal tokens expire after five minutes, are process-local and consumed on execution. ARR removal binds service, target, normalized ID set, all normalized removal options (including timeout), linked downloader name/flag and delete-data flag. Downloader removal binds downloader, normalized IDs and delete-data. Sonarr previews additionally retain the selected API family. These tokens store a preview; they are not locks. Direct discard/library removal does not universally refresh the stored target plan; import execution does refresh its candidate/target evidence.
+
+Failed/unverified default import retains the download rather than falling through to discard. Explicit approved discard requires a fresh preview with `manualImport:false`. Queue deletion success, including DELETE 404, requires absence in a complete readback snapshot. Library deletion does not have the same independent readback guarantee. Linked cleanup only proceeds for download IDs whose associated ARR targets succeeded; partial results still require inspection.
+
 ```json
-{
-  "service": "sonarr-main",
-  "target": "queue",
-  "ids": [123, 456],
-  "dryRun": true,
-  "removeFromClient": true,
-  "blocklist": false
-}
+{"service":"sonarr-main","target":"queue","ids":[123],"dryRun":true,"removeFromClient":false,"blocklist":false,"manualImport":false,"deleteFiles":false,"addImportExclusion":false,"removeFromDownloader":false,"allowManualRemoval":false}
 ```
 
-**Execute Mode (dryRun: false):**
-```json
-{
-  "service": "sonarr-main",
-  "target": "queue",
-  "ids": [123, 456],
-  "dryRun": false,
-  "confirmationToken": "token_from_preview",
-  "removeFromClient": true,
-  "blocklist": false,
-  "allowManualRemoval": false
-}
-```
-
-**Output (Preview Mode):**
-```json
-{
-  "ok": true,
-  "data": {
-    "service": "sonarr-main",
-    "mediaKind": "series",
-    "target": "queue",
-    "preview": {
-      "requestedIds": [123, 456],
-      "targets": [
-        {
-          "id": 123,
-          "source": "queue",
-          "title": "Sample.Series.S01E01",
-          "status": "warning",
-          "downloadId": "SAB_nzo_abc123",
-          "protocol": "usenet",
-          "manualReviewRequired": true
-        }
-      ]
-    },
-    "confirmationToken": "unique_token_here",
-    "nextAction": "Call remove_content with dryRun:false and the provided confirmationToken to execute the removal."
-  }
-}
-```
-
-**Output (Execute Mode):**
-```json
-{
-  "ok": true,
-  "data": {
-    "service": "sonarr-main",
-    "mediaKind": "series",
-    "kind": "queue",
-    "removed": 2,
-    "failed": 0,
-    "skipped": 0,
-    "details": [
-      {
-        "id": 123,
-        "title": "Sample.Series.S01E01",
-        "source": "queue",
-        "status": "removed",
-        "message": "Manual import triggered"
-      }
-    ]
-  }
-}
-```
-
-**Parameters:**
-- `service` (required): Service instance name
-- `target` (required): Removal target - "queue" or "library"
-- `ids` (required): Array of item IDs to remove
-- `dryRun` (optional): Preview mode without executing (default: true)
-- `confirmationToken` (optional): Token from preview mode (required when dryRun: false)
-- `removeFromClient` (optional): Remove from download client when removing queue items (default: true)
-- `blocklist` (optional): Add to blocklist when removing queue items (default: false)
-- `deleteFiles` (optional): Delete media files when removing from library (default: false)
-- `addImportExclusion` (optional): Add to import exclusion list when removing from library (default: false)
-- `allowManualRemoval` (optional): Allow removal of items flagged for manual review (default: false)
-- `manualImport` (optional): Try manual import before removing queue items unless set to false (default: true)
-
-**Workflow:**
-1. **Preview**: Call with `dryRun: true` to see what will be removed
-2. **Review**: Check the preview response and `manualReviewRequired` flags
-3. **Execute**: Call with `dryRun: false` and the `confirmationToken` to confirm removal
-
-**Safety Features:**
-- Two-step confirmation workflow prevents accidental deletions
-- Automatic manual import attempt before queue removal (when possible)
-- Manual review flags for items requiring investigation
-- Detailed preview showing exactly what will be affected
-- Optional downloader cleanup is previewed before execution when `removeFromDownloader:true` is used
+After approval repeat the same scope/options with `dryRun:false` and the returned token. Never copy a placeholder token into execution.
 
 ### manual_import
 
-Preview and execute safe one-item manual import candidates for a queue entry.
+Required `service:string`, `ids:number[]`; optional `dryRun:boolean` (default `true`), `confirmationToken:string` (required for execution). There is **no `queueId` input**.
 
-The flow is strict by design: preview first, then execution only with the returned token.
+Preview output `{mode:"dry_run",service,preview,confirmationToken,nextAction}`. `preview` contains `service,mediaKind,requestedIds,missingIds,items,summary:{total,safe,unsafe}`. Each item has `id,title,status,downloadId?,path?,candidates,selectedCandidate?,safeToImport,reason`. Candidate previews contain `id,path,seriesId?,movieId?,seasonNumber?,episodeIds,rejectionReasons,request` as applicable. Exactly one unrejected candidate is required, bound to the queue download ID, absolute contained path and exact movie or series/season/complete episode set. Missing scope, traversal, mismatched media/download identity or ambiguous candidates block execution. Previews include a target/candidate fingerprint; unsafe items stay untouched. A safe classification is still not operator consent.
 
-**Input (preview):**
+Execute output `{mode:"execute",service,result}` with `result:{service,mediaKind,requestedIds,imported,failed,pending,skipped,results}`; entries have `id,title,status:"imported"|"failed"|"skipped",message?` and additive `pending?,commandId?` when available. Pending entries retain legacy `status:"failed"` and are included in `failed`; `pending` is a subset, not an additional disjoint count. Inspect these counts even if outer `ok:true`.
+
+Tokens bind service and normalized ID set to the stored preview for five minutes. Execution rederives and compares the target/candidate fingerprint before POST `/command` (`ManualImport`, `importMode:auto`); it requires a concrete command ID, completed command readback, complete queue absence and new positive library-file IDs for the mapped movie/episodes. The command is read once; queue-clearance polling is bounded. Accepted/running/unknown outcomes remain failed/unverified with pending evidence and the download retained. A process-local per-download submission guard prevents repeat submission in that adapter; it is not durable across restart and does not poll an existing pending command to completion. Inspect command/queue/library/history rather than resubmit. File identity proof is not playback proof.
+
 ```json
-{
-  "service": "sonarr-main",
-  "queueId": 123,
-  "dryRun": true
-}
-```
-
-**Output (preview):**
-```json
-{
-  "ok": true,
-  "data": {
-    "service": "sonarr-main",
-    "mediaKind": "series",
-    "queueId": 123,
-    "candidates": [
-      {
-        "fileId": "uuid-or-id",
-        "path": "/media/downloads/show.S01E05.mkv",
-        "rejections": [],
-        "quality": "WEB-DL"
-      }
-    ],
-    "confirmationToken": "candidate_token",
-    "nextAction": "Call manual_import with dryRun:false and confirmationToken"
-  }
-}
-```
-
-**Input (execute):**
-```json
-{
-  "service": "sonarr-main",
-  "queueId": 123,
-  "dryRun": false,
-  "confirmationToken": "candidate_token"
-}
-```
-
-Execution uses Sonarr/Radarr UI-equivalent payload:
-`POST /api/v3/command` with `{"name":"ManualImport","files":[...],"importMode":"auto"}`.
-
-Execution is considered successful only if queue state changes after the POST (the item disappears or transitions away).
-
-**Output (execute):**
-```json
-{
-  "ok": true,
-  "data": {
-    "service": "sonarr-main",
-    "mediaKind": "series",
-    "queueId": 123,
-    "attempted": true,
-    "success": true,
-    "details": {
-      "message": "Manual import command sent and queue state changed"
-    }
-  }
-}
+{"service":"sonarr-main","ids":[123],"dryRun":true}
 ```
 
 ### root_folders
 
-List configured root folders and storage information.
-
-**Input:**
-```json
-{
-  "service": "sonarr-main"
-}
-```
-
-**Output:**
-```json
-{
-  "ok": true,
-  "data": {
-    "service": "sonarr-main",
-    "mediaKind": "series",
-    "total": 2,
-    "folders": [
-      {
-        "id": 1,
-        "path": "/media/tv",
-        "freeSpaceBytes": 1000000000000,
-        "accessible": true
-      },
-      {
-        "id": 2,
-        "path": "/media/tv-4k",
-        "freeSpaceBytes": 500000000000,
-        "accessible": true
-      }
-    ],
-    "defaultId": 1
-  }
-}
-```
-
-## Media Management
-
-### search
-
-Search for media (series/movies) to add to your library.
-
-> **Service Compatibility:** Works with both Sonarr and Radarr instances.
-> - **Sonarr**: Returns TVDB IDs in the `foreignId` field
-> - **Radarr**: Returns TMDB IDs in the `foreignId` field
-
-**Input:**
-```json
-{
-  "service": "sonarr-main",
-  "query": "Breaking Bad",
-  "limit": 5
-}
-```
-
-**Output:**
-```json
-{
-  "ok": true,
-  "data": {
-    "service": "sonarr-main",
-    "mediaKind": "series",
-    "total": 3,
-    "results": [
-      {
-        "id": 81189,
-        "foreignId": 81189,
-        "title": "Breaking Bad",
-        "year": 2008,
-        "overview": "High school chemistry teacher...",
-        "mediaKind": "series",
-        "imdbId": "tt0903747"
-      }
-    ],
-    "truncated": false
-  }
-}
-```
-
-**Parameters:**
-- `service` (required): Service instance name
-- `query` (required): Search term
-- `limit` (optional): Maximum results to return
-
-**Radarr Example:**
-```json
-// Input
-{"service": "radarr-main", "query": "The Matrix", "limit": 5}
-
-// Output
-{
-  "ok": true,
-  "data": {
-    "service": "radarr-main",
-    "mediaKind": "movie",
-    "total": 5,
-    "results": [
-      {
-        "id": 603,
-        "foreignId": 603,
-        "title": "The Matrix",
-        "year": 1999,
-        "overview": "Set in the 22nd century...",
-        "mediaKind": "movie",
-        "imdbId": "tt0133093"
-      }
-    ],
-    "truncated": false
-  }
-}
-```
-
-### add_new
-
-Add new media (series/movies) to your library with intelligent quality profile selection.
-
-> **Service Compatibility:** Works with both Sonarr and Radarr instances.
-> - **Sonarr**: Requires `foreignId` as TVDB ID, adds to series library
-> - **Radarr**: Requires `foreignId` as TMDB ID, adds to movie library
-
-**Input:**
-```json
-{
-  "service": "sonarr-main",
-  "title": "Breaking Bad",
-  "foreignId": 81189,
-  "qualityProfileId": 2,
-  "monitored": true
-}
-```
-
-**Input (Auto Quality Profile):**
-```json
-{
-  "service": "sonarr-4k",
-  "title": "Sample TV Series",
-  "foreignId": 67890
-}
-```
-
-**Output:**
-```json
-{
-  "ok": true,
-  "data": {
-    "service": "sonarr-main",
-    "mediaKind": "series",
-    "added": true,
-    "id": 789,
-    "title": "Breaking Bad",
-    "existing": false,
-    "qualityProfile": {
-      "id": 2,
-      "name": "HD-1080p"
-    }
-  }
-}
-```
-
-**Quality Profile Safety:**
-- If you don't specify `qualityProfileId`, the system intelligently chooses based on service name
-- Services with "4k", "uhd", "2160" prefer 4K quality profiles
-- Services with "hd", "1080" prefer HD quality profiles
-- Services with "anime" prefer anime-specific profiles
-- Use the `Quality Profiles` tool to see available options
-
-**Parameters:**
-- `service` (required): Service instance name
-- `title` (required): Media title
-- `foreignId` (required): External ID (TVDB for TV, TMDB for movies)
-- `qualityProfileId` (optional): Quality profile ID (auto-selected if not specified)
-- `monitored` (optional): Whether to monitor for downloads (default: true)
-- `rootFolderPath` (optional): Storage location (uses default if not specified)
-
-### quality_profiles
-
-List available quality profiles with intelligent recommendations.
-
-**Input:**
-```json
-{
-  "service": "sonarr-4k"
-}
-```
-
-**Output:**
-```json
-{
-  "ok": true,
-  "data": {
-    "service": "sonarr-4k",
-    "mediaKind": "series",
-    "total": 3,
-    "profiles": [
-      {
-        "id": 1,
-        "name": "Any",
-        "upgradeAllowed": true
-      },
-      {
-        "id": 2,
-        "name": "HD-1080p",
-        "upgradeAllowed": true
-      },
-      {
-        "id": 3,
-        "name": "4K-2160p",
-        "upgradeAllowed": false
-      }
-    ],
-    "recommended": 3
-  }
-}
-```
-
-The `recommended` field suggests the best quality profile based on your service name.
+Required `service:string`. Output `{service,mediaKind,total,folders:[{id,path,freeSpaceBytes}],defaultId}`. The current mapper omits `accessible`; `defaultId` is the first folder ID or fallback 1, not proof a folder exists or is writable.
 
 ### history_detail
 
-Get download and import history with optional filtering.
+Required `service:string`; optional `page:number,pageSize:number,since:string`. Pagination defaults are delegated to ARR. `since` is a string, not validated as an ISO date by dispatch. Sonarr v5 uses `/history/since` with `date`, then locally pages the returned array; legacy v3 forwards `since` to `/history`.
 
-**Input:**
-```json
-{
-  "service": "sonarr-main",
-  "page": 1,
-  "pageSize": 10,
-  "since": "2024-01-01T00:00:00Z"
-}
-```
+Output `{service,mediaKind,total,items,truncated}`; each item includes `id,title,quality,date,eventType,mediaKind`. At most 20 records from the fetched page are exposed; v5 `truncated` also checks selected-page length against the fetched total, whereas legacy only reports local 20-record clipping, not full upstream pagination. History is therefore not a guaranteed complete audit trail. Failed/blocked history reads remain pending evidence, not a clean result.
 
-**Output:**
-```json
-{
-  "ok": true,
-  "data": {
-    "service": "sonarr-main",
-    "mediaKind": "series",
-    "total": 25,
-    "items": [
-      {
-        "id": 456,
-        "title": "Sample Series S01E01",
-        "quality": "HDTV-1080p",
-        "eventType": "grabbed",
-        "date": "2024-01-15T10:00:00Z",
-        "mediaKind": "series"
-      }
-    ],
-    "truncated": false
-  }
-}
-```
+### search
 
-**Parameters:**
-- `service` (required): Service instance name
-- `page` (optional): Page number for pagination (default: 1)
-- `pageSize` (optional): Items per page (default: 10)
-- `since` (optional): Only show history after this date (ISO format)
+Required `service:string,query:string`; optional `limit:number` (default 10). Read-only lookup. Output `{service,mediaKind,total,results,truncated}`; results contain `id,foreignId,title,year?,overview?,mediaKind,imdbId?`. IDs are TVDB for Sonarr, TMDB for Radarr. `total` is the fetched lookup array length; results are clipped to limit.
+
+### add_new
+
+Required `service:string,title:string,foreignId:number`; optional `rootFolderPath:string,qualityProfileId:number,monitored:boolean` (default `true`). Immediate mutation, no preview/token. If omitted, profile is selected by existing library usage then heuristics; root folder is first nonempty configured path. Review those defaults before adding. The add payload disables automatic missing-episode/movie search.
+
+Output `{service,mediaKind,added:true,id?,title,existing:false}`. No `qualityProfile` object is returned, and `existing:false` is not a duplicate-detection guarantee. A POST result is not independent persistence or download verification.
 
 ### import_issues
 
-Check for import issues and stuck downloads.
+Required `service:string`. Read-only wanted/missing endpoint summary, not a comprehensive failed-import detector. Output `{service,mediaKind,issues,summary:{total,stuckPending,failedImport}}`; issue fields `id,title,reason,ageMinutes`. Exposes at most 10 fetched records; `ageMinutes` and `failedImport` are currently zero placeholders. Do not interpret those zeros as verified health.
 
-**Input:**
-```json
-{
-  "service": "sonarr-main"
-}
-```
+### quality_profiles
 
-**Output:**
-```json
-{
-  "ok": true,
-  "data": {
-    "service": "sonarr-main",
-    "mediaKind": "series",
-    "issues": [
-      {
-        "id": 123,
-        "title": "Sample Series S01E01",
-        "reason": "Missing episode",
-        "ageMinutes": 0
-      }
-    ],
-    "summary": {
-      "total": 5,
-      "stuckPending": 1,
-      "failedImport": 0
-    }
-  }
-}
-```
+Required `service:string`. Output `{service,mediaKind,total,profiles,recommended?,recommendedName?,usage,totalLibraryItems}`; profiles contain `id,name,upgradeAllowed?,cutoff?`, usage entries `id,name,count,pct`. Recommendation prefers library usage before naming heuristics and is not enforced policy. Under omitted legacy policy, failed library usage lookup can fall back to heuristics; explicit Sonarr policies fail instead. Choose explicit IDs for authorized changes.
 
-## Diagnostics & Monitoring
+### update_quality_profile
+
+Required `service:string,itemId:number,qualityProfileId:number`. Immediate mutation; no `dryRun` or token. `itemId` is a library movie/series ID. GETs the full object, PUTs the new profile, then GETs exact ID/profile to verify. Output `{service,mediaKind,itemId,qualityProfileId,updated:true}`. Does not search for an upgrade. Readback failure means the write may already have happened.
 
 ### queue_diagnostics
 
-Analyze and automatically fix stuck queue items for a specific service.
+Required `service:string`; optional `autoFix:boolean` (default **false**). Read-only unless explicitly enabled; active fixes can retry/import beyond a targeted batch. Not-an-upgrade, ambiguous sample/episode-pack and manual-investigation cases require manual review, not automatic deletion.
 
-**Input:**
-```json
-{
-  "service": "sonarr-main",
-  "autoFix": false
-}
-```
+Output `{service,mediaKind,totalQueueItems,issuesFound,issuesAnalyzed,fixesAttempted,summary:{fixed,failed,requiresManual}}`. Analyses include identity/status, category `{type,severity,autoFixable}`, message/suggestedAction and normalized upstream evidence. Fixes contain `id,action,reason,attempted,success,error?`.
 
-Set `autoFix:false` for read-only diagnostics. If omitted, `autoFix` defaults to true and can trigger write operations for auto-fixable issues.
-
-**Output:**
-```json
-{
-  "ok": true,
-  "data": {
-    "service": "sonarr-main",
-    "mediaKind": "series",
-    "totalQueueItems": 5,
-    "issuesFound": 2,
-    "issuesAnalyzed": [
-      {
-        "id": 123,
-        "title": "Sample.Series.S01E05",
-        "status": "warning",
-        "category": {
-          "type": "mapping",
-          "severity": "warning",
-          "autoFixable": true
-        },
-        "message": "TheXEM mapping issue detected",
-        "suggestedAction": "Trigger manual import to bypass mapping requirements"
-      }
-    ],
-    "fixesAttempted": [
-      {
-        "id": 123,
-        "action": "manual_import",
-        "reason": "TheXEM mapping issue detected",
-        "attempted": true,
-        "success": true
-      }
-    ],
-    "summary": {
-      "fixed": 2,
-      "failed": 0,
-      "requiresManual": 0
-    }
-  }
-}
-```
-
-**Auto-Fix Categories:**
-- **Mapping Issues**: TheXEM episode mapping problems → triggers manual import
-- **Quality Downgrades**: Downloads that don't improve existing files → removes from queue
-- **Network Errors**: Connectivity issues → retries downloads
-- **Unknown Issues**: Provides analysis but requires manual intervention
-
-**Where Messages Come From:**
-- Flix-Bridge inspects Sonarr’s queue payload (`status`, `errorMessage`, and `statusMessages[].message`). That is why many diagnostics read “Manual investigation required” or “Automatic import is not possible.”
-- Manual import attempts are executed using the Sonarr/Radarr UI-equivalent endpoint (`POST /api/v3/command`, `name: "ManualImport"`, `importMode: "auto"`) when candidates are available from `GET /manualimport`. If a manual-import POST returns success but the queue item remains present, Flix-Bridge treats that as unsuccessful and retries with an explicit queue-state check.
-- If Sonarr returns no manual-import candidates (common with torrent downloads), the diagnostic will state “Manual import unavailable: no candidates returned.” At that point the download can be removed safely, but you may choose to keep the payload for manual processing.
+Uses one queue snapshot requesting 250 entries; missing/mismatched `totalRecords` fails rather than claiming complete diagnostics. Increasing queue size is not automatic pagination. `autoFixable` is a technical classification, never authorization; retry success is command submission, not completed download.
 
 ### all_services_diagnostics
 
-Run queue diagnostics across all configured services simultaneously.
+Optional `autoFix:boolean` (default **false**). Output `{totalServices,servicesScanned,overallSummary,serviceResults,incomplete,errors}`. Summary includes `totalQueueItems,totalIssuesFound,totalFixed,totalFailed,totalRequiresManual`. `serviceResults` contains successful per-service diagnostic data. `servicesScanned` lists attempted services, not only successes. Failed/thrown reads produce `ok:false,incomplete:true,errors:[{service,error}]` while preserving successful subtotals. No zero/partial clean claim.
 
-Use `autoFix:false` for read-only production checks. The default is true.
-
-**Input:**
 ```json
-{
-  "autoFix": true
-}
+{"autoFix":false}
 ```
-
-**Output:**
-```json
-{
-  "ok": true,
-  "data": {
-    "totalServices": 5,
-    "servicesScanned": ["sonarr-hd", "sonarr-uhd", "sonarr-anime", "radarr-hd", "radarr-uhd"],
-    "overallSummary": {
-      "totalQueueItems": 12,
-      "totalIssuesFound": 4,
-      "totalFixed": 3,
-      "totalFailed": 0,
-      "totalRequiresManual": 1
-    },
-    "serviceResults": [
-      {
-        "service": "sonarr-hd",
-        "mediaKind": "series",
-        "totalQueueItems": 5,
-        "issuesFound": 2,
-        "summary": {
-          "fixed": 2,
-          "failed": 0,
-          "requiresManual": 0
-        }
-      }
-    ]
-  }
-}
-```
-
-**Parameters:**
-- `autoFix` (optional): Whether to automatically fix detected issues (default: true)
 
 ### download_status
 
-Get unified download status across multiple services and download clients.
+Optional `services:string[]` (default all registered ARR services), `includeDownloader:boolean` (default true), `downloader:string` (default first registered downloader). Output `{services,totals:{queued,downloading,completedPendingImport},serviceResults,downloader,correlationRatio,incomplete,errors}`. Per-service entries contain `service,mediaKind,total,downloading,pending`. Downloader is null or `{service,name,version,isHealthy,paused,totalSlots,speedKBps,totalSizeMB,remainingSizeMB,items}`; correlation ratio is a heuristic, not exact target matching.
 
-**Input:**
-```json
-{
-  "services": ["sonarr-main", "radarr-main"],
-  "includeDownloader": true,
-  "downloader": "sabnzbd-main"
-}
-```
-
-**Output:**
-```json
-{
-  "ok": true,
-  "data": {
-    "services": ["sonarr-main", "radarr-main"],
-    "totals": {
-      "queued": 8,
-      "downloading": 5,
-      "completedPendingImport": 1
-    },
-    "serviceResults": [
-      {
-        "service": "sonarr-main",
-        "mediaKind": "series",
-        "total": 3,
-        "downloading": 2,
-        "pending": 1
-      }
-    ],
-    "downloader": {
-      "service": "sabnzbd-main",
-      "name": "SABnzbd",
-      "version": "4.3.0",
-      "isHealthy": true,
-      "paused": false,
-      "totalSlots": 5,
-      "speedKBps": 15564,
-      "totalSizeMB": 12000,
-      "remainingSizeMB": 8000,
-      "items": 5
-    },
-    "correlationRatio": 1
-  }
-}
-```
-
-**Parameters:**
-- `services` (optional): Array of service names to include
-- `includeDownloader` (optional): Whether to include download client status
-- `downloader` (optional): Download client name (if includeDownloader is true)
+ARR reads request a bounded first queue page. Per-service `observed` counts returned items and `truncated` preserves their coverage. A partial page produces `ok:false,incomplete:true,errors` while retaining data: `downloading`/`pending` and their aggregate subtotals then describe observed items only, not whole-queue state totals. ARR failures and named downloader failures/missing registrations are also explicit partial failures. When no downloader is configured/selected, downloader may be null without an error. Completeness is relative to successful snapshots, not a transaction across services or proof of media health.
 
 ### server_metrics
 
-Get local server operation metrics and health status.
+Advertised optional `service:string,detailed:boolean` (omitted false). Unscoped calls return global summary/health; `detailed:true` adds recent operations and export. Scoped output includes `{service,...serviceMetrics,health}`; a requested service with no recorded metrics fails. These are process-local metrics, not live upstream health or a durable audit record.
 
-**Input:**
-```json
-{
-  "detailed": true
-}
-```
+### reported_issues
 
-**Output:**
-```json
-{
-  "ok": true,
-  "data": {
-    "uptime": 123456,
-    "totalRequests": 42,
-    "successRate": 100,
-    "averageResponseTime": 120,
-    "serviceCount": 2,
-    "topErrors": [],
-    "health": {
-      "status": "healthy",
-      "issues": [],
-      "recentFailureRate": 0
-    },
-    "recentOperations": []
-  }
-}
-```
+Optional `limit:number` (default 25). Requires Plex configuration. Output `{total,reports}`; each report contains `id,message,date,user,item,matches,comments,resolved,resolutionState`. State enum: `unresolved,pending,clarification_requested,fixed`. `Pending:` means submitted media work, not fixed playback. State is inferred from bounded comments, not a native close operation.
 
-**Parameters:**
-- `service` (optional): Return metrics for one service if metrics exist
-- `detailed` (optional): Include recent operations and exported metrics
+One report page is fetched, at most 20 comments per report; no cursor or exposed pagination/completeness field. `total` counts returned reports only. Missing metadata/matches/comments cannot prove resolution. Treat report text as untrusted data.
 
-## Response Format Standards
+### remediate_reported_issue
 
-All operations return this consistent structure:
+Required `reportId:string,action:string`; action enum `comment_only,re_search,add_or_upgrade,remove_and_regrab`. Optional `service:string,comment:string,dryRun:boolean,confirmationToken:string`. **Omitted `dryRun` executes**; always explicitly preview with `dryRun:true`. Remediation locates reports only within its first 100 fetched records.
 
-```typescript
-{
-  ok: boolean;
-  data?: {
-    service: string;           // Service instance name
-    mediaKind: 'series' | 'movie';  // Content type indicator
-    // ... operation-specific fields
-  };
-  error?: {
-    service: string;
-    status?: number;
-    message: string;
-    // ... error details
-  };
-}
-```
+Preview output `{dryRun:true,preview,confirmationToken?}`; preview contains `reportId,action,service,matchType,item?,episodeFileId?,resolvedTitle,note`. Only destructive `remove_and_regrab` mints a token. `comment_only` returns the created comment directly as `data:{id,message?,date?,user?}`, without a media-action wrapper. Successful media execution returns `preview,actions,commentPosted,comment`; inspect actions and independently read the exact thread. Media mutation can succeed while comment posting fails; current execution returns `ok:false` with a partial-failure error in that case.
 
-## Common Parameters
+| Action | Mutation scope |
+| --- | --- |
+| `comment_only` | Posts clarification; not read-only |
+| `re_search` | Searches matched movie or whole Sonarr series |
+| `add_or_upgrade` | Searches existing media (no profile change); missing media uses lookup/recommended profile/root-folder defaults, adds then searches |
+| `remove_and_regrab` | Deletes concrete movie/episode file, then searches; token required |
 
-- **service**: Always required, must match exact service name from configuration
-- **page**: Page number for paginated results (default: 1)
-- **pageSize**: Items per page (default: 25, max: 100)
+Destructive tokens are process-local, single-use, ten-minute, bound exactly to report ID/action/service/library item ID/movie file ID/episode file ID/resolved title. Execution rederives that plan; drift fails validation. Comment text is not bound. Destruction requires unique exact movie identity or validated series/episode coordinates and an owned file; fuzzy/ambiguous targets are blocked. Fixed threads, duplicate clarification and pending threads have guards. A process-local execution guard blocks concurrent report actions. A client-local snapshot submission guard blocks repeated work only when the same Plex client object is reused; MCP dispatch creates fresh clients per call, so it is not cross-call replay protection after comment failure. No guard is durable across restart. Preserve explicit approval and verify progress before any further mutation.
 
-## Error Responses
+Generated media comments start `Pending:`, not `Fixed:`. Neither a submitted search nor comment-derived state proves playback. Matching/add defaults and partial failures require operator review; do not invent unsupported foreign-ID/profile/file input fields.
 
-```json
-{
-  "ok": false,
-  "error": {
-    "service": "sonarr-main",
-    "status": 404,
-    "message": "Resource not found",
-    "code": "NotFound"
-  }
-}
-```
+## Operational evidence
 
-Common error codes:
-- **NotFound** (404): Service or resource not found
-- **Unauthorized** (401): Invalid API key
-- **Timeout** (0): Network timeout
-- **BadRequest** (400): Invalid parameters
-
----
-
-**Next Steps:**
-- **[Multi-Instance →](multi-instance.md)** - Advanced multi-instance configurations
-- **[Troubleshooting →](troubleshooting.md)** - Common issues and solutions
-- **[Architecture →](architecture.md)** - Technical architecture and extension guide
-
----
-*Part of the [Flix-Bridge](../README.md) documentation*
+Use [safe workflows](usage.md), [public skills](../skills/README.md) and [security audit](security-audit.md). No live stack was used to produce this reference. Missing, failed or bounded evidence remains unknown/pending, never clean.

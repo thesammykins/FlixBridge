@@ -18,9 +18,59 @@ export interface InternalError {
 	cause?: unknown;
 }
 
+export type SonarrApiPolicy = "auto" | 3 | 5;
+
 export interface ServiceConfig {
+	apiVersion?: SonarrApiPolicy;
 	baseUrl: string;
 	apiKey: string;
+}
+
+export interface SonarrLibraryStatistics {
+	seriesCount: number;
+	monitoredSeriesCount: number;
+	completedSeriesCount: number;
+	continuingSeriesCount: number;
+	endedSeriesCount: number;
+	upcomingSeriesCount: number;
+	deletedSeriesCount: number;
+	standardSeriesCount: number;
+	dailySeriesCount: number;
+	animeSeriesCount: number;
+	seasonCount: number;
+	completedSeasonCount: number;
+	totalEpisodeCount: number;
+	monitoredEpisodeCount: number;
+	downloadedEpisodeCount: number;
+	missingEpisodeCount: number;
+	unairedEpisodeCount: number;
+	episodeFileCount: number;
+	sizeOnDisk: number;
+	qualityProfileStatistics: Array<{
+		qualityProfileId: number;
+		name: string;
+		seriesCount: number;
+		episodeFileCount: number;
+		sizeOnDisk: number;
+	}>;
+	qualityStatistics: Array<{
+		quality: { id: number; name: string; resolution?: number; source?: string };
+		episodeFileCount: number;
+		sizeOnDisk: number;
+	}>;
+	tagStatistics: Array<{
+		tagId: number;
+		label: string;
+		seriesCount: number;
+		episodeFileCount: number;
+		sizeOnDisk: number;
+	}>;
+}
+
+export interface LibraryStatisticsData {
+	service: string;
+	apiFamily: 5;
+	statistics: SonarrLibraryStatistics;
 }
 
 export interface SystemStatusData {
@@ -29,6 +79,13 @@ export interface SystemStatusData {
 	version: string;
 	startTime?: string;
 	isHealthy: boolean;
+	api?: {
+		configuredPolicy: SonarrApiPolicy | "legacy";
+		current?: string;
+		deprecated: string[];
+		verifiedFamilies: Array<3 | 5>;
+		effectiveOperations: Record<string, 3 | 5 | "unsupported">;
+	};
 }
 
 export interface QueueOptions {
@@ -39,6 +96,13 @@ export interface QueueOptions {
 }
 
 export interface QueueItem {
+	seriesId?: number;
+	episodeId?: number;
+	seasonNumber?: number;
+	episodeIds?: number[];
+	seasonNumbers?: number[];
+	episodesWithFilesCount?: number;
+	isFullSeason?: boolean;
 	id: number;
 	title: string;
 	status: string;
@@ -205,6 +269,13 @@ export interface QueueIssueCategory {
 }
 
 export interface QueueIssueAnalysis {
+	seriesId?: number;
+	episodeId?: number;
+	episodeIds?: number[];
+	seasonNumbers?: number[];
+	episodesWithFilesCount?: number;
+	isFullSeason?: boolean;
+
 	id: number;
 	title: string;
 	status: string;
@@ -255,6 +326,11 @@ export interface ManualImportCandidatePreview {
 	seasonNumber?: number;
 	episodeIds?: number[];
 	rejectionReasons: string[];
+	rejections?: Array<{
+		reason?: string;
+		message?: string | null;
+		type?: string;
+	}>;
 	request?: unknown;
 }
 
@@ -271,6 +347,7 @@ export interface ManualImportPreviewItem {
 }
 
 export interface ManualImportPreviewData {
+	apiFamily?: 3 | 5;
 	service: string;
 	mediaKind: "series" | "movie";
 	requestedIds: number[];
@@ -301,6 +378,9 @@ export interface ManualImportExecutionData {
 export type RemovalKind = "queue" | "library";
 
 export interface RemovalTargetDetails {
+	seriesId?: number;
+	episodeIds?: number[];
+	seasonNumbers?: number[];
 	id: number;
 	source: RemovalKind;
 	title: string;
@@ -317,6 +397,7 @@ export interface RemovalTargetDetails {
 }
 
 export interface RemovalPreparationData {
+	apiFamily?: 3 | 5;
 	service: string;
 	mediaKind: "series" | "movie";
 	kind: RemovalKind;
@@ -429,6 +510,7 @@ export interface ServiceImplementation {
 	readonly id: "sonarr" | "radarr";
 	readonly serviceName: string;
 
+	libraryStatistics?(): Promise<OperationResult<LibraryStatisticsData>>;
 	systemStatus(): Promise<OperationResult<SystemStatusData>>;
 	queueList(options?: QueueOptions): Promise<OperationResult<QueueData>>;
 	queueGrab(ids: number[]): Promise<OperationResult<GrabData>>;

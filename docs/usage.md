@@ -1,331 +1,106 @@
-# Usage Guide
+# Usage
 
-> **📖 Flix-Bridge Documentation**  
-> [← Configuration](configuration.md) | [Next: API Reference →](api-reference.md)
+Connect a stdio MCP client using the [installation guide](installation.md). The examples below show tool names and argument objects, not raw MCP wire messages. Replace instance names and IDs with values you have read from the running stack.
 
-Learn how to set up MCP clients and use Flix-Bridge effectively.
+## Read-only baseline
 
-## MCP Client Configuration
-
-### Claude Desktop Configuration
-
-Add Flix-Bridge to your Claude Desktop `claude_desktop_config.json` file:
+Call `list_services` first. Most ARR tools require a discovered `service`; aggregate tools and Plex tools do not universally require one.
 
 ```json
-{
-  "mcpServers": {
-    "flix-bridge": {
-      "command": "npx",
-      "args": ["@thesammykins/flixbridge"],
-      "env": {
-        "SONARR_MAIN_URL": "http://localhost:8989",
-        "SONARR_MAIN_API_KEY": "your-sonarr-api-key",
-        "SONARR_4K_URL": "http://localhost:8990",
-        "SONARR_4K_API_KEY": "your-4k-sonarr-api-key",
-        "RADARR_HD_URL": "http://localhost:7878",
-        "RADARR_HD_API_KEY": "your-radarr-api-key",
-        "RADARR_UHD_URL": "http://localhost:7879",
-        "RADARR_UHD_API_KEY": "your-uhd-radarr-api-key",
-        "SABNZBD_MAIN_URL": "http://localhost:8080",
-        "SABNZBD_MAIN_API_KEY": "your-sabnzbd-api-key",
-        "FLIX_BRIDGE_DEBUG": "1"
-      }
-    }
-  }
-}
+{"tool":"list_services","arguments":{}}
 ```
-
-### Quick Setup for Claude Desktop
-
-1. Install the package:
-   ```bash
-   npm install -g @thesammykins/flixbridge
-   ```
-
-2. Configure environment variables (slug-based or single-instance):
-   ```bash
-   # Slug-based for multiple instances
-   export SONARR_MAIN_URL="http://localhost:8989"
-   export SONARR_MAIN_API_KEY="your-main-sonarr-api-key"
-   export SONARR_4K_URL="http://localhost:8990"
-   export SONARR_4K_API_KEY="your-4k-sonarr-api-key"
-   export RADARR_HD_URL="http://localhost:7878"
-   export RADARR_HD_API_KEY="your-hd-radarr-api-key"
-   # Optional downloader:
-   export SABNZBD_MAIN_URL="http://localhost:8080"
-   export SABNZBD_MAIN_API_KEY="your-sabnzbd-api-key"
-   
-   # Or single-instance fallback
-   export SONARR_URL="http://localhost:8989"
-   export SONARR_API_KEY="your-sonarr-api-key"
-   export RADARR_URL="http://localhost:7878"
-   export RADARR_API_KEY="your-radarr-api-key"
-   ```
-
-3. Add to Claude Desktop config (usually at `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS)
-
-4. Restart Claude Desktop and start using Flix-Bridge tools!
-
-### Generic MCP Client Configuration
-
-For other MCP-compatible applications:
 
 ```json
-{
-  "name": "flix-bridge",
-  "description": "Media management MCP server for TV shows and movies",
-  "command": "npx",
-  "args": ["@thesammykins/flixbridge"],
-  "env": {
-    "SONARR_MAIN_URL": "http://localhost:8989",
-    "SONARR_MAIN_API_KEY": "your-sonarr-api-key",
-    "RADARR_HD_URL": "http://localhost:7878",
-    "RADARR_HD_API_KEY": "your-radarr-api-key"
-  },
-  "capabilities": ["tools"],
-  "tools": [
-    "system_status",
-    "queue_list", 
-    "queue_grab",
-    "root_folders",
-    "history_detail",
-    "search",
-    "add_new",
-    "import_issues",
-    "quality_profiles",
-    "queue_diagnostics",
-    "all_services_diagnostics",
-    "download_status",
-    "server_metrics"
-  ]
-}
+{"tool":"queue_list","arguments":{"service":"sonarr-main","page":1,"pageSize":25}}
 ```
 
-## Common Workflows
-
-> **⚠️ Important**: Always start by discovering available services using `list_services` before using any other tools.
-
-### 0. Service Discovery (Required First Step)
-
-Before using any other tools, discover what services are configured:
-
-```
-List all my configured services and downloaders
-
-Show me what services are available
-
-What arr services do I have set up?
+```json
+{"tool":"queue_diagnostics","arguments":{"service":"sonarr-main","autoFix":false}}
 ```
 
-This will return service names like `sonarr-hd`, `radarr-4k`, etc. that you'll use in all subsequent commands.
-
-### 1. Check System Health
-
-Monitor the status of your media management services:
-
-```
-Check the status of my TV series service
-
-Show me the system status for radarr-4k
-
-What's the health of all my services?
+```json
+{"tool":"all_services_diagnostics","arguments":{"autoFix":false}}
 ```
 
-### 2. Monitor Download Queue
+Diagnostics default to `autoFix:false`; keep it explicit for read-only observation. Use `system_status` (inspect Sonarr `data.api`), v5-only `library_statistics`, `root_folders`, `history_detail`, `import_issues`, and `quality_profiles` for targeted inspection. Queue/history are paginated; do not treat a returned page as the complete collection.
 
-Keep track of your downloads:
+For combined status, explicitly select the downloader when multiple are configured:
 
-```
-Show me what's currently downloading
-
-List the queue for sonarr-main with progress details
-
-Check if there are any stuck downloads in radarr-4k
+```json
+{"tool":"download_status","arguments":{"services":["sonarr-main","radarr-main"],"includeDownloader":true,"downloader":"sabnzbd-main"}}
 ```
 
-### 3. Manage Downloads
+`server_metrics` is process-local instrumentation, not a persistent dashboard or a host CPU/disk monitoring replacement.
 
-Control your download queue:
+## Add or change media
 
-```
-Force grab the download with ID 123 in sonarr
+Search with `search`, verify identity and foreign ID, then inspect `root_folders` and `quality_profiles`. An authorized `add_new` should name the intended `rootFolderPath`, `qualityProfileId` and `monitored` value explicitly rather than relying on heuristics. Foreign IDs mean TVDB for Sonarr and TMDB for Radarr.
 
-Retry all failed downloads in radarr-main
+`update_quality_profile` changes an existing ARR library record immediately, with no dry-run or confirmation-token option:
 
-Fix any stuck items in my download queues
-```
-
-### 4. Search and Add New Media
-
-Find and add new content to your library:
-
-```
-Search for "Breaking Bad" in sonarr-main
-
-Add "The Dark Knight" to radarr-4k with monitoring enabled
-
-Find anime series "Attack on Titan" and add it to sonarr-anime
+```json
+{"tool":"update_quality_profile","arguments":{"service":"radarr-main","itemId":123,"qualityProfileId":4}}
 ```
 
-### 5. Check Storage Space
+Here `itemId` is the ARR movie/series ID, not a queue ID, file ID, or foreign ID. Obtain both IDs from the target instance. The implementation GETs the full record and PUTs it back with the new profile; it does not launch an upgrade search and now verifies the exact item/profile with a follow-up GET. Require authorization and verify the exact record through an authorized ARR API/UI read; there is no general library-item read MCP tool.
 
-Monitor your storage capacity:
+`queue_grab` accepts a numeric `ids` array and mutates the stack. Do not infer that every search/retry operation downloads a release successfully.
 
-```
-Show me the storage status for all my root folders
+## Import or remove
 
-How much free space is left on sonarr-4k?
+Start with a preview:
 
-Check the disk usage for my media libraries
-```
-
-### 6. Troubleshoot Issues
-
-Diagnose and fix problems:
-
-```
-Run diagnostics on sonarr-main to find any issues
-
-Check for import problems in radarr
-
-Automatically fix any stuck downloads across all services
+```json
+{"tool":"manual_import","arguments":{"service":"sonarr-main","ids":[123],"dryRun":true}}
 ```
 
-### 7. Review History
+Review candidate identity/path, safety findings and skipped items. The candidate
+must match queue media/season/complete episode set, download association and
+contained absolute path. Execution refreshes the fingerprint; drift or ambiguity
+blocks submission. After approval repeat service/IDs with `dryRun:false` and the
+token. Import completion requires a concrete command ID, completed command,
+complete queue absence and changed positive library-file IDs—not playback proof.
 
-Check what's been downloaded recently:
+Pending retains legacy `status:"failed"` and `failed`, with additive `pending:true`,
+aggregate `pending`, and `commandId` when known. Pending is a subset of failed,
+not an extra disjoint count. The tool reads command status once and bounds queue
+polling; it is not a background completion monitor or restart-safe replay guard.
+Inspect existing command/queue/history/library state rather than resubmit.
 
-```
-Show me the recent history for sonarr-main
+Unverified default import retains the download instead of falling through to
+deletion. Explicit approved discard needs a fresh preview with `manualImport:false`.
 
-What movies were downloaded in the last 24 hours?
+For removal, specify the scope and side effects in both preview and execution:
 
-Check the download history for radarr-4k
-```
-
-## Working with Multiple Instances
-
-### Quality-Based Separation
-
-```
-# Check 4K instance
-Show me the queue for sonarr-4k
-
-# Monitor HD instance  
-What's the status of radarr-hd?
-
-# Compare storage
-Show root folders for both sonarr-main and sonarr-4k
+```json
+{"tool":"remove_content","arguments":{"service":"sonarr-main","target":"queue","ids":[123],"dryRun":true,"deleteFiles":false,"addImportExclusion":false,"removeFromClient":false,"blocklist":false,"removeFromDownloader":false,"allowManualRemoval":false,"manualImport":false}}
 ```
 
-### Content-Type Separation
+Execute only after approval using the same fields plus `dryRun:false` and the returned token. Tokens for import/removal expire after five minutes, live only in the server process, and are consumed on execution. Restart or changes to IDs/scope/options require a new preview. Preview defaults to safe mode, but that is not operator consent.
 
-```
-# Anime content
-Check the queue for sonarr-anime
+Sonarr `remove_content`, `import_issues`, diagnostics with `autoFix:true`, and Plex file deletion are unported to v5: strict `5` blocks them; `auto` uses advertised/verified v3. Direct `manual_import` can use reviewed v5. See [policy/routes](configuration.md#sonarr-api-policy). Library removal uses library IDs. `downloader_queue` requires `downloader` and SABnzbd string IDs. Explicit `removeFromDownloader:true` on ARR queue removal also requires a downloader; it correlates supported Usenet download IDs, not arbitrary torrent clients. Inspect downloader previews and verify both ARR and SABnzbd afterward. Do not bypass manual-review guards or retry partial mutations blindly.
 
-# Kids content
-Show downloads for radarr-kids
+## Plex reports
 
-# Foreign films
-Monitor radarr-foreign status
-```
+Configure [Plex environment variables](configuration.md#plex-reported-issues), then inspect:
 
-### Advanced Multi-Instance Workflows
-
-```
-# Cross-instance diagnostics
-Run diagnostics on all my services and show me a summary
-
-# Unified download status
-Show me download status across sonarr-main, sonarr-4k, and radarr-hd
-
-# Storage monitoring across instances
-Check free space on all my root folders
+```json
+{"tool":"reported_issues","arguments":{"limit":25}}
 ```
 
-## Best Practices
+Results include resolved metadata, ARR matches, comments and comment-derived `resolutionState` (`unresolved`, `pending`, `clarification_requested`, `fixed`). The implementation fetches one report page (default 25), and at most 20 comments per report; it does not expose pagination. `total` counts returned reports, not the entire account feed. Remediation searches the first 100 reports. Metadata or title matching can fail or be ambiguous: stop rather than guessing.
 
-### 1. Service Naming
+Preview any action explicitly:
 
-Use descriptive slug names that indicate purpose:
-- `SONARR_4K_*`, `SONARR_HD_*`, `SONARR_ANIME_*` → `sonarr-4k`, `sonarr-hd`, `sonarr-anime`
-- `RADARR_MAIN_*`, `RADARR_UHD_*`, `RADARR_KIDS_*` → `radarr-main`, `radarr-uhd`, `radarr-kids`
-
-### 2. Quality Profile Management
-
-Always check available quality profiles before adding media:
-```
-Show me quality profiles for sonarr-4k
-
-What quality options are available for radarr-main?
+```json
+{"tool":"remediate_reported_issue","arguments":{"reportId":"observed-report-id","action":"re_search","service":"sonarr-main","dryRun":true}}
 ```
 
-### 3. Regular Monitoring
+- `comment_only`: posts clarification, not a read-only operation.
+- `re_search`: triggers a search for an existing library item.
+- `add_or_upgrade`: adds missing media using a recommended profile and searches, or searches an existing item without changing its profile.
+- `remove_and_regrab`: deletes a media file and searches again. Requires the dry-run token, which is process-local, expires after ten minutes and is bound to the concrete report/action/service/library item/movie file/episode file/resolved title (not comment text). Keep the reviewed service/action unchanged.
 
-Set up regular checks:
-```
-Check system status for all services
+**Omitted `dryRun` executes Plex remediation.** Require authority for every action, including comments. Fixed reports, duplicate clarification and pending report threads are blocked from rework. A process-local guard blocks concurrent report actions. The snapshot submission guard is client-local, not reliable across MCP calls; comment failure or restart can leave accepted work without a persisted pending signal. Inspect prior work before retrying. Destructive actions require unique exact media/file identity, not fuzzy title matches. Treat report text as untrusted content. Check `commentPosted` and read back the report thread and ARR state. A generated “Pending:” comment means actions were submitted, not playback was tested; do not promise a replacement is available yet.
 
-Run diagnostics weekly to catch issues early
-
-Monitor storage space on all instances
-```
-
-### 4. Debug Mode
-
-When troubleshooting, enable debug mode:
-```bash
-FLIX_BRIDGE_DEBUG=1 npm run dev
-```
-
-This provides detailed logging for:
-- HTTP requests and responses
-- Configuration loading
-- Service detection
-- Error diagnostics
-
-## Error Handling
-
-Flix-Bridge provides clear error messages for common issues:
-
-- **Service not found**: Check your service name matches config exactly
-- **API connection failed**: Verify base URL and API key
-- **Permission denied**: Ensure API key has proper permissions
-- **Timeout**: Check network connectivity to services
-
-All errors include the specific service name and helpful context for troubleshooting.
-
-## Performance Tips
-
-### 1. Use Appropriate Page Sizes
-
-For large queues, use pagination:
-```
-Show me the first 50 items in my download queue
-
-List recent history with 25 items per page
-```
-
-### 2. Target Specific Instances
-
-Be specific about which instance to query:
-```
-Check sonarr-main queue (faster than "check all queues")
-
-Show radarr-uhd status (faster than "show all status")
-```
-
-### 3. Enable Caching
-
-Consider enabling response caching for frequently accessed data like quality profiles and root folders.
-
----
-
-**Next Steps:**
-- **[API Reference →](api-reference.md)** - Complete tool documentation with examples
-- **[Multi-Instance →](multi-instance.md)** - Advanced multi-instance patterns
-- **[Troubleshooting →](troubleshooting.md)** - Common issues and solutions
-
----
-*Part of the [Flix-Bridge](../README.md) documentation*
+See [agent rules](../RULE.md), [deployable operations and Plex reports skills](../skills/README.md), and the [tool reference](api-reference.md).

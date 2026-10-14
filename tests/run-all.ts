@@ -4,6 +4,7 @@
  * Run with: npm test or tsx tests/run-all.ts
  */
 
+import { readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { testRunner } from "./helpers/test-runner.js";
@@ -21,12 +22,9 @@ async function main() {
 		const unitTestsDir = join(__dirname, "unit");
 
 		// Import all test files (they will auto-register via describe())
-		await import("./unit/service-discovery.test.js");
-		await import("./unit/queue-operations.test.js");
-		await import("./unit/system-operations.test.js");
-		await import("./unit/queue-diagnostics.test.js");
-		await import("./unit/mcp-stdio.test.js");
-		await import("./unit/reported-issues.test.js");
+		for (const file of (await readdir(unitTestsDir)).sort()) {
+			if (file.endsWith(".test.ts")) await import(join(unitTestsDir, file));
+		}
 
 		// Print summary
 		testRunner.printSummary();

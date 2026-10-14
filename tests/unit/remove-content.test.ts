@@ -3,6 +3,8 @@
  * Validates content removal preview, protocol filtering, and safety features
  */
 
+import assert from "node:assert/strict";
+import { sonarrQueueMixedProtocols } from "../fixtures/sonarr-responses.js";
 import {
 	assertArrayLength,
 	assertHasData,
@@ -16,12 +18,46 @@ import {
 	MockRadarrService,
 	MockSonarrService,
 } from "../helpers/mock-services.js";
-import { describe, test } from "../helpers/test-runner.js";
+import { test as defineTest, describe } from "../helpers/test-runner.js";
+
+let activeService: MockSonarrService | MockRadarrService;
+function sonarr() {
+	activeService = new MockSonarrService("sonarr-main");
+	return activeService;
+}
+function radarr() {
+	activeService = new MockRadarrService("radarr-main");
+	return activeService;
+}
+function test(name: string, run: () => Promise<void>) {
+	return defineTest(name, async () => {
+		const original = globalThis.fetch;
+		globalThis.fetch = async (input) => {
+			const url =
+				typeof input === "string"
+					? input
+					: input instanceof URL
+						? input.href
+						: input.url;
+			const response = activeService.getMockResponse(
+				new URL(url).pathname.replace("/api/v3", ""),
+			);
+			return new Response(JSON.stringify(response), {
+				status: response === undefined ? 404 : 200,
+			});
+		};
+		try {
+			await run();
+		} finally {
+			globalThis.fetch = original;
+		}
+	});
+}
 
 await describe("Remove Content - Queue Preparation", [
 	test("should prepare queue item removal with all details", async () => {
 		// Setup
-		const service = new MockSonarrService("sonarr-main");
+		const service = sonarr();
 
 		// Execute
 		const result = await service.prepareRemoval("queue", [123]);
@@ -46,7 +82,7 @@ await describe("Remove Content - Queue Preparation", [
 
 	test("should handle multiple queue items in preparation", async () => {
 		// Setup
-		const service = new MockSonarrService("sonarr-main");
+		const service = sonarr();
 
 		// Execute
 		const result = await service.prepareRemoval("queue", [123, 124, 125]);
@@ -59,12 +95,12 @@ await describe("Remove Content - Queue Preparation", [
 
 		// Verify targets are sorted by ID
 		const ids = result.data.targets.map((t: { id: number }) => t.id);
-		assertPropertyEquals({ sorted: ids }, "sorted", [123, 124, 125]);
+		assert.deepEqual(ids, [123, 124, 125]);
 	}),
 
 	test("should report missing queue items", async () => {
 		// Setup
-		const service = new MockSonarrService("sonarr-main");
+		const service = sonarr();
 
 		// Execute - request non-existent ID
 		const result = await service.prepareRemoval("queue", [999]);
@@ -80,7 +116,7 @@ await describe("Remove Content - Queue Preparation", [
 
 	test("should handle partial matches with some missing IDs", async () => {
 		// Setup
-		const service = new MockSonarrService("sonarr-main");
+		const service = sonarr();
 
 		// Execute - mix of valid and invalid IDs
 		const result = await service.prepareRemoval("queue", [123, 999, 124]);
@@ -98,8 +134,8 @@ await describe("Remove Content - Queue Preparation", [
 await describe("Remove Content - Protocol Detection", [
 	test("should identify usenet protocol items", async () => {
 		// Setup
-		const service = new MockSonarrService("sonarr-main");
-		service.setMixedProtocolQueue();
+		const service = sonarr();
+		service.setMockResponse("/queue", sonarrQueueMixedProtocols);
 
 		// Execute
 		const result = await service.prepareRemoval("queue", [500]);
@@ -116,8 +152,8 @@ await describe("Remove Content - Protocol Detection", [
 
 	test("should identify torrent protocol items", async () => {
 		// Setup
-		const service = new MockSonarrService("sonarr-main");
-		service.setMixedProtocolQueue();
+		const service = sonarr();
+		service.setMockResponse("/queue", sonarrQueueMixedProtocols);
 
 		// Execute
 		const result = await service.prepareRemoval("queue", [501]);
@@ -134,8 +170,8 @@ await describe("Remove Content - Protocol Detection", [
 
 	test("should handle undefined protocol gracefully", async () => {
 		// Setup
-		const service = new MockSonarrService("sonarr-main");
-		service.setMixedProtocolQueue();
+		const service = sonarr();
+		service.setMockResponse("/queue", sonarrQueueMixedProtocols);
 
 		// Execute
 		const result = await service.prepareRemoval("queue", [503]);
@@ -152,8 +188,8 @@ await describe("Remove Content - Protocol Detection", [
 
 	test("should prepare mixed protocol items", async () => {
 		// Setup
-		const service = new MockSonarrService("sonarr-main");
-		service.setMixedProtocolQueue();
+		const service = sonarr();
+		service.setMockResponse("/queue", sonarrQueueMixedProtocols);
 
 		// Execute - all 4 items: 2 usenet, 1 torrent, 1 undefined
 		const result = await service.prepareRemoval("queue", [500, 501, 502, 503]);
@@ -184,7 +220,7 @@ await describe("Remove Content - Protocol Detection", [
 await describe("Remove Content - Manual Review Flags", [
 	test("should flag items requiring manual investigation", async () => {
 		// Setup
-		const service = new MockSonarrService("sonarr-main");
+		const service = sonarr();
 		service.setStuckQueueItems();
 
 		// Execute - item 200 has "Manual investigation required"
@@ -202,7 +238,7 @@ await describe("Remove Content - Manual Review Flags", [
 
 	test("should not flag items without manual review messages", async () => {
 		// Setup
-		const service = new MockSonarrService("sonarr-main");
+		const service = sonarr();
 
 		// Execute - normal downloading item
 		const result = await service.prepareRemoval("queue", [123]);
@@ -218,7 +254,7 @@ await describe("Remove Content - Manual Review Flags", [
 
 	test("should flatten statusMessages for manual review detection", async () => {
 		// Setup
-		const service = new MockSonarrService("sonarr-main");
+		const service = sonarr();
 		service.setStuckQueueItems();
 
 		// Execute
@@ -242,7 +278,7 @@ await describe("Remove Content - Manual Review Flags", [
 await describe("Remove Content - Cross-Service Compatibility", [
 	test("should prepare Sonarr queue items", async () => {
 		// Setup
-		const service = new MockSonarrService("sonarr-main");
+		const service = sonarr();
 
 		// Execute
 		const result = await service.prepareRemoval("queue", [123]);
@@ -256,7 +292,7 @@ await describe("Remove Content - Cross-Service Compatibility", [
 
 	test("should prepare Radarr queue items", async () => {
 		// Setup
-		const service = new MockRadarrService("radarr-main");
+		const service = radarr();
 
 		// Execute
 		const result = await service.prepareRemoval("queue", [201]);
@@ -270,7 +306,7 @@ await describe("Remove Content - Cross-Service Compatibility", [
 
 	test("should handle Radarr torrent items", async () => {
 		// Setup
-		const service = new MockRadarrService("radarr-main");
+		const service = radarr();
 
 		// Execute - item 203 is torrent in radarr fixtures
 		const result = await service.prepareRemoval("queue", [203]);
@@ -289,7 +325,7 @@ await describe("Remove Content - Cross-Service Compatibility", [
 await describe("Remove Content - Edge Cases", [
 	test("should reject empty ID array", async () => {
 		// Setup
-		const service = new MockSonarrService("sonarr-main");
+		const service = sonarr();
 
 		// Execute
 		const result = await service.prepareRemoval("queue", []);
@@ -301,7 +337,7 @@ await describe("Remove Content - Edge Cases", [
 
 	test("should filter out invalid IDs", async () => {
 		// Setup
-		const service = new MockSonarrService("sonarr-main");
+		const service = sonarr();
 
 		// Execute - includes negative and zero
 		const result = await service.prepareRemoval("queue", [-1, 0, 123, -999]);
@@ -316,7 +352,7 @@ await describe("Remove Content - Edge Cases", [
 
 	test("should deduplicate IDs", async () => {
 		// Setup
-		const service = new MockSonarrService("sonarr-main");
+		const service = sonarr();
 
 		// Execute - duplicate IDs
 		const result = await service.prepareRemoval("queue", [123, 123, 123]);
@@ -331,7 +367,7 @@ await describe("Remove Content - Edge Cases", [
 
 	test("should include error messages in target details", async () => {
 		// Setup
-		const service = new MockSonarrService("sonarr-main");
+		const service = sonarr();
 		service.setStuckQueueItems();
 
 		// Execute - item 200 has errorMessage
