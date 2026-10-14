@@ -1833,6 +1833,9 @@ export class ArrMcpServer {
 		process.once("SIGTERM", close);
 	}
 
+	// Retain replay ownership per configured account without exposing credentials.
+	#plexClients = new Map<string, PlexReportsClient>();
+
 	private plexClient(): PlexReportsClient {
 		const plex = plexConfigFromEnv();
 		if (!plex) {
@@ -1841,7 +1844,13 @@ export class ArrMcpServer {
 				"Plex not configured: set PLEX_BASE_URL and PLEX_TOKEN.",
 			);
 		}
-		return new PlexReportsClient(plex);
+		const identity = JSON.stringify([plex.baseUrl, plex.token]);
+		let client = this.#plexClients.get(identity);
+		if (!client) {
+			client = new PlexReportsClient(plex);
+			this.#plexClients.set(identity, client);
+		}
+		return client;
 	}
 
 	private async handleReportedIssues(limit?: number) {

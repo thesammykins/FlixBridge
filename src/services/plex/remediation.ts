@@ -7,6 +7,7 @@
 // does the mechanics and keeps contracts explicit.
 
 import { randomUUID } from "node:crypto";
+import { createInternalError } from "../../core.js";
 import type {
 	LibraryItemMatch,
 	OperationResult,
@@ -543,8 +544,8 @@ export function buildComment(
 	}
 }
 
-const executingReports = new Set<string>();
-// ponytail: client-local snapshot guard; durable journal needed across restarts when comments fail.
+const executingReports = new WeakMap<PlexReportsClient, Set<string>>();
+// ponytail: retained-client snapshot guard; durable journal needed across restarts when comments fail.
 const attemptedReports = new WeakMap<PlexReportsClient, Map<string, string>>();
 
 export async function executeRemediation(
@@ -553,13 +554,12 @@ export async function executeRemediation(
 	input: RemediateInput,
 	services: ServiceImplementation[],
 ): Promise<OperationResult<unknown>> {
-	if (executingReports.has(report.id))
+	const executing = executingReports.get(client) ?? new Set<string>();
+	executingReports.set(client, executing);
+	if (executing.has(report.id))
 		return {
 			ok: false,
-			error: {
-				kind: "internal",
-				message: "Report remediation already in progress.",
-			},
+			error: createInternalError("Report remediation already in progress."),
 		};
 	if (
 		attemptedReports.get(client)?.get(report.id) ===
@@ -567,17 +567,15 @@ export async function executeRemediation(
 	)
 		return {
 			ok: false,
-			error: {
-				kind: "internal",
-				message:
-					"Report remediation already submitted for this snapshot; inspect pending or partial work before replay",
-			},
+			error: createInternalError(
+				"Report remediation already submitted for this snapshot; inspect pending or partial work before replay",
+			),
 		};
-	executingReports.add(report.id);
+	executing.add(report.id);
 	try {
 		return await executeRemediationUnlocked(client, report, input, services);
 	} finally {
-		executingReports.delete(report.id);
+		executing.delete(report.id);
 	}
 }
 
@@ -832,10 +830,9 @@ async function executeRemediationUnlocked(
 		if (failures.length > 0) {
 			return {
 				ok: false,
-				error: {
-					kind: "internal",
-					message: `Partial failure: ${failures.join("; ")} (${actions.join("; ")})`,
-				},
+				error: createInternalError(
+					`Partial failure: ${actions.length > 0 ? "accepted remediation but " : ""}${failures.join("; ")}; inspect existing work before replay. Upstream details withheld.`,
+				),
 			};
 		}
 
@@ -845,10 +842,9 @@ async function executeRemediationUnlocked(
 		if (!commentResult.ok)
 			return {
 				ok: false,
-				error: {
-					kind: "internal",
-					message: `Partial failure: accepted remediation but report comment failed (${actions.join("; ")})`,
-				},
+				error: createInternalError(
+					"Partial failure: accepted remediation but report comment failed; inspect existing work before replay. Upstream details withheld.",
+				),
 			};
 		return {
 			ok: true,
@@ -862,14 +858,12 @@ async function executeRemediationUnlocked(
 	} catch (error) {
 		return {
 			ok: false,
-			error: {
-				kind: "internal",
-				message:
-					error instanceof Error
-						? error.message
-						: "Unexpected remediation error",
-				cause: error,
-			},
+			error: createInternalError(
+				actions.length > 0
+					? "Partial failure: accepted remediation but follow-up failed; inspect existing work before replay. Upstream details withheld."
+					: "Remediation failed; work may have been submitted. Inspect existing work before replay. Upstream details withheld.",
+				error,
+			),
 		};
 	}
 }
