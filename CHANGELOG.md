@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Return failed Plex report metadata reads as normalized tool failures with matching text/structured output and `isError:true`, instead of a generic JSON-RPC internal error. Transport/body failures cannot masquerade as deleted media or a clean/empty report feed; HTTP 401/403 remain explicit. This does not repair operating-system network permissions or certify live Plex compatibility.
+- Clarify that source tags, GitHub assets and npm registry publication are separate. Installation examples no longer assume that a source tag guarantees a downloadable release package.
+
 ## [1.0.0] - 2026-10-15
 
 ### Added
