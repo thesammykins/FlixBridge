@@ -692,7 +692,12 @@ export class ArrMcpServer {
 		} else if (name === "remove_content") {
 			result = await this.handleRemoveContent(input);
 		} else if (name === "reported_issues") {
-			result = await this.handleReportedIssues(input.limit);
+			try {
+				result = await this.handleReportedIssues(input.limit);
+			} catch (error) {
+				if (error instanceof McpError) throw error;
+				result = { ok: false, error: serializeError(error) };
+			}
 		} else if (name === "remediate_reported_issue") {
 			result = await this.handleRemediateReportedIssue({
 				reportId: input.reportId,
