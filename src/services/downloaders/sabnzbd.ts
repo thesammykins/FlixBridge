@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { fetchJson } from "../../core.js";
 import type { InternalError, OperationResult, ServiceError } from "../base.js";
 
@@ -23,10 +24,14 @@ export interface SabnzbdQueueResponse {
 	queue: {
 		slots: SabnzbdQueueSlot[];
 		speed: string;
+		kbpersec: string;
+		mb: string;
+		mbleft: string;
 		size: string;
 		sizeleft: string;
 		paused: boolean;
 		noofslots: number;
+		noofslots_total?: number;
 	};
 }
 
@@ -36,7 +41,7 @@ export interface SabnzbdHistorySlot {
 	size: string;
 	status: string;
 	completed: number;
-	completedOn: string;
+	completedOn?: string;
 	category: string;
 }
 
@@ -126,6 +131,62 @@ export interface SabnzbdRemovalResult {
 	details: SabnzbdRemovalResultItem[];
 }
 
+const numericString = z
+	.string()
+	.refine(
+		(value) =>
+			value.trim() !== "" &&
+			Number.isFinite(Number(value)) &&
+			Number(value) >= 0,
+	);
+const queueSchema = z.object({
+	queue: z.object({
+		slots: z.array(
+			z.object({
+				nzo_id: z.string().min(1),
+				filename: z.string(),
+				status: z.string().optional(),
+				percentage: numericString,
+				mb: numericString,
+				mbleft: numericString,
+				eta: z.string().optional(),
+			}),
+		),
+		speed: z.string().optional(),
+		kbpersec: numericString,
+		mb: numericString,
+		mbleft: numericString,
+		size: z.string(),
+		sizeleft: z.string(),
+		paused: z.boolean(),
+		noofslots: z.number().int().nonnegative(),
+		noofslots_total: z.number().int().nonnegative().optional(),
+	}),
+});
+const statsSchema = z.object({
+	queue: z.object({
+		version: z.string(),
+		paused: z.boolean(),
+		noofslots: z.number().int().nonnegative(),
+		kbpersec: numericString,
+	}),
+});
+const historySchema = z.object({
+	history: z.object({
+		slots: z.array(
+			z.object({
+				nzo_id: z.string().min(1),
+				name: z.string(),
+				size: z.string(),
+				status: z.string(),
+				completed: z.number().finite(),
+				completedOn: z.string().optional(),
+				category: z.string(),
+			}),
+		),
+	}),
+});
+
 export class SabnzbdService {
 	readonly id = "sabnzbd" as const;
 	readonly serviceName: string;
@@ -156,24 +217,19 @@ export class SabnzbdService {
 
 	async serverStats(): Promise<OperationResult<SabnzbdStatusData>> {
 		try {
-			const url = this.buildApiUrl("server_stats");
-			const response = await fetchJson<SabnzbdStats>(url);
-
-			const speedMatch = response.speedlimit?.match(/(\d+)/);
-			const speedKBps = speedMatch
-				? Number.parseInt(speedMatch[1] || "0", 10)
-				: undefined;
+			const url = this.buildApiUrl("queue");
+			const { queue } = statsSchema.parse(await fetchJson<unknown>(url));
 
 			return {
 				ok: true,
 				data: {
 					service: this.serviceName,
 					name: "SABnzbd",
-					version: response.version || "unknown",
+					version: queue.version || "unknown",
 					isHealthy: true,
-					paused: response.paused || false,
-					totalSlots: response.noofslots || 0,
-					speedKBps,
+					paused: queue.paused,
+					totalSlots: queue.noofslots,
+					speedKBps: Number(queue.kbpersec),
 				},
 			};
 		} catch (error) {
@@ -187,10 +243,21 @@ export class SabnzbdService {
 	async queueList(): Promise<OperationResult<SabnzbdQueueData>> {
 		try {
 			const url = this.buildApiUrl("queue");
-			const response = await fetchJson<SabnzbdQueueResponse>(url);
+			const response = queueSchema.parse(await fetchJson<unknown>(url));
 
 			const queue = response.queue || {};
 			const slots = queue.slots || [];
+			if (
+				queue.noofslots !== slots.length ||
+				(queue.noofslots_total !== undefined &&
+					queue.noofslots_total !== slots.length) ||
+				new Set(slots.map((slot) => slot.nzo_id)).size !== slots.length
+			) {
+				throw {
+					kind: "internal",
+					message: "SABnzbd queue snapshot incomplete or ambiguous",
+				};
+			}
 
 			const items: NormalizedSabQueueItem[] = slots.map((slot) => ({
 				nzoId: slot.nzo_id,
@@ -202,10 +269,7 @@ export class SabnzbdService {
 				eta: slot.eta || "",
 			}));
 
-			const speedMatch = queue.speed?.match(/(\d+)/);
-			const speedKBps = speedMatch
-				? Number.parseInt(speedMatch[1] || "0", 10)
-				: undefined;
+			const speedKBps = Number(queue.kbpersec);
 
 			return {
 				ok: true,
@@ -215,8 +279,8 @@ export class SabnzbdService {
 					items,
 					paused: queue.paused || false,
 					speedKBps,
-					totalSizeMB: Number.parseFloat(queue.size) || 0,
-					remainingSizeMB: Number.parseFloat(queue.sizeleft) || 0,
+					totalSizeMB: Number(queue.mb),
+					remainingSizeMB: Number(queue.mbleft),
 				},
 			};
 		} catch (error) {
@@ -237,7 +301,7 @@ export class SabnzbdService {
 			}
 
 			const url = this.buildApiUrl("history", params);
-			const response = await fetchJson<SabnzbdHistoryResponse>(url);
+			const response = historySchema.parse(await fetchJson<unknown>(url));
 
 			const history = response.history || {};
 			const slots = history.slots || [];
@@ -289,13 +353,23 @@ export class SabnzbdService {
 	async prepareRemoval(
 		ids: Array<string | number>,
 	): Promise<OperationResult<SabnzbdRemovalPreview>> {
-		const normalizedIds = Array.from(
-			new Set(
-				ids
-					.map((value) => String(value ?? "").trim())
-					.filter((value) => value.length > 0),
-			),
-		);
+		if (
+			ids.length === 0 ||
+			ids.some((id) =>
+				typeof id === "string"
+					? !/^[^\s,]+$/.test(id)
+					: !Number.isSafeInteger(id) || id <= 0,
+			)
+		) {
+			return {
+				ok: false,
+				error: {
+					kind: "internal",
+					message: "Exact valid downloader ids required",
+				},
+			};
+		}
+		const normalizedIds = Array.from(new Set(ids.map(String)));
 
 		if (normalizedIds.length === 0) {
 			return {
@@ -349,13 +423,23 @@ export class SabnzbdService {
 		ids: Array<string | number>,
 		deleteData = false,
 	): Promise<OperationResult<SabnzbdRemovalResult>> {
-		const normalizedIds = Array.from(
-			new Set(
-				ids
-					.map((value) => String(value ?? "").trim())
-					.filter((value) => value.length > 0),
-			),
-		);
+		if (
+			ids.length === 0 ||
+			ids.some((id) =>
+				typeof id === "string"
+					? !/^[^\s,]+$/.test(id)
+					: !Number.isSafeInteger(id) || id <= 0,
+			)
+		) {
+			return {
+				ok: false,
+				error: {
+					kind: "internal",
+					message: "Exact valid downloader ids required",
+				},
+			};
+		}
+		const normalizedIds = Array.from(new Set(ids.map(String)));
 
 		if (normalizedIds.length === 0) {
 			return {
@@ -408,10 +492,22 @@ export class SabnzbdService {
 				const response = await fetchJson<{ status?: boolean; error?: string }>(
 					url,
 				);
-				if (response && response.status === false) {
-					throw new Error(
-						response.error || "SABnzbd rejected deletion request",
-					);
+				if (!response || response.status !== true) {
+					throw {
+						kind: "internal",
+						message: "SABnzbd did not acknowledge deletion",
+					};
+				}
+				const readback = await this.queueList();
+				if (
+					!readback.ok ||
+					!readback.data ||
+					readback.data.items.some((item) => item.nzoId === id)
+				) {
+					throw {
+						kind: "internal",
+						message: "SABnzbd deletion could not be verified",
+					};
 				}
 
 				details.push({ id, title, status: "removed" });

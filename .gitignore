@@ -65,11 +65,8 @@ web_modules/
 .yarn-integrity
 
 # dotenv environment variable files
-.env
-.env.development.local
-.env.test.local
-.env.production.local
-.env.local
+.env*
+!examples/.env.example
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
@@ -174,7 +171,10 @@ beep
 boop
 .beep-boop-inbox/
 
-#Internal Doc
+# Private operational material is not a public playbook
+.opencode/skills/flixbridge-maintenance/
+
+# Obsolete external API dumps
 /docs/radarrapi.txt
 /docs/sonarrapi.txt
 /docs/sabnzbdapi.txt

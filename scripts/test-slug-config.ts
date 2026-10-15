@@ -12,20 +12,20 @@ const testCases = [
   {
     name: "Multi-instance slug-based configuration",
     env: {
-      SONARR_MAIN_URL: "http://sonarr-main:8989",
+      SONARR_MAIN_URL: "http://sonarr-main.example:8989",
       SONARR_MAIN_API_KEY: "sonarr-main-key",
-      SONARR_4K_URL: "http://sonarr-4k:8989",
+      SONARR_4K_URL: "http://sonarr-4k.example:8989",
       SONARR_4K_API_KEY: "sonarr-4k-key",
-      SONARR_ANIME_URL: "http://sonarr-anime:8989",
+      SONARR_ANIME_URL: "http://sonarr-anime.example:8989",
       SONARR_ANIME_API_KEY: "sonarr-anime-key",
       SONARR_ANIME_NAME: "sonarr-anime-special",
-      RADARR_MAIN_URL: "http://radarr-main:7878",
+      RADARR_MAIN_URL: "http://radarr-main.example:7878",
       RADARR_MAIN_API_KEY: "radarr-main-key",
-      RADARR_UHD_URL: "http://radarr-uhd:7878",
+      RADARR_UHD_URL: "http://radarr-uhd.example:7878",
       RADARR_UHD_API_KEY: "radarr-uhd-key",
-      SABNZBD_MAIN_URL: "http://sab-main:8080",
+      SABNZBD_MAIN_URL: "http://sab-main.example:8080",
       SABNZBD_MAIN_API_KEY: "sab-main-key",
-      SABNZBD_4K_URL: "http://sab-4k:8080",
+      SABNZBD_4K_URL: "http://sab-4k.example:8080",
       SABNZBD_4K_API_KEY: "sab-4k-key",
     },
     expectedServices: [
@@ -43,11 +43,11 @@ const testCases = [
   {
     name: "Prefixed FlixBridge configuration",
     env: {
-      FLIX_BRIDGE_SONARR_HD_URL: "http://sonarr-hd:8989",
+      FLIX_BRIDGE_SONARR_HD_URL: "http://sonarr-hd.example:8989",
       FLIX_BRIDGE_SONARR_HD_KEY: "sonarr-hd-key",
-      FLIX_BRIDGE_RADARR_UHD_URL: "http://radarr-uhd:7878",
+      FLIX_BRIDGE_RADARR_UHD_URL: "http://radarr-uhd.example:7878",
       FLIX_BRIDGE_RADARR_UHD_KEY: "radarr-uhd-key",
-      FLIX_BRIDGE_SABNZBD_MAIN_URL: "http://sab-main:8080",
+      FLIX_BRIDGE_SABNZBD_MAIN_URL: "http://sab-main.example:8080",
       FLIX_BRIDGE_SABNZBD_MAIN_KEY: "sab-main-key",
     },
     expectedServices: [
@@ -61,11 +61,11 @@ const testCases = [
   {
     name: "Slug services with fallback downloader",
     env: {
-      FLIX_BRIDGE_SONARR_HD_URL: "http://sonarr-hd:8989",
+      FLIX_BRIDGE_SONARR_HD_URL: "http://sonarr-hd.example:8989",
       FLIX_BRIDGE_SONARR_HD_KEY: "sonarr-hd-key",
-      FLIX_BRIDGE_RADARR_HD_URL: "http://radarr-hd:7878",
+      FLIX_BRIDGE_RADARR_HD_URL: "http://radarr-hd.example:7878",
       FLIX_BRIDGE_RADARR_HD_KEY: "radarr-hd-key",
-      FLIX_BRIDGE_SABNZBD_URL: "http://sab-main:8080",
+      FLIX_BRIDGE_SABNZBD_URL: "http://sab-main.example:8080",
       FLIX_BRIDGE_SABNZBD_KEY: "sab-main-key",
     },
     expectedServices: [
@@ -116,11 +116,11 @@ const testCases = [
   {
     name: "Mixed valid and incomplete slugs",
     env: {
-      SONARR_MAIN_URL: "http://sonarr-main:8989",
+      SONARR_MAIN_URL: "http://sonarr-main.example:8989",
       SONARR_MAIN_API_KEY: "sonarr-main-key",
-      SONARR_INCOMPLETE_URL: "http://sonarr-incomplete:8989",
+      SONARR_INCOMPLETE_URL: "http://sonarr-incomplete.example:8989",
       // Missing SONARR_INCOMPLETE_API_KEY
-      RADARR_VALID_URL: "http://radarr-valid:7878",
+      RADARR_VALID_URL: "http://radarr-valid.example:7878",
       RADARR_VALID_API_KEY: "radarr-valid-key",
       RADARR_ALSO_INCOMPLETE_API_KEY: "some-key",
       // Missing RADARR_ALSO_INCOMPLETE_URL

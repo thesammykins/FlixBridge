@@ -4,10 +4,11 @@
 // 1) Slug-based discovery: SONARR_<SLUG>_* or FLIX_BRIDGE_SONARR_<SLUG>_*
 // 2) Single-instance fallbacks: SONARR_URL or FLIX_BRIDGE_SONARR_URL (with API keys)
 
-import type { ServiceConfig } from "./services/base.js";
+import type { ServiceConfig, SonarrApiPolicy } from "./services/base.js";
 import type { SabnzbdConfig } from "./services/downloaders/sabnzbd.js";
 
 export interface SlugConfig {
+	apiVersion?: SonarrApiPolicy;
 	url?: string;
 	apiKey?: string;
 	name?: string;
@@ -17,6 +18,15 @@ export async function loadConfigFromEnvOnly(): Promise<{
 	services: Record<string, ServiceConfig>;
 	downloaders?: Record<string, SabnzbdConfig>;
 }> {
+	for (const key of Object.keys(process.env)) {
+		if (
+			/^(?:FLIX_BRIDGE_)?(?:RADARR|SABNZBD)(?:_[A-Z0-9_]+)?_API_VERSION$/.test(
+				key,
+			)
+		) {
+			throw new Error("API_VERSION is supported only for Sonarr");
+		}
+	}
 	const slugConfig = buildConfigFromSlugBasedEnvVars();
 	const fallbackConfig = buildConfigFromSingleInstanceFallbacks();
 	const services = {
@@ -53,7 +63,11 @@ function buildConfigFromSlugBasedEnvVars() {
 	for (const [slug, config] of Object.entries(sonarrSlugs)) {
 		if (config.url && config.apiKey) {
 			const serviceName = config.name || deriveServiceName("sonarr", slug);
+			validateServiceName("sonarr", serviceName, services);
 			services[serviceName] = {
+				...(config.apiVersion === undefined
+					? {}
+					: { apiVersion: config.apiVersion }),
 				baseUrl: normalizeUrl(config.url),
 				apiKey: config.apiKey,
 			};
@@ -66,6 +80,7 @@ function buildConfigFromSlugBasedEnvVars() {
 	for (const [slug, config] of Object.entries(radarrSlugs)) {
 		if (config.url && config.apiKey) {
 			const serviceName = config.name || deriveServiceName("radarr", slug);
+			validateServiceName("radarr", serviceName, services);
 			services[serviceName] = {
 				baseUrl: normalizeUrl(config.url),
 				apiKey: config.apiKey,
@@ -128,11 +143,21 @@ function discoverServiceSlugs(
 ): Record<string, SlugConfig> {
 	const slugs: Record<string, SlugConfig> = {};
 	const pattern = new RegExp(
-		`^(?:FLIX_BRIDGE_)?${serviceType}_([A-Z0-9_]+?)_(URL|API_KEY|KEY|NAME)$`,
+		`^(?:FLIX_BRIDGE_)?${serviceType}_([A-Z0-9_]+?)_(URL|API_KEY|KEY|NAME|API_VERSION)$`,
 	);
 
 	for (const [envKey, envValue] of Object.entries(process.env)) {
 		const match = envKey.match(pattern);
+		if (match?.[1] && match[2] === "API_VERSION") {
+			const version = parseSonarrApiVersion(envValue);
+			const config = slugs[match[1]] ?? {};
+			slugs[match[1]] = config;
+			if (config.apiVersion !== undefined && config.apiVersion !== version) {
+				throw new Error("Conflicting Sonarr API_VERSION aliases");
+			}
+			config.apiVersion = version;
+			continue;
+		}
 		if (match && envValue && match[1] && match[2]) {
 			const slug = match[1];
 			const field = match[2];
@@ -159,6 +184,18 @@ function discoverServiceSlugs(
 	return slugs;
 }
 
+function validateServiceName(
+	type: "sonarr" | "radarr",
+	name: string,
+	services: Record<string, ServiceConfig>,
+): void {
+	const lower = name.toLowerCase();
+	const other = type === "sonarr" ? "radarr" : "sonarr";
+	if (!lower.includes(type) || lower.includes(other))
+		throw new Error("Invalid service name for configured type");
+	if (services[name] !== undefined) throw new Error("Duplicate service name");
+}
+
 function deriveServiceName(
 	serviceType: "sonarr" | "radarr",
 	slug: string,
@@ -175,6 +212,15 @@ function deriveDownloaderName(downloaderType: "sabnzbd", slug: string): string {
 function buildConfigFromSingleInstanceFallbacks() {
 	const services: Record<string, ServiceConfig> = {};
 	const downloaders: Record<string, SabnzbdConfig> = {};
+	const versionAliases = [
+		process.env.SONARR_API_VERSION,
+		process.env.FLIX_BRIDGE_SONARR_API_VERSION,
+	]
+		.filter((value): value is string => value !== undefined)
+		.map(parseSonarrApiVersion);
+	if (new Set(versionAliases).size > 1)
+		throw new Error("Conflicting Sonarr API_VERSION aliases");
+	const apiVersion = versionAliases[0];
 
 	// Single Sonarr instance
 	const sonarrUrl =
@@ -186,6 +232,7 @@ function buildConfigFromSingleInstanceFallbacks() {
 		process.env.FLIX_BRIDGE_SONARR_KEY;
 	if (sonarrUrl && sonarrApiKey) {
 		services.sonarr = {
+			...(apiVersion === undefined ? {} : { apiVersion }),
 			baseUrl: normalizeUrl(sonarrUrl),
 			apiKey: sonarrApiKey,
 		};
@@ -245,8 +292,30 @@ function buildConfigFromSingleInstanceFallbacks() {
 	return result;
 }
 
+function parseSonarrApiVersion(value: string | undefined): SonarrApiPolicy {
+	if (value === "auto") return "auto";
+	if (value === "3") return 3;
+	if (value === "5") return 5;
+	throw new Error("Sonarr API_VERSION must be auto, 3 or 5");
+}
+
 function normalizeUrl(url: string): string {
-	return url.replace(/\/$/, "");
+	try {
+		const parsed = new URL(url);
+		if (
+			!/^https?:$/.test(parsed.protocol) ||
+			parsed.username ||
+			parsed.password ||
+			url.includes("?") ||
+			url.includes("#")
+		)
+			throw new Error();
+		return parsed.toString().replace(/\/$/, "");
+	} catch {
+		throw new Error(
+			"Invalid service URL: use HTTP(S) without userinfo, query or fragment",
+		);
+	}
 }
 
 function logDebug(message: string): void {

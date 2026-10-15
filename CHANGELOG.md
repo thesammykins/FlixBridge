@@ -1,5 +1,51 @@
 # Changelog
 
+## [1.0.0] - 2026-10-15
+
+### Added
+
+- Per-instance Sonarr API policy: omit the setting for legacy v3 without discovery, pin `3` or `5` for verified strict routing, or select `auto` for reviewed per-operation routes. Authenticated discovery distinguishes the application version, advertised API families and status-verified families.
+- Offline `list_services` policy metadata and `system_status.data.api` effective-operation metadata, so callers can see which family an operation will use rather than infer it from the installed Sonarr version.
+- Read-only `library_statistics` for Sonarr API v5. This is the twentieth tool; the existing 19 names and required inputs remain intact. Unsupported legacy/Radarr statistics fails without scanning the library.
+- Sonarr v5 adapters for plural queue episode/season identities, progress, nested release search/grab resources, endpoint-specific subresources, manual-import preview/reprocessing, history-since, quality-profile round trips, and lookup-derived language/season-type fields when adding series.
+- Current MCP `2026-07-28` and legacy stdio serving through the split SDK 2.3.1 packages, with real-client and installed-command compatibility tests.
+
+### Changed
+
+- Node.js 20.0.0 is the runtime minimum; verification CI covers current Node 20.x, 22.x and 24.x. SDK declaration checks remain strict.
+- Tool inputs reject unknown fields and validate literal IDs and bounds. Structured and text output share the same validated envelope; annotations distinguish read-only tools from possible mutations.
+- MCP admission is bounded to four active requests and sixteen queued requests. Request cancellation reaches HTTP requests, response-body reads and adapter verification delays; EOF stops the server's pending work.
+- Diagnostics remain read-only unless auto-fix is explicitly requested. Aggregate outputs retain successful slices, errors, observed counts and truncation instead of presenting incomplete coverage as a healthy empty stack.
+- Manual imports require exact media/episode/download/contained-path scope, fresh candidate fingerprints, no manual-review warning, completed command status, complete queue absence and changed positive library-file identity before reporting verified success. Unverified/pending imports retain downloads; legacy failed status/counts remain alongside additive pending evidence.
+- ARR queue and library removal refresh consequential identity, path and review state immediately before deletion, reject drift, and independently verify absence. A DELETE acknowledgement or 404 alone is not a successful removal.
+- Downloader removal requires affirmative acknowledgement and a complete exact-ID readback. Linked cleanup follows only successfully removed associated ARR targets.
+- Plex remediation requires unique exact destructive targets and rederived confirmation plans. Configured-account clients retain active/snapshot replay ownership across tool calls; submitted media work is labelled Pending, and media/comment outcomes are verified separately.
+
+### Fixed
+
+- Preserved reverse-proxy URL prefixes and Sonarr's scalar DELETE query flags, including explicit false values; Radarr keeps its own query encoding.
+- Rejected mutation redirects before resend, including same-origin redirects into another API family. Frozen workflow routes never retry mutations across families.
+- Isolated cancellable Sonarr discovery and family probes so cancelling one caller does not cancel its sibling; retained completed per-instance caching and signal-free deduplication.
+- Blocked mapping remediation when fresh queue evidence requires manual investigation, including newly discovered sample warnings.
+- Preserved safe locally constructed partial-mutation guidance through the actual tool-result serializer without exposing raw provider errors, and prevented unchanged Plex reports from replaying accepted work across tool calls/account switches.
+- Preserved downloader failures and partial/truncated queue coverage in global download status.
+- Read SABnzbd status from the documented nested queue response, MB totals from `mb`/`mbleft` and actual KB/s from `kbpersec`, rather than download counters, formatted display sizes or percentage limits. Reject advertised total-slot mismatches before status aggregation or destructive preflight/readback.
+- Cleaned stale generated output before every build/package and fixed installed npm-bin startup. Stdio test children no longer inherit operator service configuration.
+
+### Documentation and release process
+
+- Updated installation, environment-only configuration, API, architecture, migration, safety, recovery and public operational skills against the implemented contracts. Added the pinned Sonarr v3/v5 contract comparison and feature rationale.
+- Replaced stale verification attestations with executable test maps, removed obsolete dumps/debug demos and private operational scaffolding from the new public history, and retained sanitized examples and the upstream support link.
+- Preserved all 23 historical changelog sections below byte-for-byte. CI now verifies only: automatic version bumps, npm publication, release creation and notifications are removed. A tagged GitHub release does not itself claim npm publication.
+
+### Compatibility and operational limits
+
+- Strict v5 rejects unported `importIssues`, `deleteFile`, `prepareRemoval`, `executeRemoval` and diagnostic auto-fix before writes. `auto` uses advertised/status-verified v3 for those operations. Read-only diagnostics and manual-import preview/execution have reviewed v5 routes.
+- Confirmation/import/Plex replay state is process-local, not a durable journal. Restart, server reconstruction, multiple processes or token rotation can create a new lifetime; inspect accepted/pending work before any retry.
+- Fresh reads are not atomic compare-and-delete locks. Cancellation/failure does not roll back accepted upstream work, and software rollback cannot restore deleted media.
+- Queue/history/report observations are bounded and nontransactional. Discovery, read-only compatibility checks, accepted commands, queue disappearance and Pending comments do not prove every upstream endpoint or playback.
+- Minimum Node 20.0.0 compiled-package compatibility is separate from the TypeScript development loader; installed-package checks do not establish a minimum-version source-unit run.
+
 ## [0.3.18] - 2026-05-11
 
 - docs: solidify manual import and cron maintenance docs (#8)
@@ -45,19 +91,6 @@
 ## [0.3.4] - 2025-08-23
 
 - Refactor the way we do environment variables to be slug-based and not rely on random config files, should be almost infinitely scalable now. Also added a RULE.md for providing to an LLM so it's got an understanding of how to call and use the tool
-
-## [Unreleased]
-
-### Added
-- `list_services` tool for discovering all configured services and downloaders
-- Service discovery workflow that must be called before using other tools
-- Enhanced documentation with service discovery requirements
-- Test script for validating list_services functionality
-
-### Updated
-- All documentation now emphasizes calling `list_services` first
-- API reference includes comprehensive service discovery section
-- Usage guide updated with service discovery workflow
 
 ## [0.2.10] - 2025-08-23
 

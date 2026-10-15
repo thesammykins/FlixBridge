@@ -36,6 +36,7 @@ const EXPECTED_TOOLS = [
 	"reported_issues",
 	"remediate_reported_issue",
 	"update_quality_profile",
+	"library_statistics",
 ];
 
 function isJsonObject(value: unknown): value is Record<string, unknown> {
@@ -52,7 +53,8 @@ async function runStdioProbe(): Promise<{
 	const child = spawn(process.execPath, ["--import", "tsx", "src/index.ts"], {
 		cwd: process.cwd(),
 		env: {
-			...process.env,
+			PATH: process.env.PATH,
+			TMPDIR: process.env.TMPDIR,
 			SONARR_URL: "http://127.0.0.1:8989",
 			SONARR_API_KEY: "dummy",
 			FLIX_BRIDGE_DEBUG: "1",
@@ -173,7 +175,57 @@ async function runStdioProbe(): Promise<{
 	}
 }
 
+async function runStdioEofProbe(): Promise<number> {
+	const child = spawn(process.execPath, ["--import", "tsx", "src/index.ts"], {
+		cwd: process.cwd(),
+		env: {
+			PATH: process.env.PATH,
+			TMPDIR: process.env.TMPDIR,
+			SONARR_URL: "http://127.0.0.1:8989",
+			SONARR_API_KEY: "dummy",
+		},
+		stdio: ["pipe", "pipe", "pipe"],
+	});
+
+	child.stdin.write(
+		`${JSON.stringify({
+			jsonrpc: "2.0",
+			id: 1,
+			method: "initialize",
+			params: {
+				protocolVersion: "2024-11-05",
+				capabilities: {},
+				clientInfo: { name: "stdio-eof-test", version: "1.0.0" },
+			},
+		})}\n`,
+	);
+	child.stdin.end();
+
+	return await new Promise<number>((resolve, reject) => {
+		const timer = setTimeout(() => {
+			child.kill("SIGKILL");
+			reject(new Error("MCP server did not exit after stdin EOF"));
+		}, 3000);
+		child.once("exit", (code) => {
+			clearTimeout(timer);
+			resolve(code ?? 0);
+		});
+	});
+}
+
 await describe("MCP stdio protocol", [
+	test("stdio probes do not inherit operator service configuration", async () => {
+		const original = process.env.RADARR_API_VERSION;
+		process.env.RADARR_API_VERSION = "invalid-fixture-policy";
+		try {
+			const probe = await runStdioProbe();
+			assert.ok(isJsonObject(probe.initialize.result));
+		} finally {
+			if (original === undefined)
+				Reflect.deleteProperty(process.env, "RADARR_API_VERSION");
+			else process.env.RADARR_API_VERSION = original;
+		}
+	}),
 	test("should initialize with tools capability and serve tools/list cleanly", async () => {
 		const probe = await runStdioProbe();
 
@@ -220,5 +272,8 @@ await describe("MCP stdio protocol", [
 			expected,
 			"tools/list did not return expected tools",
 		);
+	}),
+	test("should close cleanly when the client closes stdin", async () => {
+		assert.strictEqual(await runStdioEofProbe(), 0);
 	}),
 ]);

@@ -19,7 +19,10 @@ export function debug(message: string, context?: DebugContext): void {
 	if (!DEBUG_ENABLED) return;
 
 	const timestamp = new Date().toISOString();
-	const contextStr = context ? ` ${JSON.stringify(context)}` : "";
+	// Free-form context may contain upstream payloads or credentials.
+	const contextStr = context
+		? ` ${JSON.stringify(Object.fromEntries(Object.entries(context).filter(([, value]) => typeof value === "number" || typeof value === "boolean")))}`
+		: "";
 	console.error(`[${timestamp}] FLIX_BRIDGE: ${message}${contextStr}`);
 }
 
@@ -54,7 +57,7 @@ export function debugToolTiming<T>(
 				service,
 				ms: elapsed,
 				ok: false,
-				error: error instanceof Error ? error.message : String(error),
+				error: true,
 			});
 			throw error;
 		});
@@ -71,7 +74,8 @@ export function debugHttp(
 ): void {
 	if (!DEBUG_ENABLED) return;
 
-	debug(`http.${method.toLowerCase()}`, { url, status, ms });
+	void url;
+	debug(`http.${method.toLowerCase()}`, { status, ms });
 }
 
 /**

@@ -3,6 +3,7 @@
  * Validates automatic issue detection and fix workflows
  */
 
+import "./arr-safety.test.js";
 import assert from "node:assert";
 import { SonarrService } from "../../src/services/arr/sonarr.js";
 import {
@@ -457,6 +458,9 @@ await describe("Queue Diagnostics - Auto-Fix", [
 							: [
 									{
 										id: 225,
+										seriesId: 2,
+										episodeId: 789,
+										seasonNumber: 1,
 										title: "Manual.Import.S01E01",
 										status: "completed",
 										downloadId: "SAB_manual",
@@ -474,6 +478,7 @@ await describe("Queue Diagnostics - Auto-Fix", [
 							id: 1,
 							path: "/downloads/complete/Manual.Import.S01E01/file.mkv",
 							series: { id: 2 },
+							seasonNumber: 1,
 							episodes: [{ id: 789 }],
 							rejections: [],
 						},
@@ -481,6 +486,18 @@ await describe("Queue Diagnostics - Auto-Fix", [
 					{ headers: { "Content-Type": "application/json" } },
 				);
 			}
+			if (path === "/api/v3/command/42")
+				return new Response(JSON.stringify({ id: 42, status: "completed" }));
+			if (path === "/api/v3/episode/789")
+				return new Response(
+					JSON.stringify({
+						id: 789,
+						seriesId: 2,
+						seasonNumber: 1,
+						hasFile: imported,
+						episodeFileId: imported ? 99 : 0,
+					}),
+				);
 			if (path === "/api/v3/command" && init?.method === "POST") {
 				const body = JSON.parse(String(init.body));
 				assert.strictEqual(body.name, "ManualImport");
@@ -560,6 +577,7 @@ await describe("Queue Diagnostics - Auto-Fix", [
 							id: 1,
 							path: "/downloads/complete/Manual.Import.Ambiguous.S01E01/a.mkv",
 							series: { id: 2 },
+							seasonNumber: 1,
 							episodes: [{ id: 789 }],
 							rejections: [],
 						},
@@ -567,6 +585,7 @@ await describe("Queue Diagnostics - Auto-Fix", [
 							id: 2,
 							path: "/downloads/complete/Manual.Import.Ambiguous.S01E01/b.mkv",
 							series: { id: 2 },
+							seasonNumber: 1,
 							episodes: [{ id: 790 }],
 							rejections: [],
 						},

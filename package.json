@@ -1,6 +1,6 @@
 {
 	"name": "@thesammykins/flixbridge",
-	"version": "0.3.18",
+	"version": "1.0.0",
 	"description": "Media Management MCP Server - environment-only configuration for Sonarr/Radarr/SABnzbd",
 	"type": "module",
 	"main": "dist/index.js",
@@ -18,13 +18,10 @@
 	"publishConfig": {
 		"access": "public"
 	},
-	"files": [
-		"dist/**/*",
-		"README.md",
-		"LICENSE"
-	],
+	"files": ["dist/**/*", "README.md", "LICENSE"],
 	"scripts": {
-		"build": "tsc",
+		"build": "node --input-type=module -e \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true });\" && tsc",
+		"prepack": "npm run build",
 		"dev": "tsx src/index.ts",
 		"start": "node dist/index.js",
 		"check": "biome check .",
@@ -32,14 +29,15 @@
 		"lint:fix": "biome lint --write .",
 		"format": "biome format .",
 		"format:fix": "biome format --write .",
-		"test": "tsx tests/run-all.ts",
+		"test": "tsx tests/run-all.ts && npm run test:mcp",
 		"test:unit": "tsx tests/run-all.ts",
 		"smoke": "tsx scripts/smoke.ts",
 		"test:phase2": "tsx scripts/test-phase2.ts",
 		"test:queue-diagnostics": "tsx scripts/test-queue-diagnostics.ts",
 		"test:slug-config": "tsx scripts/test-slug-config.ts",
 		"test:list-services": "tsx scripts/test-list-services.ts",
-		"debug:queue": "tsx scripts/debug-queue.ts"
+		"debug:queue": "tsx scripts/debug-queue.ts",
+		"test:mcp": "npm run build && node --test tests/mcp-*.test.mjs"
 	},
 	"keywords": [
 		"mcp",
@@ -54,12 +52,13 @@
 	"author": "",
 	"license": "MIT",
 	"dependencies": {
-		"@modelcontextprotocol/sdk": "^1.29.0",
+		"@modelcontextprotocol/server": "2.3.1",
 		"zod": "^3.22.4"
 	},
 	"devDependencies": {
-		"@types/node": "^20.10.0",
 		"@biomejs/biome": "^1.9.4",
+		"@modelcontextprotocol/client": "2.3.1",
+		"@types/node": "^20.10.0",
 		"tsx": "^4.6.0",
 		"typescript": "^5.3.0"
 	},
