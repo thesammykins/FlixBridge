@@ -4,17 +4,16 @@ Requires Node.js 20 or later, npm, an MCP client supporting stdio, and a reachab
 
 ## Tagged GitHub release
 
-GitHub release assets and npm registry publication are separate. To install the exact
-1.0.0 package attached to the `v1.0.0` GitHub release:
+A source tag, a GitHub release asset and an npm registry version are separate
+artifacts. Check the [release listing](https://github.com/thesammykins/FlixBridge/releases)
+for an actual downloadable package; a tag alone does not provide one. If a maintainer
+has attached a reviewed tarball and `SHA256SUMS`, download both, verify the checksum,
+then install the local tarball with npm. Do not assume an unversioned npm install
+selects the source version described by these docs.
 
-```bash
-npm install -g https://github.com/thesammykins/FlixBridge/releases/download/v1.0.0/thesammykins-flixbridge-1.0.0.tgz
-flixbridge
-```
-
-Compare the downloaded file with `SHA256SUMS` from the same release before installation.
-The source tag is `v1.0.0`; to build that revision, check it out explicitly after cloning.
-An unversioned npm-registry install below does not imply that it selects 1.0.0.
+When no package asset exists, use the source-checkout instructions and explicitly
+check out the reviewed tag or commit before building. Keep the previous working
+artifact/configuration until the new installation's read-only baseline succeeds.
 
 ## npm release
 
