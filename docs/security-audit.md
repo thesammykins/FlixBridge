@@ -1,8 +1,8 @@
 # Security boundaries and release evidence
 
-This is a source-based limitations reference for the integrated **1.0 candidate**,
-not a security certification, publication claim or release approval. Documentation
-checks are offline; no live media stack or playback was exercised for this reconciliation.
+This is a source-based limitations reference for **1.0.0**, not a security
+certification or release approval. Offline and authorized read-only checks do not
+certify live mutation behavior, every provider endpoint or successful playback.
 
 ## Controls and remaining limits
 

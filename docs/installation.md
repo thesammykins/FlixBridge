@@ -2,6 +2,20 @@
 
 Requires Node.js 20 or later, npm, an MCP client supporting stdio, and a reachable Sonarr or Radarr instance with an API key. SABnzbd and Plex are optional integrations, not standalone startup configurations.
 
+## Tagged GitHub release
+
+GitHub release assets and npm registry publication are separate. To install the exact
+1.0.0 package attached to the `v1.0.0` GitHub release:
+
+```bash
+npm install -g https://github.com/thesammykins/FlixBridge/releases/download/v1.0.0/thesammykins-flixbridge-1.0.0.tgz
+flixbridge
+```
+
+Compare the downloaded file with `SHA256SUMS` from the same release before installation.
+The source tag is `v1.0.0`; to build that revision, check it out explicitly after cloning.
+An unversioned npm-registry install below does not imply that it selects 1.0.0.
+
 ## npm release
 
 Run the published package without a source checkout:

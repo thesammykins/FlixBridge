@@ -44,7 +44,7 @@ Optional configuration: `RADARR_URL` / `RADARR_API_KEY`, `SABNZBD_URL` / `SABNZB
 
 ## Source status and compatibility
 
-This documentation describes the integrated **1.0 candidate**, not a publication claim. Its 20 tools retain the existing 19 names/required inputs and add read-only `library_statistics` for Sonarr API v5 (no legacy library scan). Installed releases may differ.
+This documentation describes the **1.0.0 source and tagged release**. Its 20 tools retain the existing 19 names/required inputs and add read-only `library_statistics` for Sonarr API v5 (no legacy library scan). GitHub release assets and npm registry versions are separate; an unpinned npm command may select an older release. See [tagged-release installation](https://github.com/thesammykins/FlixBridge/blob/main/docs/installation.md#tagged-github-release).
 
 Sonarr API policy is per instance: omission preserves v3 without discovery; explicit `3` or `5` discovers and verifies that family; `auto` uses v5 only for reviewed workflows and retains v3 for unported operations when advertised. Strict v5 rejects those operations before writes. A Sonarr application version is not its HTTP API family. See [configuration and route limits](https://github.com/thesammykins/FlixBridge/blob/main/docs/configuration.md#sonarr-api-policy).
 

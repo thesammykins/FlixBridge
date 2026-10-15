@@ -3,7 +3,7 @@
 - [Multi-instance MCP configuration](claude-mcp-config.json)
 - [Single-instance MCP configuration](claude-mcp-config-simple.json)
 
-These JSON files are client configuration examples, not FlixBridge server-side config. The `npx` arguments resolve the published npm package, not an unreleased v1 checkout; choose and pin a reviewed published version for reproducibility. Reserved `.example` hosts in the multi-instance file are illustrative and must be replaced privately. Replace placeholder URLs/keys privately and consult your MCP client's configuration location. Do not commit credentials.
+These JSON files are client configuration examples, not FlixBridge server-side config. The `npx` arguments resolve the npm registry package, not necessarily the tagged 1.0.0 release; choose and pin a reviewed published version for reproducibility, or install the exact GitHub release asset as described in [installation](../docs/installation.md#tagged-github-release). Reserved `.example` hosts in the multi-instance file are illustrative and must be replaced privately. Replace placeholder URLs/keys privately and consult your MCP client's configuration location. Do not commit credentials.
 
 FlixBridge reads process environment only; copying a `.env` file does not load it automatically. Use the client `env` object or an external launcher. At least one complete ARR pair is needed. Single-instance names are `sonarr`, `radarr`, `sabnzbd`; slug pairs such as `SONARR_MAIN_URL` and `SONARR_MAIN_API_KEY` produce `sonarr-main`. Always discover actual names with `list_services`.
 

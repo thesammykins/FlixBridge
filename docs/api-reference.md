@@ -2,7 +2,7 @@
 
 This reference describes the working source in `src/index.ts`, `src/services/shared.ts`, `src/services/downloaders/sabnzbd.ts` and `src/services/plex/`. Installed releases may differ: discover their actual schemas. Call `list_services` first and use exact returned names. Examples are illustrative inputs, not results from a live stack.
 
-This reference describes the integrated 1.0 candidate: 20 tools, including additive read-only `library_statistics`. Existing 19 tool names and required inputs are retained. It is not a publication or live-compatibility attestation. See [Sonarr per-instance policy and reviewed routes](configuration.md#sonarr-api-policy); no general upstream administration tools are exposed.
+This reference describes the 1.0.0 source: 20 tools, including additive read-only `library_statistics`. Existing 19 tool names and required inputs are retained. GitHub release assets, npm registry versions and live-provider compatibility are separate concerns. See [Sonarr per-instance policy and reviewed routes](configuration.md#sonarr-api-policy); no general upstream administration tools are exposed.
 
 ## Transport and validation
 
