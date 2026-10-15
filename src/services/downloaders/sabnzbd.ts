@@ -24,10 +24,14 @@ export interface SabnzbdQueueResponse {
 	queue: {
 		slots: SabnzbdQueueSlot[];
 		speed: string;
+		kbpersec: string;
+		mb: string;
+		mbleft: string;
 		size: string;
 		sizeleft: string;
 		paused: boolean;
 		noofslots: number;
+		noofslots_total?: number;
 	};
 }
 
@@ -149,17 +153,23 @@ const queueSchema = z.object({
 			}),
 		),
 		speed: z.string().optional(),
-		size: numericString,
-		sizeleft: numericString,
+		kbpersec: numericString,
+		mb: numericString,
+		mbleft: numericString,
+		size: z.string(),
+		sizeleft: z.string(),
 		paused: z.boolean(),
 		noofslots: z.number().int().nonnegative(),
+		noofslots_total: z.number().int().nonnegative().optional(),
 	}),
 });
 const statsSchema = z.object({
-	version: z.string(),
-	paused: z.boolean(),
-	noofslots: z.number().int().nonnegative(),
-	speedlimit: z.string().optional(),
+	queue: z.object({
+		version: z.string(),
+		paused: z.boolean(),
+		noofslots: z.number().int().nonnegative(),
+		kbpersec: numericString,
+	}),
 });
 const historySchema = z.object({
 	history: z.object({
@@ -207,24 +217,19 @@ export class SabnzbdService {
 
 	async serverStats(): Promise<OperationResult<SabnzbdStatusData>> {
 		try {
-			const url = this.buildApiUrl("server_stats");
-			const response = statsSchema.parse(await fetchJson<unknown>(url));
-
-			const speedMatch = response.speedlimit?.match(/(\d+)/);
-			const speedKBps = speedMatch
-				? Number.parseInt(speedMatch[1] || "0", 10)
-				: undefined;
+			const url = this.buildApiUrl("queue");
+			const { queue } = statsSchema.parse(await fetchJson<unknown>(url));
 
 			return {
 				ok: true,
 				data: {
 					service: this.serviceName,
 					name: "SABnzbd",
-					version: response.version || "unknown",
+					version: queue.version || "unknown",
 					isHealthy: true,
-					paused: response.paused || false,
-					totalSlots: response.noofslots || 0,
-					speedKBps,
+					paused: queue.paused,
+					totalSlots: queue.noofslots,
+					speedKBps: Number(queue.kbpersec),
 				},
 			};
 		} catch (error) {
@@ -244,6 +249,8 @@ export class SabnzbdService {
 			const slots = queue.slots || [];
 			if (
 				queue.noofslots !== slots.length ||
+				(queue.noofslots_total !== undefined &&
+					queue.noofslots_total !== slots.length) ||
 				new Set(slots.map((slot) => slot.nzo_id)).size !== slots.length
 			) {
 				throw {
@@ -262,10 +269,7 @@ export class SabnzbdService {
 				eta: slot.eta || "",
 			}));
 
-			const speedMatch = queue.speed?.match(/(\d+)/);
-			const speedKBps = speedMatch
-				? Number.parseInt(speedMatch[1] || "0", 10)
-				: undefined;
+			const speedKBps = Number(queue.kbpersec);
 
 			return {
 				ok: true,
@@ -275,8 +279,8 @@ export class SabnzbdService {
 					items,
 					paused: queue.paused || false,
 					speedKBps,
-					totalSizeMB: Number.parseFloat(queue.size) || 0,
-					remainingSizeMB: Number.parseFloat(queue.sizeleft) || 0,
+					totalSizeMB: Number(queue.mb),
+					remainingSizeMB: Number(queue.mbleft),
 				},
 			};
 		} catch (error) {

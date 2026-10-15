@@ -30,8 +30,18 @@ const sabSlot = {
 	mb: "1",
 	mbleft: "1",
 };
+// Source-derived synthetic SAB queue; display sizes are not numeric totals.
 const sabQueue = (slots = [sabSlot], total = slots.length) => ({
-	queue: { slots, size: "1", sizeleft: "1", paused: false, noofslots: total },
+	queue: {
+		slots,
+		mb: slots.length ? "1" : "0",
+		mbleft: slots.length ? "1" : "0",
+		kbpersec: "0.00",
+		size: slots.length ? "1 MB" : "0 B",
+		sizeleft: slots.length ? "1 MB" : "0 B",
+		paused: false,
+		noofslots: total,
+	},
 });
 const sab = () =>
 	new SabnzbdService({ baseUrl: "https://sab.example", apiKey: "fixture-key" });
