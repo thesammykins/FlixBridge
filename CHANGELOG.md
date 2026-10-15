@@ -29,6 +29,7 @@
 - Blocked mapping remediation when fresh queue evidence requires manual investigation, including newly discovered sample warnings.
 - Preserved safe locally constructed partial-mutation guidance through the actual tool-result serializer without exposing raw provider errors, and prevented unchanged Plex reports from replaying accepted work across tool calls/account switches.
 - Preserved downloader failures and partial/truncated queue coverage in global download status.
+- Read SABnzbd status from the documented nested queue response, MB totals from `mb`/`mbleft` and actual KB/s from `kbpersec`, rather than download counters, formatted display sizes or percentage limits. Reject advertised total-slot mismatches before status aggregation or destructive preflight/readback.
 - Cleaned stale generated output before every build/package and fixed installed npm-bin startup. Stdio test children no longer inherit operator service configuration.
 
 ### Documentation and release process
