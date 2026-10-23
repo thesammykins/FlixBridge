@@ -4,6 +4,7 @@ import { lstat, mkdir, open, rename, rm } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { z } from "zod";
+import { createInternalError } from "../core.js";
 import {
 	type RetentionRule,
 	evaluationTimeSchema,
@@ -72,12 +73,14 @@ const MAX_STATE_BYTES = 16 * 1024 * 1024;
 async function directory(options: StateOptions): Promise<string> {
 	const root = options.stateDir ?? process.env.FLIX_BRIDGE_STATE_DIR;
 	if (!root || !isAbsolute(root))
-		throw new Error("Explicit absolute FLIX_BRIDGE_STATE_DIR required");
+		throw createInternalError(
+			"Explicit absolute FLIX_BRIDGE_STATE_DIR required",
+		);
 	const path = join(root, "retention");
 	await mkdir(path, { recursive: true, mode: 0o700 });
 	const stat = await lstat(path);
 	if (!stat.isDirectory() || stat.isSymbolicLink())
-		throw new Error("Retention state must be a real directory");
+		throw createInternalError("Retention state must be a real directory");
 	return path;
 }
 async function readState(path: string): Promise<State> {
@@ -95,7 +98,7 @@ async function readState(path: string): Promise<State> {
 	try {
 		const stat = await file.stat();
 		if (!stat.isFile() || stat.size > MAX_STATE_BYTES)
-			throw new Error("Invalid or oversized retention state");
+			throw createInternalError("Invalid or oversized retention state");
 		return stateSchema.parse(JSON.parse(await file.readFile("utf8")));
 	} finally {
 		await file.close();
@@ -104,7 +107,9 @@ async function readState(path: string): Promise<State> {
 async function writeState(path: string, state: State): Promise<void> {
 	const text = JSON.stringify(stateSchema.parse(state));
 	if (Buffer.byteLength(text) > MAX_STATE_BYTES)
-		throw new Error("Retention state limit reached; archive state offline");
+		throw createInternalError(
+			"Retention state limit reached; archive state offline",
+		);
 	const temporary = join(path, `.rules-${randomUUID()}.tmp`);
 	try {
 		const file = await open(temporary, "wx", 0o600);
@@ -139,7 +144,7 @@ async function mutate<T>(
 		} catch (error) {
 			if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
 			if (attempt >= 100)
-				throw new Error(
+				throw createInternalError(
 					"Retention state locked; inspect crashed writers before removing retention/.lock",
 				);
 			await delay(50);
@@ -160,7 +165,7 @@ function latest(state: State, id: string, version?: number): RuleRevision {
 		.find(
 			(r) => r.id === id && (version === undefined || r.version === version),
 		);
-	if (!revision) throw new Error("Retention rule/version not found");
+	if (!revision) throw createInternalError("Retention rule/version not found");
 	return revision;
 }
 export async function listRules(
@@ -197,7 +202,7 @@ export async function createRule(
 	const parsed = createRuleSchema.parse(input);
 	return mutate(options, (state) => {
 		if (state.revisions.some((r) => r.id === parsed.id))
-			throw new Error("Retention rule already exists");
+			throw createInternalError("Retention rule already exists");
 		const revision = {
 			id: parsed.id,
 			name: parsed.name,
@@ -233,9 +238,9 @@ export async function reviseRule(
 	return mutate(options, (state) => {
 		const previous = latest(state, parsed.id);
 		if (previous.version !== parsed.expectedVersion)
-			throw new Error("Retention rule version conflict");
+			throw createInternalError("Retention rule version conflict");
 		if (Date.parse(parsed.evaluationTime) < Date.parse(previous.createdAt))
-			throw new Error("Revision time precedes current revision");
+			throw createInternalError("Revision time precedes current revision");
 		const revision = {
 			...previous,
 			name: parsed.name ?? previous.name,
@@ -272,7 +277,7 @@ export async function evaluateRule<T>(
 	const parsed = evaluateRuleSchema.parse(input);
 	const revision = await getRule(parsed.id, parsed.version, options);
 	if (Date.parse(parsed.evaluationTime) < Date.parse(revision.createdAt))
-		throw new Error("Evaluation time precedes rule revision");
+		throw createInternalError("Evaluation time precedes rule revision");
 	const context = {
 		ruleId: revision.id,
 		version: revision.version,
@@ -302,10 +307,22 @@ export async function runDueRules<T>(
 					now < Date.parse(revision.createdAt)
 				)
 					return false;
-				const times = state.attempts
-					.filter(
-						(a) => a.ruleId === revision.id && a.version === revision.version,
+				const outstanding = state.attempts.find(
+					(attempt) =>
+						attempt.ruleId === revision.id && attempt.status === "reserved",
+				);
+				if (outstanding) {
+					if (
+						now - Date.parse(outstanding.evaluationTime) >=
+						revision.rule.intervalHours * 3600000
 					)
+						throw createInternalError(
+							"Retention rule has an outstanding evaluation; inspect the reserved attempt before resuming, never replay deletion",
+						);
+					return false;
+				}
+				const times = state.attempts
+					.filter((a) => a.ruleId === revision.id)
 					.map((a) => Date.parse(a.evaluationTime));
 				if (
 					times.length &&
@@ -354,7 +371,7 @@ export async function runDueRules<T>(
 					a.evaluationTime === evaluationTime,
 			);
 			if (!attempt || attempt.status !== "reserved")
-				throw new Error("Scheduler reservation changed");
+				throw createInternalError("Scheduler reservation changed");
 			attempt.status = outcome.status;
 		});
 		results.push(outcome);

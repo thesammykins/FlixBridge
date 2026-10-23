@@ -2,7 +2,9 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { loadConfigFromEnvOnly } from "./config.js";
 import { createInternalError } from "./core.js";
+import { findServer, mediaStatus } from "./library/media.js";
 import type { RemovalAuthority } from "./removal-authority.js";
+import { plexConfigFromEnv } from "./services/plex/reports.js";
 
 export function immutablePreview(value: unknown): unknown {
 	return JSON.parse(
@@ -14,11 +16,40 @@ export function immutablePreview(value: unknown): unknown {
 	);
 }
 
-export async function instanceBindings() {
+export async function instanceBindings(
+	mediaNames: string[] = [],
+	bindReports = false,
+) {
 	const config = await loadConfigFromEnvOnly();
 	const digest = (value: unknown) =>
 		createHash("sha256").update(JSON.stringify(value)).digest("hex");
+	const media = [];
+	for (const name of [...new Set(mediaNames)].sort()) {
+		const server = findServer(name);
+		const status = await mediaStatus(name);
+		const bindings = Object.entries(process.env)
+			.filter(
+				([key]) =>
+					key.startsWith(`${server.prefix}_USER_`) ||
+					key.startsWith(`${server.prefix}_PATH_`),
+			)
+			.sort(([a], [b]) => a.localeCompare(b));
+		media.push({
+			name,
+			fingerprint: digest([server.baseUrl, server.token, status.id, bindings]),
+		});
+	}
+	const plexReports = bindReports ? plexConfigFromEnv() : undefined;
 	return {
+		media,
+		...(plexReports
+			? {
+					plexReportsFingerprint: digest([
+						plexReports.baseUrl,
+						plexReports.token,
+					]),
+				}
+			: {}),
 		services: Object.entries(config.services)
 			.sort(([a], [b]) => a.localeCompare(b))
 			.map(([name, c]) => ({

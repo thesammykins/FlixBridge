@@ -30,6 +30,7 @@ export function evaluateCandidate(input: CandidateInput) {
 	const { item, seasonNumber, watchEvidence: watch, snapshot } = input;
 	const now = Date.parse(input.evaluationTime);
 	const blockers: string[] = [];
+	let usesAddedResidency = false;
 	const block = (condition: boolean, reason: string) => {
 		if (condition) blockers.push(reason);
 	};
@@ -55,12 +56,18 @@ export function evaluateCandidate(input: CandidateInput) {
 		"Invalid item identity, path or API family",
 	);
 	block(
+		item.apiFamily !== 3,
+		"Retention removal requires a verified v3 mutation contract; no family fallback",
+	);
+	block(
 		!snapshot.complete || snapshot.errors.length > 0,
 		"Library snapshot incomplete",
 	);
+	// Reads finish after the caller's evaluation time; only observation clocks get this bound.
 	block(
-		ageDays(snapshot.observedAt) === null,
-		"Snapshot timestamp unknown or in future",
+		!evaluationTimeSchema.safeParse(snapshot.observedAt).success ||
+			Date.parse(snapshot.observedAt) > now + 300_000,
+		"Snapshot timestamp unknown or beyond five-minute observation tolerance",
 	);
 	block(!item.complete, "Item metadata incomplete");
 	block(!rule.services.includes(item.service), "Service not selected");
@@ -230,7 +237,16 @@ export function evaluateCandidate(input: CandidateInput) {
 		watch?.activePlayback !== false,
 		"Active playback or unknown session evidence",
 	);
-	block(watch?.favourite !== false, "Favourite or unknown favourite evidence");
+	block(
+		watch?.favourite !== false &&
+			!(
+				rule.allowUnsupportedFavourites &&
+				watch?.favouriteSupported === false &&
+				watch.favourite === null &&
+				watch.complete
+			),
+		"Favourite or unknown favourite evidence",
+	);
 	if (watch) {
 		blockers.push(...watch.blockers);
 		const selected = rule.users.map((user) =>
@@ -258,20 +274,20 @@ export function evaluateCandidate(input: CandidateInput) {
 			"Selected viewer episode evidence missing or ambiguous",
 		);
 		block(
-			viewers.some((v) => v.status === "unknown" || v.status === "partial"),
+			viewers.some((v) => v.status !== "watched" && v.status !== "unwatched"),
 			"Unknown or partial viewing evidence",
 		);
-		const hasWatchedScope = (v: WatchEvidence["viewers"][number]) =>
-			item.mediaKind === "movie"
-				? v.status === "watched"
-				: scopedEpisodes.every((e) => {
-						const matches = v.episodes.filter(
-							(seen) =>
-								seen.seasonNumber === e.seasonNumber &&
-								seen.episodeNumber === e.episodeNumber,
-						);
-						return matches.length === 1 && matches[0]?.status === "watched";
-					});
+		const hasRequestedScope = (v: WatchEvidence["viewers"][number]) =>
+			v.status === rule.watchState &&
+			(item.mediaKind === "movie" ||
+				scopedEpisodes.every((e) => {
+					const matches = v.episodes.filter(
+						(seen) =>
+							seen.seasonNumber === e.seasonNumber &&
+							seen.episodeNumber === e.episodeNumber,
+					);
+					return matches.length === 1 && matches[0]?.status === rule.watchState;
+				}));
 		block(
 			viewers.some((v) =>
 				scopedEpisodes.some((e) =>
@@ -279,28 +295,40 @@ export function evaluateCandidate(input: CandidateInput) {
 						(seen) =>
 							seen.seasonNumber === e.seasonNumber &&
 							seen.episodeNumber === e.episodeNumber &&
-							(seen.status === "unknown" || seen.status === "partial"),
+							seen.status !== "watched" &&
+							seen.status !== "unwatched",
 					),
 				),
 			),
 			"Unknown or in-progress episode viewing",
 		);
 		block(
-			rule.watchedPolicy === "all-selected"
-				? viewers.some((v) => !hasWatchedScope(v))
-				: !viewers.some(hasWatchedScope),
-			"Selected users have not watched scope",
+			rule.watchState === "unwatched" || rule.watchedPolicy === "all-selected"
+				? viewers.some((v) => !hasRequestedScope(v))
+				: !viewers.some(hasRequestedScope),
+			rule.watchState === "unwatched"
+				? "Selected users are not all explicitly unwatched for scope"
+				: "Selected users have not watched scope",
 		);
-		block(
-			viewers.some((v) => {
-				const days = ageDays(v.lastWatchedAt);
-				return (
-					days === null ||
-					days < Math.max(rule.watchGraceDays, rule.minInactiveDays)
+		const inactivityDays = Math.max(rule.watchGraceDays, rule.minInactiveDays);
+		for (const viewer of viewers) {
+			if (
+				viewer.status === "unwatched" &&
+				(viewer.lastWatchedAt === undefined || viewer.lastWatchedAt === null)
+			) {
+				usesAddedResidency = true;
+				block(
+					addedAgeDays === null || addedAgeDays < inactivityDays,
+					"Added-age residency unknown or below grace/inactivity days for unwatched viewer",
 				);
-			}),
-			"Last watch unknown or below grace/inactivity days",
-		);
+				continue;
+			}
+			const days = ageDays(viewer.lastWatchedAt);
+			block(
+				days === null || days < inactivityDays,
+				"Last watch unknown or below grace/inactivity days",
+			);
+		}
 	}
 	const matchingRatings = rule.rating
 		? item.ratings.filter(
@@ -335,10 +363,14 @@ export function evaluateCandidate(input: CandidateInput) {
 		reclaimedBytesGuaranteed: false as const,
 		reasons: eligible
 			? [
-					rule.watchedPolicy === "all-selected"
-						? "All selected users watched the selected scope"
-						: "At least one selected user watched the selected scope",
-					"Age, inactivity, protection and footprint conditions satisfied",
+					rule.watchState === "unwatched"
+						? "All selected users are currently unwatched for the selected scope"
+						: rule.watchedPolicy === "all-selected"
+							? "All selected users watched the selected scope"
+							: "At least one selected user watched the selected scope",
+					usesAddedResidency
+						? "Added-age residency meets grace/inactivity day thresholds for explicitly unwatched users without last playback; this is not proof of never-watched history"
+						: "Age, inactivity, protection and footprint conditions satisfied",
 				]
 			: [],
 		blockers,

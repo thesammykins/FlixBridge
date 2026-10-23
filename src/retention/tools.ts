@@ -168,6 +168,11 @@ export const ruleJsonSchema = {
 			enum: ["all-selected", "any-selected"],
 			default: "all-selected",
 		},
+		watchState: {
+			type: "string",
+			enum: ["watched", "unwatched"],
+			default: "watched",
+		},
 		target: { type: "string", enum: ["movie", "show", "completed-season"] },
 		action: {
 			type: "string",
@@ -194,6 +199,7 @@ export const ruleJsonSchema = {
 			items: { type: "string", minLength: 1, maxLength: 200 },
 		},
 		includeSpecials: { type: "boolean", default: false },
+		allowUnsupportedFavourites: { type: "boolean", default: false },
 		maxCount: { type: "integer", minimum: 1, maximum: 10000 },
 		maxBytes: bytes,
 		intervalHours: { type: "number", exclusiveMinimum: 0, maximum: 87600 },
@@ -211,6 +217,21 @@ export const ruleJsonSchema = {
 		"maxCount",
 		"maxBytes",
 	] satisfies Array<keyof RetentionRuleInput>,
+	allOf: [
+		{
+			if: {
+				properties: { target: { const: "completed-season" } },
+				required: ["target"],
+			},
+			// biome-ignore lint/suspicious/noThenProperty: JSON Schema conditional keyword, not a thenable.
+			then: {
+				properties: {
+					watchState: { const: "watched" },
+					action: { const: "unmonitor-delete-files" },
+				},
+			},
+		},
+	],
 };
 export const cleanup_candidates: Tool = {
 	name: "cleanup_candidates",

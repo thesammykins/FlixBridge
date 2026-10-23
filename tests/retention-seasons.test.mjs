@@ -90,6 +90,17 @@ const candidate = (extra = {}) =>
 		...extra,
 	});
 
+test("unmonitor/delete-file recommendations cannot advertise an unported Sonarr v5 execution contract", () => {
+	const v5 = { ...item, apiFamily: 5 };
+	const result = candidate({
+		item: v5,
+		snapshot: { ...snapshot, items: [v5] },
+	});
+	assert.equal(result.eligible, false);
+	assert.match(result.blockers.join(" "), /verified v3/);
+	assert.equal(candidate().eligible, true);
+});
+
 test("only completed watched seasons produce exact scoped files and unmonitor targets", () => {
 	const result = candidate();
 	assert.equal(result.eligible, true);

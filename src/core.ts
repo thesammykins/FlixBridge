@@ -1,5 +1,9 @@
 import { debugHttp } from "./debug.js";
-import { removalRequestAllowed } from "./removal-authority.js";
+import {
+	isRemovalRequest,
+	removalRequestAllowed,
+	revalidateRemovalRequest,
+} from "./removal-authority.js";
 import { requestSignal } from "./request-context.js";
 import type { InternalError, ServiceError } from "./services/base.js";
 
@@ -65,6 +69,14 @@ export async function fetchJson<T>(
 					"Authenticated human approval is required for this exact removal target",
 				);
 			if (controller.signal.aborted) await aborted;
+			if (isRemovalRequest(target, method))
+				await Promise.race([
+					requestSignal.run(controller.signal, () =>
+						revalidateRemovalRequest(target, method),
+					),
+					aborted,
+				]);
+			if (controller.signal.aborted) await aborted;
 			response = await Promise.race([
 				fetch(target.toString(), {
 					...fetchOptions,
@@ -78,7 +90,10 @@ export async function fetchJson<T>(
 			if (![301, 302, 303, 307, 308].includes(response.status)) break;
 			const location = response.headers.get("location");
 			await response.body?.cancel();
-			if (!["GET", "HEAD"].includes(method.toUpperCase()))
+			if (
+				!["GET", "HEAD"].includes(method.toUpperCase()) ||
+				isRemovalRequest(target, method)
+			)
 				throw createInternalError(
 					"Mutation HTTP redirect rejected; not replayed",
 				);
@@ -152,6 +167,12 @@ export async function fetchJson<T>(
 }
 
 const trustedErrors = new WeakSet<object>();
+
+export function isTrustedError(error: unknown): boolean {
+	return (
+		typeof error === "object" && error !== null && trustedErrors.has(error)
+	);
+}
 
 export function serializeError(error: unknown): ServiceError | InternalError {
 	let result: ServiceError | InternalError;

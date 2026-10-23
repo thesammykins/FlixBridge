@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.1.0] - Unreleased
+
+### Added
+
+- Read-only library/user browsing, exact ARR media detail with source/scale/vote-preserving ratings and optional untrusted TMDB reviews, explicit per-user Plex/Jellyfin watch summaries, Plex playback events, and ARR calendars. Jellyfin event history is explicitly unsupported.
+- Deterministic bounded cleanup recommendations, versioned durable retention rules (created disabled), explicit evaluation times, and the opt-in `flixbridge-retention` CLI: `bridge`, `evaluate`, `run-due`, and `execute`. No schedule is installed and no evaluation grants deletion authority.
+- Durable hash-bound human approval requests/status/cancellation, authenticated allowlisted actors, optional signed webhook notifications with signed approve/reject references, and a separately launched loopback callback bridge. A trusted adapter authenticates button presses or exact-request yes/no replies; there is no MCP self-approval tool.
+- Exact monitoring changes and season/file cleanup through reviewed ARR v3 workflows; cleanup verifies unmonitoring before file deletion. Season cleanup currently requires ended-series and exact episode/file evidence.
+- Explicit `watchState` rules (default watched; unwatched means current flag, not never-watched history) and `allowUnsupportedFavourites` (default false). The latter acknowledges unsupported capability only; it does not excuse unavailable evidence or a known favourite.
+
+### Changed
+
+- All explicit removal scopes, including existing queue/downloader/title removal and Plex `remove_and_regrab`, now require authenticated human `approvalId` execution authority. Preview confirmation tokens alone are insufficient; fresh evidence and a durable one-use claim precede removal. Existing tool names remain; this is an incompatible removal-authority change. `manual_import` retains its existing confirmation flow. Other writes still require operator authority.
+- Explicit private state stores rule revisions, scheduler attempts and approvals/execution outcomes, not credentials or a second source configuration. Media-only read configurations are supported; removal still requires ARR/downloader targets.
+- Partial, pending and uncertain results remain distinct from verified success. Monitoring and deletion are separate nontransactional writes; failures do not imply rollback, and uncertain execution is not automatically retryable.
+
+### Scope and evidence limits
+
+- New library workflows do not support Sonarr v5; new mutations reject `auto`/strict v5 rather than downgrading. Plex requires explicit per-user token bindings and cannot supply favourites/watchlist protection. Logical file bytes are estimates, not guaranteed recovered disk space.
+- This section describes candidate source behavior only. It does not attest to final test counts, live validation, tags, release assets or publication. See the provider, approval, rule and migration contracts linked from the README.
+
 ## [1.0.1] - Unreleased
 
 ### Fixed

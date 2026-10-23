@@ -18,6 +18,8 @@ export interface LibraryActionInput {
 	monitored?: boolean;
 	deleteFiles?: boolean;
 	users?: ViewerScope[];
+	allowUnsupportedFavourites?: boolean;
+	watchedPolicy?: "all-selected" | "any-selected";
 }
 export interface LibraryDependencies {
 	loadLibrarySnapshot(services?: string[]): Promise<LibrarySnapshot>;
@@ -27,6 +29,21 @@ export interface LibraryDependencies {
 		season?: number,
 	): Promise<WatchEvidence>;
 }
+export function favouriteProtected(
+	watch: WatchEvidence,
+	input: Pick<LibraryActionInput, "allowUnsupportedFavourites">,
+): boolean {
+	return (
+		watch.favourite !== false &&
+		!(
+			input.allowUnsupportedFavourites === true &&
+			watch.favourite === null &&
+			"favouriteSupported" in watch &&
+			watch.favouriteSupported === false
+		)
+	);
+}
+
 export function planLibraryAction(
 	item: LibraryItem,
 	input: LibraryActionInput,
@@ -63,7 +80,7 @@ export function planLibraryAction(
 	const selectedFiles =
 		input.target === "files"
 			? item.files.filter((f) => input.ids?.includes(f.id))
-			: seasons.length
+			: seasons.length || input.episodeIds?.length
 				? item.files.filter((f) =>
 						f.episodeIds.some((id) => selectedIds.has(id)),
 					)
@@ -75,6 +92,7 @@ export function planLibraryAction(
 		throw createInternalError("File outside item scope");
 	for (const file of selectedFiles) {
 		if (
+			input.deleteFiles === true &&
 			item.mediaKind === "series" &&
 			(!file.episodeIds.length ||
 				file.episodeIds.some((id) => !selectedIds.has(id)))
@@ -114,7 +132,22 @@ export function planLibraryAction(
 		deleteFiles: input.deleteFiles === true,
 	};
 }
-function identity(item: LibraryItem) {
+function retentionIdentity(
+	item: Pick<
+		LibraryItem,
+		| "service"
+		| "id"
+		| "mediaKind"
+		| "title"
+		| "providerIds"
+		| "path"
+		| "status"
+		| "addedAt"
+		| "tags"
+		| "ratings"
+		| "apiFamily"
+	>,
+) {
 	return {
 		service: item.service,
 		id: item.id,
@@ -122,10 +155,80 @@ function identity(item: LibraryItem) {
 		title: item.title,
 		providerIds: item.providerIds,
 		path: item.path,
+		status: item.status,
+		addedAt: item.addedAt,
+		tags: item.tags,
+		ratings: item.ratings,
+		apiFamily: item.apiFamily,
+	};
+}
+function identity(item: LibraryItem) {
+	return {
+		...retentionIdentity(item),
 		monitored: item.monitored,
 		seasons: item.seasons,
 		episodes: item.episodes,
 	};
+}
+
+function actionWatchEvidence(
+	item: LibraryItem,
+	plan: ReturnType<typeof planLibraryAction>,
+	users: ViewerScope[],
+	deps: LibraryDependencies,
+	deletedFileIds: Set<number> = new Set(),
+) {
+	if (item.mediaKind !== "series") return deps.getWatchEvidence(item, users);
+	// Exclude only files whose deletion and absence this execution already verified.
+	const deletedEpisodes = new Set(
+		plan.files
+			.filter((file) => deletedFileIds.has(file.id))
+			.flatMap((file) => file.episodeIds),
+	);
+	const episodeIds = plan.episodeIds.filter((id) => !deletedEpisodes.has(id));
+	const episodes = item.episodes.filter((episode) =>
+		episodeIds.includes(episode.id),
+	);
+	const seasonNumbers = new Set([
+		...plan.seasons,
+		...plan.item.episodes
+			.filter((episode) => plan.episodeIds.includes(episode.id))
+			.map((episode) => episode.seasonNumber),
+	]);
+	if (
+		!episodes.length ||
+		episodes.length !== episodeIds.length ||
+		episodes.some(
+			(episode) =>
+				!plan.item.episodes.some(
+					(approved) =>
+						approved.id === episode.id &&
+						approved.seasonNumber === episode.seasonNumber &&
+						approved.episodeNumber === episode.episodeNumber &&
+						approved.airDate === episode.airDate &&
+						approved.title === episode.title &&
+						approved.fileId === episode.fileId,
+				),
+		) ||
+		[...seasonNumbers].some(
+			(number) =>
+				!item.seasons.some((season) => season.seasonNumber === number),
+		)
+	)
+		throw createInternalError("Approved watch scope is missing during cleanup");
+	return deps.getWatchEvidence(
+		{
+			...item,
+			episodes,
+			seasons: item.seasons.filter((season) =>
+				seasonNumbers.has(season.seasonNumber),
+			),
+			// Keep all fresh files: physical-copy alias detection must not lose siblings.
+			// Multi-season session protection is deliberately broader than watch scope.
+		},
+		users,
+		seasonNumbers.size === 1 ? [...seasonNumbers][0] : undefined,
+	);
 }
 
 export async function prepareLibraryAction(
@@ -160,7 +263,7 @@ export async function prepareLibraryAction(
 			throw createInternalError(
 				"Explicit users and servers required for playback protection",
 			);
-		watch = await deps.getWatchEvidence(item, input.users);
+		watch = await actionWatchEvidence(item, plan, input.users, deps);
 		if (
 			input.users.some(
 				(user) =>
@@ -176,7 +279,7 @@ export async function prepareLibraryAction(
 		if (
 			!watch.complete ||
 			watch.activePlayback !== false ||
-			watch.favourite !== false
+			favouriteProtected(watch, input)
 		)
 			throw createInternalError(
 				"Playback/favourite evidence incomplete or protected",
@@ -186,22 +289,28 @@ export async function prepareLibraryAction(
 				throw createInternalError(
 					"Season completion cannot be established for a continuing series; cleanup blocked",
 				);
-			for (const viewer of watch.viewers)
-				for (const episodeId of plan.episodeIds) {
+			const watchedByViewer = watch.viewers.map((viewer) =>
+				plan.episodeIds.every((episodeId) => {
 					const episode = item.episodes.find((e) => e.id === episodeId);
-					if (
-						!episode ||
-						!viewer.episodes.some(
+					return (
+						!!episode &&
+						viewer.episodes.some(
 							(e) =>
 								e.seasonNumber === episode.seasonNumber &&
 								e.episodeNumber === episode.episodeNumber &&
 								e.status === "watched",
 						)
-					)
-						throw createInternalError(
-							"All selected users must have watched every selected episode",
-						);
-				}
+					);
+				}),
+			);
+			if (
+				input.watchedPolicy === "any-selected"
+					? !watchedByViewer.some(Boolean)
+					: !watchedByViewer.every(Boolean)
+			)
+				throw createInternalError(
+					"Selected users have not watched every approved episode",
+				);
 		}
 	}
 	return { plan, watch: watch ?? null };
@@ -212,6 +321,11 @@ export async function executeLibraryAction(
 	prepared: Awaited<ReturnType<typeof prepareLibraryAction>>,
 	deps: LibraryDependencies,
 ) {
+	const refreshed = await prepareLibraryAction(input, deps);
+	if (JSON.stringify(refreshed) !== JSON.stringify(prepared))
+		throw createInternalError(
+			"Exact library/watch plan changed before monitoring; approval consumed without execution",
+		);
 	const { plan } = prepared;
 	const config = await loadConfigFromEnvOnly();
 	const service = config.services[plan.item.service];
@@ -247,6 +361,12 @@ export async function executeLibraryAction(
 		.passthrough()
 		.parse(await fetchJson(endpoint, { headers }));
 	const changes: Array<{ step: string; id: number }> = [];
+	const itemMonitoringChange =
+		!plan.seasons.length &&
+		!input.episodeIds?.length &&
+		(input.target !== "files" ||
+			plan.item.mediaKind === "movie" ||
+			plan.episodeIds.length === plan.item.episodes.length);
 	if (plan.seasons.length) {
 		if (
 			!object.seasons ||
@@ -260,8 +380,7 @@ export async function executeLibraryAction(
 				? { ...s, monitored: plan.monitored }
 				: s,
 		);
-	} else if (!input.episodeIds?.length && input.target !== "files")
-		object.monitored = plan.monitored;
+	} else if (itemMonitoringChange) object.monitored = plan.monitored;
 	await fetchJson(endpoint, {
 		method: "PUT",
 		headers,
@@ -284,9 +403,7 @@ export async function executeLibraryAction(
 							(s) => s.seasonNumber === n && s.monitored === plan.monitored,
 						),
 				)
-			: !input.episodeIds?.length &&
-				input.target !== "files" &&
-				readback.monitored !== plan.monitored
+			: itemMonitoringChange && readback.monitored !== plan.monitored
 	)
 		throw createInternalError(
 			"Monitoring mutation may have succeeded but readback failed; do not retry deletion",
@@ -325,6 +442,7 @@ export async function executeLibraryAction(
 			);
 	}
 	if (!plan.deleteFiles) return { ok: true, data: { changes, verified: true } };
+	const deletedFileIds = new Set<number>();
 	for (const file of plan.files) {
 		try {
 			const fresh = await deps.loadLibrarySnapshot([plan.item.service]);
@@ -335,15 +453,21 @@ export async function executeLibraryAction(
 				!fresh.complete ||
 				!item ||
 				!item.complete ||
-				JSON.stringify(item.providerIds) !==
-					JSON.stringify(plan.item.providerIds)
+				JSON.stringify(retentionIdentity(item)) !==
+					JSON.stringify(retentionIdentity(plan.item))
 			)
 				throw createInternalError("Library identity changed during cleanup");
-			const watch = await deps.getWatchEvidence(item, input.users ?? []);
+			const watch = await actionWatchEvidence(
+				item,
+				plan,
+				input.users ?? [],
+				deps,
+				deletedFileIds,
+			);
 			if (
 				!watch.complete ||
 				watch.activePlayback !== false ||
-				watch.favourite !== false
+				favouriteProtected(watch, input)
 			)
 				throw createInternalError("Playback protection changed during cleanup");
 			const current = item.files.find((f) => f.id === file.id);
@@ -361,6 +485,7 @@ export async function executeLibraryAction(
 				exact.files.some((f) => f.id === file.id)
 			)
 				throw createInternalError("Deletion accepted but absence not verified");
+			deletedFileIds.add(file.id);
 			changes.push({ step: "file_absence_verified", id: file.id });
 		} catch {
 			return {

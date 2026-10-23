@@ -6,7 +6,7 @@ This is a development candidate, not an installed or published release. Do not r
 
 The existing tool names remain, but removal authority changes incompatibly: a returned `confirmationToken` no longer authorises queue, downloader, file or library deletion. `remove_and_regrab` is included. Internal diagnostics cannot bypass this boundary. Imports, adds, searches, profile changes and comments remain mutations requiring operator authority even though they are not removals.
 
-The intended flow is:
+The implemented caller flow is:
 
 1. Inspect exact services and media. Supply explicit deletion options and, for library file cleanup, explicit media-server/user scopes.
 2. Call `request_approval` with the intended tool and arguments. The server re-reads the target and creates a durable plan; the caller cannot supply a fabricated approved manifest.
@@ -31,8 +31,8 @@ Rolling back the software does not restore deleted media. Rolling back to an old
 
 - New season/file mutations use reviewed ARR v3 contracts only. Strict v5 and `auto` are rejected rather than silently downgraded for these new mutations; existing operations retain their documented adapter policies.
 - Season cleanup currently requires an ended series. A lack of known future air dates is not proof a continuing season is complete.
-- Media-server watched data is per user. No records, inaccessible users and truncated results remain unknown. Current watched flags and summary counters are not a complete playback history.
+- Media-server watched data is per user. No records, inaccessible users and truncated results remain unknown. Plex summaries require explicitly bound per-user tokens; favourites/watchlist are unsupported and require explicit `allowUnsupportedFavourites:true` to waive that capability only (default false). Jellyfin event history is unsupported; summary state is not a complete playback history. `watchState:"unwatched"` means current explicit flag, not lifetime never-watched status. Other unknown/partial/protected evidence still blocks.
 - File-size estimates are logical removable bytes, not guaranteed filesystem free space. Hardlinks, snapshots and shared storage can differ.
 - A new target/file, changed monitoring or material watch/protection evidence requires a fresh reviewed plan. Freshness checks cannot provide an atomic lock against another administrator or upstream process.
 
-See the provider, approval and retention rule contracts for exact schemas and supported data sources. Final release evidence must state which contracts were verified with synthetic local providers versus an authorised live deployment.
+See [provider contracts](library-provider-contracts.md), [approval protocol](approval-protocol.md), [retention rules/CLI](retention-rules.md) and [policy options](retention-policy-options.md) for exact schemas and supported data sources. Final release evidence must state which contracts were verified with synthetic local providers versus an authorised live deployment.

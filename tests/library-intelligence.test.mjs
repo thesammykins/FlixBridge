@@ -197,6 +197,7 @@ test("Jellyfin isolates viewer summaries, exact joins, favourites and active ses
 							Name: "Different title is fine",
 							Type: "Movie",
 							ProviderIds: { Tmdb: "100", Imdb: "tt123" },
+							MediaSources: [{ Path: movieFile.path }],
 							UserData: {
 								Played: user === "alice",
 								PlaybackPositionTicks: user === "bob" ? 10 : 0,
@@ -225,7 +226,15 @@ test("Jellyfin isolates viewer summaries, exact joins, favourites and active ses
 	);
 	assert.equal(result.favourite, true);
 	assert.equal(result.activePlayback, false);
-	sessions = [{ UserId: "not-selected", NowPlayingItem: { Id: "copy-a" } }];
+	sessions = [
+		{
+			UserId: "not-selected",
+			NowPlayingItem: {
+				Id: "copy-a",
+				MediaSources: [{ Path: movieFile.path }],
+			},
+		},
+	];
 	assert.equal((await getWatchEvidence(item, users)).activePlayback, true);
 	const status = await runLibraryTool("watch_status", {
 		service: "radarr-test",
@@ -391,6 +400,7 @@ test("Plex uses configured per-user tokens, exact GUIDs and real account-scoped 
 								Guid: [{ id: "tmdb://100" }, { id: "imdb://tt123" }],
 								viewCount: 1,
 								lastViewedAt: 100,
+								Media: [{ Part: [{ file: movieFile.path }] }],
 							},
 						],
 					},
@@ -403,8 +413,23 @@ test("Plex uses configured per-user tokens, exact GUIDs and real account-scoped 
 					MediaContainer: {
 						size: 1,
 						Metadata: [
-							{ ratingKey: "7", type: "movie", title: "Playing elsewhere" },
+							{
+								ratingKey: "7",
+								type: "movie",
+								title: "Playing elsewhere",
+								Media: [{ Part: [{ file: movieFile.path }] }],
+							},
 						],
+					},
+				},
+			];
+		if (url.pathname === "/prefix/:/prefs")
+			return [
+				200,
+				{
+					MediaContainer: {
+						size: 1,
+						Setting: [{ id: "FriendlyName", value: "Fixture" }],
 					},
 				},
 			];
@@ -445,7 +470,8 @@ test("Plex uses configured per-user tokens, exact GUIDs and real account-scoped 
 	assert.equal(evidence.activePlayback, true);
 	assert.equal(evidence.favourite, null);
 	assert.equal(evidence.complete, false);
-	assert.ok(evidence.blockers.some((b) => /favourite/i.test(b)));
+	// Known unsupported Plex favourites are a limitation (policy-option opt-in), not a failed read.
+	assert.ok(evidence.limitations.some((b) => /favourite/i.test(b)));
 	const events = await runLibraryTool("watch_history", {
 		server: "plex-test",
 		userId: "9",
@@ -756,6 +782,23 @@ test("Jellyfin paginates every candidate and matches episodes by coordinates, no
 				IsFavorite: false,
 				LastPlayedDate: "2026-01-01T00:00:00Z",
 			};
+			if (url.searchParams.get("IncludeItemTypes") === "Season")
+				return [
+					200,
+					{
+						TotalRecordCount: 1,
+						Items: [
+							{
+								Id: "season-1",
+								Name: "Season",
+								Type: "Season",
+								SeriesId: "root",
+								IndexNumber: 1,
+								UserData: state,
+							},
+						],
+					},
+				];
 			if (url.searchParams.get("ParentId"))
 				return [
 					200,
@@ -770,7 +813,7 @@ test("Jellyfin paginates every candidate and matches episodes by coordinates, no
 							IndexNumber: ep,
 							MediaSources: ambiguous
 								? [{ Id: "a" }, { Id: "b" }]
-								: [{ Id: "a" }],
+								: [{ Id: "a", Path: "/series/double.mkv" }],
 							UserData: { ...state, Played: ep === 1 },
 						})),
 					},

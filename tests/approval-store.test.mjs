@@ -48,7 +48,9 @@ test("durable immutable private records deduplicate and cancellation is terminal
 	assert.equal(original.plan.targets[0].fileId, 7);
 	assert.equal((await store.create(original.plan)).id, original.id);
 	const reloaded = new approval.ApprovalStore(directory);
-	assert.deepEqual(await reloaded.get(original.id), original);
+	const { newRequest, ...durableRecord } = original;
+	assert.equal(newRequest, true);
+	assert.deepEqual(await reloaded.get(original.id), durableRecord);
 	assert.equal((await reloaded.cancel(original.id)).state, "cancelled");
 	assert.notEqual((await store.create(original.plan)).id, original.id);
 	assert.equal((await stat(directory)).mode & 0o777, 0o700);

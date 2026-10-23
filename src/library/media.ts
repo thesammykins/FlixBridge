@@ -9,6 +9,107 @@ export interface MediaServerConfig {
 	baseUrl: string;
 	token: string;
 	prefix: string;
+	pathMappings?: Array<{ arrRoot: string; serverRoot: string }>;
+}
+// Compare literal components, never resolve symlinks, case-fold, trim or repair IDs/paths.
+export function pathSeparator(path: string): "/" | "\\" | undefined {
+	if (
+		[...path].some(
+			(char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127,
+		)
+	)
+		return;
+	const separator =
+		path.startsWith("/") && !path.includes("\\")
+			? "/"
+			: /^[A-Za-z]:\\/.test(path) && !path.includes("/")
+				? "\\"
+				: undefined;
+	if (!separator) return;
+	const tail = path.slice(separator === "/" ? 1 : 3);
+	if (
+		tail.length > 0 &&
+		tail.split(separator).some((part) => !part || part === "." || part === "..")
+	)
+		return;
+	return separator;
+}
+function underRoot(path: string, root: string): boolean {
+	const separator = pathSeparator(root);
+	return (
+		!!separator &&
+		(path === root ||
+			path.startsWith(root.endsWith(separator) ? root : `${root}${separator}`))
+	);
+}
+function pathMappings(
+	prefix: string,
+): NonNullable<MediaServerConfig["pathMappings"]> {
+	const names = new Set<string>();
+	for (const key of Object.keys(process.env).filter((key) =>
+		key.startsWith(`${prefix}_PATH_`),
+	)) {
+		const match = key
+			.slice(prefix.length)
+			.match(/^_PATH_([A-Z0-9_]+)_(ARR|SERVER)_ROOT$/);
+		if (!match?.[1])
+			throw createInternalError("Invalid path mapping configuration key");
+		names.add(match[1]);
+	}
+	const mappings = [...names].sort().map((name) => {
+		const arrRoot = process.env[`${prefix}_PATH_${name}_ARR_ROOT`];
+		const serverRoot = process.env[`${prefix}_PATH_${name}_SERVER_ROOT`];
+		if (
+			!arrRoot ||
+			!serverRoot ||
+			!pathSeparator(arrRoot) ||
+			!pathSeparator(serverRoot)
+		)
+			throw createInternalError(
+				"Incomplete or noncanonical absolute path mapping roots",
+			);
+		return { arrRoot, serverRoot };
+	});
+	for (const [index, mapping] of mappings.entries())
+		if (
+			mappings
+				.slice(index + 1)
+				.some(
+					(other) =>
+						underRoot(mapping.arrRoot, other.arrRoot) ||
+						underRoot(other.arrRoot, mapping.arrRoot) ||
+						underRoot(mapping.serverRoot, other.serverRoot) ||
+						underRoot(other.serverRoot, mapping.serverRoot),
+				)
+		)
+			throw createInternalError("Ambiguous overlapping path mapping roots");
+	return mappings;
+}
+export function serverFilePath(
+	server: MediaServerConfig,
+	arrPath: string,
+): string | undefined {
+	const separator = pathSeparator(arrPath);
+	if (!separator) return;
+	const matches = (server.pathMappings ?? []).filter((mapping) =>
+		underRoot(arrPath, mapping.arrRoot),
+	);
+	if (matches.length > 1) return;
+	const mapping = matches[0];
+	if (!mapping) return arrPath;
+	const suffix = arrPath
+		.slice(mapping.arrRoot.length)
+		.split(separator)
+		.filter(Boolean);
+	const serverSeparator = pathSeparator(mapping.serverRoot);
+	if (!serverSeparator) return;
+	return (
+		mapping.serverRoot +
+		(suffix.length
+			? (mapping.serverRoot.endsWith(serverSeparator) ? "" : serverSeparator) +
+				suffix.join(serverSeparator)
+			: "")
+	);
 }
 export function serverConfigs(): MediaServerConfig[] {
 	const servers: MediaServerConfig[] = [];
@@ -76,13 +177,16 @@ export function serverConfigs(): MediaServerConfig[] {
 				baseUrl: parsed.toString().replace(/\/+$/, ""),
 				token,
 				prefix,
+				pathMappings: pathMappings(prefix),
 			};
 			const prior = bySlug.get(slug);
 			if (
 				prior &&
 				(prior.baseUrl !== config.baseUrl ||
 					prior.token !== config.token ||
-					prior.name !== name)
+					prior.name !== name ||
+					JSON.stringify(prior.pathMappings) !==
+						JSON.stringify(config.pathMappings))
 			)
 				throw createInternalError(
 					"Conflicting media server configuration aliases",
@@ -239,6 +343,13 @@ export const plexItemSchema = z.object({
 	viewCount: count.optional(),
 	viewOffset: count.optional(),
 	lastViewedAt: count.optional(),
+	Media: z
+		.array(
+			z.object({
+				Part: z.array(z.object({ file: z.string().optional() })).optional(),
+			}),
+		)
+		.optional(),
 });
 export type PlexItem = z.infer<typeof plexItemSchema>;
 export function plexIds(item: PlexItem): ProviderIds {

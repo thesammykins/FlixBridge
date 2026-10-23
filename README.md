@@ -1,6 +1,6 @@
 # FlixBridge
 
-A stdio MCP server for operating Sonarr, Radarr, and SABnzbd, with optional Plex reported-issue triage. Supports multiple ARR instances through environment variables. Requires Node.js 20 or later and at least one configured Sonarr or Radarr instance.
+A stdio MCP server for Sonarr, Radarr and SABnzbd operations, Plex/Jellyfin library and per-user watch intelligence, optional ratings/reviews and calendars, and deterministic human-approved retention. Requires Node.js 20 or later. Configure an ARR or media-server integration through environment variables; cleanup requires an ARR library and explicit viewers.
 
 ## Connect an MCP client
 
@@ -25,14 +25,14 @@ This runs the npm release, not a local checkout. For reproducible deployments, s
 
 ## Operations and safety
 
-Call `list_services` first and use the returned names. Tools cover queue/status monitoring, search/add, quality profiles, history, imports, removal, diagnostics, and Plex reports. There is no web dashboard or background polling service.
+Call `list_services` first and use the returned names. Tools cover queue/status monitoring, search/add, quality profiles, import history, imports, removal, diagnostics, Plex reports, library browsing, watch state/history, ratings/reviews, calendars and retention proposals. There is no web dashboard or automatic deletion. The optional `flixbridge-retention` CLI evaluates rules or runs a separately launched authenticated callback bridge; installing or connecting MCP does not install a schedule or start that listener.
 
 - Diagnostics default to read-only (`autoFix:false`); keep it explicit for inspection. Opting into `autoFix:true` requires authorization.
-- `manual_import` and `remove_content` require a dry run and a returned confirmation token before execution.
+- `manual_import` retains its dry run and process-local confirmation token. Every explicit removal scope (queue, downloader, whole title, season, files, and Plex `remove_and_regrab`) now requires a durable authenticated human `approvalId`; preview tokens alone cannot authorize removal. `update_monitoring` also requires approval for execution. There is no MCP self-approve tool.
 - Add, retry/search, profile changes, and Plex comments also mutate state. Require operator authority even when a tool has no token gate.
 - Read back the exact affected records after every mutation. An accepted command or a report marked “fixed” does not establish successful playback.
 
-Optional configuration: `RADARR_URL` / `RADARR_API_KEY`, `SABNZBD_URL` / `SABNZBD_API_KEY`, and `PLEX_BASE_URL` / `PLEX_TOKEN`. Multi-instance variables use `SONARR_<SLUG>_URL` / `SONARR_<SLUG>_API_KEY` (also Radarr and SABnzbd). Configuration is environment-only; `.env` files are not loaded automatically.
+Optional configuration: `RADARR_URL` / `RADARR_API_KEY`, `SABNZBD_URL` / `SABNZBD_API_KEY`, and `PLEX_BASE_URL` / `PLEX_TOKEN`. Multi-instance variables use `SONARR_<SLUG>_URL` / `SONARR_<SLUG>_API_KEY` (also Radarr and SABnzbd). Configuration is environment-only; `.env` files are not loaded automatically. `FLIX_BRIDGE_STATE_DIR` explicitly selects private rules/approval storage, not a credential/configuration file. See [state, viewers and approval configuration](https://github.com/thesammykins/FlixBridge/blob/main/docs/configuration.md#library-watch-and-review-providers).
 
 ## Documentation
 
@@ -44,7 +44,12 @@ Optional configuration: `RADARR_URL` / `RADARR_API_KEY`, `SABNZBD_URL` / `SABNZB
 
 ## Source status and compatibility
 
-This documentation describes the **1.0 source line**, not a distribution-availability claim. Its 20 tools retain the existing 19 names/required inputs and add read-only `library_statistics` for Sonarr API v5 (no legacy library scan). Source tags, GitHub release assets and npm registry versions are separate; an unpinned npm command may select an older release. Check the actual available version or build a reviewed source revision; see [installation](https://github.com/thesammykins/FlixBridge/blob/main/docs/installation.md#tagged-github-release).
+This documentation describes the **1.1.0 source candidate**, not an installed or published release. It exposes 32 tools: the existing 20 names plus 12 library/watch, approval and retention tools. Removal execution has an intentionally stronger required-authority contract. Source tags, GitHub assets and npm registry versions are separate; an unpinned npm command may select an older release. Build a reviewed revision or verify the chosen published artifact; see [installation](https://github.com/thesammykins/FlixBridge/blob/main/docs/installation.md#tagged-github-release).
+
+New library intelligence and cleanup use reviewed ARR v3 contracts only; v5 support for older tools does not imply library support. Season cleanup currently requires an ended series. Jellyfin exposes watch summaries, not playback-event history. Plex summaries require explicit per-user token bindings; favourites/watchlist are unsupported, so retention blocks them by default unless `allowUnsupportedFavourites:true` is explicitly reviewed. `watchState:"unwatched"` means currently unwatched, never proof of historical never-watched status. Missing/partial/error evidence stays unknown.
+
+- [Provider contracts](https://github.com/thesammykins/FlixBridge/blob/main/docs/library-provider-contracts.md) · [Human approval protocol](https://github.com/thesammykins/FlixBridge/blob/main/docs/approval-protocol.md)
+- [Deterministic rules and CLI](https://github.com/thesammykins/FlixBridge/blob/main/docs/retention-rules.md) · [Policy options](https://github.com/thesammykins/FlixBridge/blob/main/docs/retention-policy-options.md) · [Retention migration](https://github.com/thesammykins/FlixBridge/blob/main/docs/retention-migration.md)
 
 Sonarr API policy is per instance: omission preserves v3 without discovery; explicit `3` or `5` discovers and verifies that family; `auto` uses v5 only for reviewed workflows and retains v3 for unported operations when advertised. Strict v5 rejects those operations before writes. A Sonarr application version is not its HTTP API family. See [configuration and route limits](https://github.com/thesammykins/FlixBridge/blob/main/docs/configuration.md#sonarr-api-policy).
 

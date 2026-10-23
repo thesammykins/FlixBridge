@@ -34,7 +34,12 @@ export interface LibraryItem {
 	status: string;
 	monitored: boolean;
 	tags: string[];
-	ratings: Array<{ source: string; value: number; scale: number; votes?: number }>;
+	ratings: Array<{
+		source: string;
+		value: number;
+		scale: number;
+		votes?: number;
+	}>;
 	seasons: Array<{ seasonNumber: number; monitored: boolean }>;
 	episodes: LibraryEpisode[];
 	files: LibraryFile[];
@@ -58,11 +63,21 @@ export interface WatchEvidence {
 	complete: boolean;
 	activePlayback: boolean | null;
 	favourite: boolean | null;
+	/** False means a known unsupported capability, never a failed favourite read. */
+	favouriteSupported?: boolean;
+	limitations?: string[];
 	viewers: Array<{
 		server: string;
 		userId: string;
 		status: "watched" | "partial" | "unwatched" | "unknown";
 		lastWatchedAt?: string;
+		/** Proven single physical copies; provider IDs alone never establish this join. */
+		copies?: Array<{
+			arrFileId: number;
+			arrPath: string;
+			serverItemId: string;
+			serverPath: string;
+		}>;
 		episodes: Array<{
 			seasonNumber: number;
 			episodeNumber: number;

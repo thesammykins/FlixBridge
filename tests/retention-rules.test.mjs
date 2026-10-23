@@ -64,14 +64,14 @@ test("rules are disabled initially, immutable revisions use optimistic concurren
 			{ id: one.id, expectedVersion: 1, enabled: false, evaluationTime: time },
 			options,
 		),
-		/version/i,
+		{ message: /version/i },
 	);
 	await assert.rejects(
 		createRule(
 			{ id: one.id, name: "duplicate", rule, evaluationTime: time },
 			options,
 		),
-		/exists/i,
+		{ message: /exists/i },
 	);
 	await assert.rejects(
 		createRule(
@@ -181,10 +181,18 @@ test("scheduler reserves a due version once, uses inclusive intervals and never 
 		},
 		options,
 	);
+	assert.deepEqual(
+		await runDueRules(
+			{ evaluationTime: "2026-10-21T00:00:00Z" },
+			evaluate,
+			options,
+		),
+		[],
+	);
 	assert.equal(
 		(
 			await runDueRules(
-				{ evaluationTime: "2026-10-21T00:00:00Z" },
+				{ evaluationTime: "2026-10-22T00:00:00Z" },
 				evaluate,
 				options,
 			)
@@ -209,11 +217,13 @@ test("storage fails closed without explicit configuration, on corruption and on 
 	const previous = process.env.FLIX_BRIDGE_STATE_DIR;
 	Reflect.deleteProperty(process.env, "FLIX_BRIDGE_STATE_DIR");
 	try {
-		await assert.rejects(listRules(), /FLIX_BRIDGE_STATE_DIR/);
+		await assert.rejects(listRules(), { message: /FLIX_BRIDGE_STATE_DIR/ });
 	} finally {
 		if (previous !== undefined) process.env.FLIX_BRIDGE_STATE_DIR = previous;
 	}
-	await assert.rejects(listRules({ stateDir: "relative" }), /absolute/);
+	await assert.rejects(listRules({ stateDir: "relative" }), {
+		message: /absolute/,
+	});
 	await createRule(
 		{ id: "movies", name: "Movies", rule, evaluationTime: time },
 		options,
@@ -270,7 +280,7 @@ test("scheduler failure is reserved durably, secret-free and does not retry the 
 			evaluate,
 			options,
 		),
-		/precedes/,
+		{ message: /precedes/ },
 	);
 	const disk = JSON.parse(
 		await readFile(join(options.stateDir, "retention", "rules.json"), "utf8"),

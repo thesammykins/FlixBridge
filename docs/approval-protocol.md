@@ -5,7 +5,7 @@ This engine stores proposals and human decisions; it never removes media or runs
 ## Configuration and process boundary
 
 - `FLIX_BRIDGE_STATE_DIR`: explicit absolute, canonical (no symlink components) path. No default state location or file-based credential configuration. A constructor directory argument is the explicit programmatic equivalent.
-- `FLIX_BRIDGE_APPROVAL_SECRET`: at least 32 bytes; generate a random 256-bit or stronger secret, inject from the operator's credential manager into the trusted bridge/adapter environment only. Do not print it, include it in plans, expose it through MCP, or give it to an LLM. `ApprovalStore` needs no signing secret to create, inspect, cancel, claim or finish requests.
+- `FLIX_BRIDGE_APPROVAL_SECRET`: at least 32 bytes; generate a random 256-bit or stronger secret, inject from the operator's credential manager into the trusted bridge/adapter environment, and the optional outbound notifier environment only if configured. Do not print it, include it in plans, expose it through MCP, or give it to an LLM. `ApprovalStore` needs no signing secret to create, inspect, cancel, claim or finish requests.
 - `FLIX_BRIDGE_APPROVAL_ACTORS`: explicit comma-separated authenticated actor identifiers, e.g. provider-scoped stable account IDs. No actor is implicitly trusted. Keep configuration consistent across the bridge and any trusted decision adapter.
 - `FLIX_BRIDGE_APPROVAL_WEBHOOK_URL`: optional operator-configured notification receiver. HTTPS required except literal loopback HTTP. Userinfo, query and fragment are rejected; do not put credentials in the URL. Never accept this target from tool arguments.
 
@@ -26,7 +26,7 @@ server.listen(8787); // 127.0.0.1, not Node's wildcard default
 
 ```ts
 new ApprovalStore(directory?: string)
-store.create(plan: unknown, opts?: {ttlMs?: number}): Promise<ApprovalRecord>
+store.create(plan: unknown, opts?: {ttlMs?: number}): Promise<ApprovalRecord & {newRequest: boolean}>
 store.get(id: string): Promise<ApprovalRecord>
 store.cancel(id: string): Promise<ApprovalRecord>
 store.claim(id: string, plan: unknown): Promise<ApprovalRecord>
@@ -69,6 +69,12 @@ Reject undefined, functions, symbols (including keys), bigint, NaN/infinity, hol
 - Equivalent active `pending`/`approved`/`claimed` plans deduplicate, retaining the original expiry. `rejected` plans deduplicate permanently, including after their former expiry. `uncertain` plans also remain blocked against automatic retry. There is no reset/renew/reapprove operation.
 - A subsequent explicit `create` after `completed`, `partial`, `failed`, `cancelled`, `expired` or `invalidated` creates a **new pending request**, never inherits the prior actor or approval. A scheduler must not turn these into an automatic retry loop. Any intended repeat still requires a new human decision; rejected/uncertain equivalents cannot be renewed by `create`.
 
+The integrated executor requires affirmative structured postconditions for `completed`; absence of failure-looking text is insufficient. Unverified removal returns `ok:false` while preserving per-target results. Plex remove/regrab stays `partial` with `executionState:"pending"` after verified file absence and accepted replacement work. Unknown deletion absence is `uncertain`. Neither a submitted search nor a pending report comment proves a completed replacement/import or successful playback. Consumed plans are not replayed to improve their status.
+
+Whole-title deletion checks the original claimed file IDs, paths, episode mappings and watch protections at the shared HTTP boundary before every target DELETE, not only before claim or the first target. Targeted ARR detail reads avoid rescanning unrelated titles at that boundary. File cleanup also binds retention-relevant metadata such as tags, ratings and series status; drift after claim or during a batch stops remaining deletion. Season/file scope is retained across recommendation, preparation and refresh rather than broadening favourites to unrelated sibling seasons.
+
+These checks are not a provider-side compare-and-delete transaction. Another administrator or upstream task can still change content between the final successful read and the DELETE; providers do not expose a transactional conditional-delete guarantee here. Keep competing mutations paused for consequential batches. Failed/timed-out evidence reads prevent dispatch and consumed outcomes must be reconciled, not replayed.
+
 No network notification means no consent. Notification failures leave a pending request unchanged and are not automatically retried. `sendApprovalRequest` returns `{sent:false}` when the webhook is unconfigured; with a webhook, it requires a pending, unexpired plan whose public hash still matches, sends once and returns `{sent:true}`. It returns no URL, secret, signature or upstream response. Repeating this explicit notification call does not create/renew an approval.
 
 ## Signed callback
@@ -94,7 +100,7 @@ Sign **exactly** these UTF-8 bytes, with literal newline separators and no trail
 flixbridge.approval.decision.v1\n<TIMESTAMP>\n<EXACT_RAW_JSON_BODY>
 ```
 
-The timestamp HMAC protects freshness; the persisted request protects its fixed expiry; the body binds actor/request/full hash/decision/nonce. Sign and transmit the same body bytes; do not reserialize after signing. A valid HTTP callback returns `200 {"requestId":"...","state":"approved"}` or `rejected`. Authentication failure is 401; invalid schema 400; oversized body 413; wrong content type 415; nonexistent/mismatched/expired/replayed/nonallowlisted or storage-conflicted decisions return generic 409 without private details. Never interpret an ambiguous network timeout as authorization: inspect the store before execution, then claim once.
+The timestamp HMAC protects freshness; the persisted request protects its fixed expiry; the body binds actor/request/full hash/decision/nonce. Sign and transmit the same body bytes; do not reserialize after signing. A trusted adapter may accept a plain yes/no reply only after authenticating its sender and uniquely resolving the referenced request/full hash/expiry; this module does not parse chat messages or infer the latest request. A valid HTTP callback returns `200 {"requestId":"...","state":"approved"}` or `rejected`. Authentication failure is 401; invalid schema 400; oversized body 413; wrong content type 415; nonexistent/mismatched/expired/replayed/nonallowlisted or storage-conflicted decisions return generic 409 without private details. Never interpret an ambiguous network timeout as authorization: inspect the store before execution, then claim once.
 
 ## Notification and button references
 
@@ -112,7 +118,7 @@ Canonical reference key order is `decision`, `expiresAt`, `planHash`, `requestId
 
 ## Durable storage and operations
 
-Single-host, local POSIX filesystem only (tested on macOS). The explicit directory must be owned by the service UID, mode `0700`, with no symlink components. Its trusted parent directory must already exist; the store creates only the final private directory and fsyncs the parent entry before using it. Existing permissive paths/files are rejected, not silently chmodded. Ledger files must be regular single-link owned files mode `0600`, opened with `O_NOFOLLOW`. Store the directory under a trusted parent and protect backups equally; the service UID/root/operator is trusted.
+Single-host, local POSIX filesystem only; validate the chosen deployment filesystem separately. The explicit directory must be owned by the service UID, mode `0700`, with no symlink components. Its trusted parent directory must already exist; the store creates only the final private directory and fsyncs the parent entry before using it. Existing permissive paths/files are rejected, not silently chmodded. Ledger files must be regular single-link owned files mode `0600`, opened with `O_NOFOLLOW`. Store the directory under a trusted parent and protect backups equally; the service UID/root/operator is trusted.
 
 One ledger `approvals.json` (16 MiB hard ceiling) holds records and nonce hashes. Each transaction takes a cross-process hard-link lock, reads and validates the ledger/hash, expires stale requests and marks dead claims uncertain, then writes a private exclusive temporary file, fsyncs it, atomically renames it and fsyncs the directory before returning. Rejected operations may still persist expiry/crash-recovery/drift state. No partial JSON file is published. The global lock/linear scan is deliberate for low-volume human approvals; use a reviewed transactional database before scaling, not lock leases or in-memory caches.
 
@@ -128,4 +134,6 @@ npm run check
 npm test
 ```
 
-Tests use real private temporary storage, separate Node processes and SIGKILL, plus loopback HTTP callbacks/receivers. They exercise strict hashing, permissions/symlinks/malformed state, expiry/rejection/drift, immutable snapshots, simultaneous dedup/claims, dead claim/lock recovery, forged/wrong-actor/cross-plan/stale/replayed callbacks, notification HMAC/button references, invalid UTF-8 rejection, secret redaction and redirect non-replay. No production service is contacted or mutated. The repository's existing `npm test` script does not automatically discover `approval-*.test.mjs`; run the explicit command until the parent integrates test discovery.
+These checks exercise local private storage, child processes and loopback callback/notification fixtures. They do not certify live human identity, provider permissions, an installed candidate or publication. The integrated `npm test` includes top-level approval tests; run final gates after integration and distinguish fixture evidence from live authority.
+
+For the packaged entry point use `flixbridge-retention bridge --port 8787` after [configuration](configuration.md#private-state-and-human-approval); it listens only when explicitly launched. See [tool workflow](usage.md#library-intelligence-and-retention), [rules/CLI](retention-rules.md#cli-and-opt-in-scheduling) and [migration](retention-migration.md).

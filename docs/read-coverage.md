@@ -58,8 +58,7 @@ API in this change, and comment ordering is not inferred.
 
 `listReports(limit = 25)` keeps its existing `OperationResult<PlexReport[]>`
 contract and delegates to the new page method. Its array omits page-level
-coverage, so completeness-aware callers must use `listReportsPage`. Tool-schema
-and dispatcher cursor wiring are separate from this service change.
+coverage, so completeness-aware callers must use `listReportsPage`. The integrated `reported_issues` tool exposes `after`, `hasMore`, `nextCursor`, `complete` and per-report comment coverage; remediation still searches only its first 100 reports.
 
 GraphQL errors, including errors alongside partial data, fail the entire page.
 A comment fetch failure is not converted to empty comments. The existing
@@ -98,16 +97,4 @@ npm test
 npx --no-install biome check src/services/plex/reports.ts src/services/shared.ts tests/read-coverage-*.test.mjs
 ```
 
-The new tests import built service modules and mock only `globalThis.fetch`,
-exercising the actual HTTP body reader, JSON parser, schemas, and error serializer.
-Fixtures are synthetic, not live captures. No live services or new dependencies
-are used. The standalone read-coverage tests must be invoked explicitly; existing
-package scripts are unchanged.
-
-RED was observed before implementation for the missing page method, invalid
-pagination inputs, report boundaries, comment coverage/validation, control-character
-IDs/cursors, terminal cursor echoes, history's hidden 20-item clip, legacy history
-truncation, and malformed history totals/identities. GREEN: 14 new tests passed;
-`npm test` passed 225 unit tests and 26 MCP tests. Repository-wide `npm run check`
-has a pre-existing formatting failure in `src/library/model.ts`; scoped changed-file
-checks pass. That unrelated file is intentionally untouched.
+The read-coverage tests exercise built service modules through fetch/HTTP parsing and synthetic fixtures, not live provider coverage. The integrated `npm test` includes the top-level read-coverage files. Commands above are verification instructions, not final-candidate pass counts, live validation or publication claims. See [tool reference](api-reference.md), [provider contracts](library-provider-contracts.md) and [security limits](security-audit.md).

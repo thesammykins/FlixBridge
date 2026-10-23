@@ -299,7 +299,7 @@ export class ApprovalStore {
 	async create(
 		plan: unknown,
 		opts: { ttlMs?: number } = {},
-	): Promise<ApprovalRecord> {
+	): Promise<ApprovalRecord & { newRequest: boolean }> {
 		const serialized = canonicalPlan(plan);
 		const snapshot: unknown = JSON.parse(serialized);
 		if (canonicalPlan(redact(snapshot)) !== serialized)
@@ -308,7 +308,8 @@ export class ApprovalStore {
 		const ttl = opts.ttlMs ?? 30 * 60 * 1000;
 		if (!Number.isSafeInteger(ttl) || ttl < 1 || ttl > 24 * 60 * 60 * 1000)
 			fail("Invalid approval expiry");
-		return this.#transaction((ledger) => {
+		let newRequest = false;
+		const result = await this.#transaction((ledger) => {
 			const existing = ledger.records.find(
 				(entry) =>
 					entry.planHash === planHash &&
@@ -317,6 +318,7 @@ export class ApprovalStore {
 					),
 			);
 			if (existing) return existing;
+			newRequest = true;
 			const now = Date.now();
 			const record: ApprovalRecord = {
 				id: randomUUID(),
@@ -329,6 +331,7 @@ export class ApprovalStore {
 			ledger.records.push(record);
 			return record;
 		});
+		return { ...result, newRequest };
 	}
 
 	async get(id: string): Promise<ApprovalRecord> {

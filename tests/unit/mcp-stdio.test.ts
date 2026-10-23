@@ -37,6 +37,18 @@ const EXPECTED_TOOLS = [
 	"remediate_reported_issue",
 	"update_quality_profile",
 	"library_statistics",
+	"library_list",
+	"media_detail",
+	"watch_status",
+	"watch_history",
+	"upcoming_media",
+	"request_approval",
+	"approval_status",
+	"cancel_approval",
+	"update_monitoring",
+	"cleanup_candidates",
+	"retention_rules",
+	"retention_evaluate",
 ];
 
 function isJsonObject(value: unknown): value is Record<string, unknown> {

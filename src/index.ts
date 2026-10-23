@@ -23,14 +23,21 @@ import {
 	monitoringInput,
 } from "./approval-tools.js";
 import { sendApprovalRequest } from "./approval/bridge.js";
+import { hashPlan } from "./approval/hash.js";
 import { ApprovalStore } from "./approval/store.js";
 import { loadConfigFromEnvOnly } from "./config.js";
-import { createInternalError, serializeError } from "./core.js";
+import { createInternalError, isTrustedError, serializeError } from "./core.js";
 import { debugToolTiming } from "./debug.js";
 import {
+	classifyExecution,
+	verifyRemediationAbsence,
+} from "./execution-outcome.js";
+import {
 	executeLibraryAction,
+	favouriteProtected,
 	prepareLibraryAction,
 } from "./library/actions.js";
+import { loadDetail } from "./library/arr.js";
 import {
 	getWatchEvidence,
 	libraryTools,
@@ -46,7 +53,11 @@ import {
 	withRemovalAuthority,
 } from "./removal-authority.js";
 import { ToolAdmission } from "./request-context.js";
+import { recommendationArguments } from "./retention-requests.js";
+import { getRule } from "./retention/rules.js";
 import { retentionTools, runRetentionTool } from "./retention/tools.js";
+import { cleanupCandidates } from "./retention/tools.js";
+import { loadRuntimeConfig } from "./runtime-config.js";
 import type {
 	ManualImportPreviewData,
 	OperationResult,
@@ -153,7 +164,22 @@ const tools: Tool[] = [
 				confirmationToken: { type: "string" },
 				queueTimeoutMs: { type: "number" },
 				approvalId: { type: "string" },
-				itemId: { type: "integer", minimum: 1 },
+				allowUnsupportedFavourites: { type: "boolean" },
+				watchedPolicy: {
+					type: "string",
+					enum: ["all-selected", "any-selected"],
+				},
+				retentionRuleId: { type: "string" },
+				retentionRuleVersion: {
+					type: "integer",
+					minimum: 1,
+					maximum: Number.MAX_SAFE_INTEGER,
+				},
+				itemId: {
+					type: "integer",
+					minimum: 1,
+					maximum: Number.MAX_SAFE_INTEGER,
+				},
 				seasonNumbers: {
 					type: "array",
 					minItems: 1,
@@ -350,6 +376,7 @@ const tools: Tool[] = [
 				comment: { type: "string" },
 				dryRun: { type: "boolean" },
 				confirmationToken: { type: "string" },
+				approvalId: { type: "string", format: "uuid" },
 			},
 			required: ["reportId", "action"],
 		},
@@ -437,6 +464,24 @@ const OutputEnvelope = z
 	.strict();
 for (const tool of tools) {
 	tool.outputSchema = outputSchema;
+	if (
+		[...libraryTools, ...retentionTools, ...approvalTools].some(
+			(extended) => extended === tool,
+		)
+	) {
+		tool.inputSchema.additionalProperties = false;
+		tool.annotations ??= {
+			readOnlyHint: tool.name === "approval_status",
+			destructiveHint: ["update_monitoring", "cancel_approval"].includes(
+				tool.name,
+			),
+			idempotentHint: false,
+			openWorldHint: !["approval_status", "cancel_approval"].includes(
+				tool.name,
+			),
+		};
+		continue;
+	}
 	tool.inputSchema.additionalProperties = false;
 	for (const [name, property] of Object.entries(
 		tool.inputSchema.properties ?? {},
@@ -546,6 +591,13 @@ export const InputSchema = z.object({
 		.max(100)
 		.optional(),
 	approvalId: z.string().uuid().optional(),
+	allowUnsupportedFavourites: z.boolean().optional(),
+	watchedPolicy: z.enum(["all-selected", "any-selected"]).optional(),
+	retentionRuleId: z
+		.string()
+		.regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/)
+		.optional(),
+	retentionRuleVersion: z.number().int().positive().safe().optional(),
 	episodeIds: z
 		.array(z.number().int().positive().safe())
 		.min(1)
@@ -647,11 +699,10 @@ export class ArrMcpServer {
 			const { name, arguments: args } = request.params;
 			const tool = tools.find((tool) => tool.name === name);
 			if (!tool) throw new McpError(ErrorCode.InvalidParams, "Unknown tool");
+			let result: unknown;
 			try {
-				return this.toolResult(
-					await this.admission.run(ctx.mcpReq.signal, () =>
-						this.callTool(name, args ?? {}),
-					),
+				result = await this.admission.run(ctx.mcpReq.signal, () =>
+					this.callTool(name, args ?? {}),
 				);
 			} catch (error) {
 				if (
@@ -663,7 +714,21 @@ export class ArrMcpServer {
 						error: createInternalError(error.message),
 					});
 				}
-				return this.toolResult({ ok: false, error: serializeError(error) });
+				if (error instanceof z.ZodError)
+					return this.toolResult({
+						ok: false,
+						error: createInternalError(
+							"Invalid arguments: check the tool's advertised fields and bounds",
+						),
+					});
+				if (isTrustedError(error))
+					return this.toolResult({ ok: false, error: serializeError(error) });
+				throw new McpError(ErrorCode.InternalError, "Internal error");
+			}
+			try {
+				return this.toolResult(result);
+			} catch {
+				throw new McpError(ErrorCode.InternalError, "Internal error");
 			}
 		});
 	}
@@ -672,13 +737,25 @@ export class ArrMcpServer {
 		name: string,
 		args: Record<string, unknown> = {},
 	): Promise<unknown> {
+		const descriptor = tools.find((tool) => tool.name === name);
+		if (!descriptor)
+			throw new McpError(ErrorCode.InvalidParams, "Unknown tool");
+		for (const field of descriptor.inputSchema.required ?? [])
+			if (args[field] === undefined)
+				throw new McpError(
+					ErrorCode.InvalidParams,
+					`Missing required field: ${field}`,
+				);
 		if (libraryTools.some((tool) => tool.name === name))
 			return runLibraryTool(name, args);
 		if (retentionTools.some((tool) => tool.name === name))
-			return runRetentionTool(name, args, {
-				loadLibrarySnapshot,
-				getWatchEvidence,
-			});
+			return {
+				ok: true,
+				data: await runRetentionTool(name, args, {
+					loadLibrarySnapshot,
+					getWatchEvidence,
+				}),
+			};
 		if (name === "request_approval") {
 			const request = approvalInput.parse(args);
 			const tool = tools.find((t) => t.name === request.tool);
@@ -701,7 +778,7 @@ export class ArrMcpServer {
 				sent: false,
 				reason: "No approval webhook configured",
 			};
-			if (process.env.FLIX_BRIDGE_APPROVAL_WEBHOOK_URL) {
+			if (record.newRequest && process.env.FLIX_BRIDGE_APPROVAL_WEBHOOK_URL) {
 				try {
 					notification = await sendApprovalRequest(store, record.id);
 				} catch {
@@ -731,59 +808,126 @@ export class ArrMcpServer {
 		return this.executeTool(name, this.parseToolInput(tool, args));
 	}
 
+	private async wholeTitleEvidence(input: z.infer<typeof InputSchema>) {
+		if (!input.service) throw createInternalError("Explicit service required");
+		const ids = this.normalizeNumericIds(
+			this.normalizeIdStrings(input.ids ?? []),
+		);
+		const selected = [];
+		for (const id of ids) selected.push(await loadDetail(input.service, id));
+		if (
+			selected.length !== ids.length ||
+			selected.some(
+				(item) =>
+					!item.complete ||
+					item.service !== input.service ||
+					!ids.includes(item.id),
+			)
+		)
+			throw createInternalError(
+				"Complete exact file manifest required for whole-title removal",
+			);
+		if (input.deleteFiles && !input.users?.length)
+			throw createInternalError(
+				"Explicit users and servers required to protect playback during whole-title removal",
+			);
+		const evidence = [];
+		for (const item of selected) {
+			const watch = input.users?.length
+				? await getWatchEvidence(item, input.users)
+				: null;
+			if (
+				input.deleteFiles &&
+				(!watch?.complete ||
+					watch.activePlayback !== false ||
+					favouriteProtected(watch, input) ||
+					input.users?.some(
+						(user) =>
+							watch.viewers.filter(
+								(viewer) =>
+									viewer.server === user.server &&
+									viewer.userId === user.userId,
+							).length !== 1,
+					))
+			)
+				throw createInternalError(
+					"Playback/favourite protection blocks whole-title deletion",
+				);
+			evidence.push({ item, watch });
+		}
+		return evidence;
+	}
+
 	private async prepareApproval(
 		name: string,
 		input: z.infer<typeof InputSchema>,
 	) {
+		let ruleContext: unknown = null;
+		if (input.retentionRuleId || input.retentionRuleVersion) {
+			if (
+				name !== "remove_content" ||
+				!input.retentionRuleId ||
+				!input.retentionRuleVersion
+			)
+				throw createInternalError(
+					"Rule-bound removal requires an exact rule and version",
+				);
+			const revision = await getRule(input.retentionRuleId);
+			if (!revision.enabled || revision.version !== input.retentionRuleVersion)
+				throw createInternalError(
+					"Retention rule changed or is disabled; request fresh approval",
+				);
+			const evaluation = await cleanupCandidates(
+				{ rule: revision.rule, evaluationTime: new Date().toISOString() },
+				{ loadLibrarySnapshot, getWatchEvidence },
+			);
+			const matches = evaluation.recommendations.filter((candidate) =>
+				Object.entries(recommendationArguments(candidate, revision)).every(
+					([key, value]) =>
+						JSON.stringify(input[key as keyof typeof input]) ===
+						JSON.stringify(value),
+				),
+			);
+			if (matches.length !== 1)
+				throw createInternalError(
+					"Rule eligibility, bounds or proposed action changed; no removal authority",
+				);
+			ruleContext = {
+				id: revision.id,
+				version: revision.version,
+				rule: revision.rule,
+			};
+		}
+		const action =
+			name === "update_monitoring" ||
+			(name === "remove_content" &&
+				["season", "files"].includes(input.target ?? ""))
+				? await prepareLibraryAction(input, {
+						loadLibrarySnapshot,
+						getWatchEvidence,
+					})
+				: undefined;
 		const previewResult = z
 			.object({
 				ok: z.boolean(),
 				data: z.unknown().optional(),
 				error: z.unknown().optional(),
 			})
-			.parse(await this.executeTool(name, { ...input, dryRun: true }, true));
-		if (!previewResult.ok || previewResult.data === undefined)
-			throw createInternalError(
-				"Fresh exact-target preview failed; no approval can be requested",
+			.parse(
+				action
+					? { ok: true, data: action }
+					: await this.executeTool(name, { ...input, dryRun: true }, true),
 			);
+		if (!previewResult.ok || previewResult.data === undefined)
+			throw previewResult.error
+				? serializeError(previewResult.error)
+				: createInternalError(
+						"Fresh exact-target preview failed; no approval can be requested",
+					);
 		const preview = z.record(z.unknown()).parse(previewResult.data);
 		let libraryEvidence: unknown = null;
 		if (name === "remove_content" && input.target === "library") {
-			if (!input.service)
-				throw createInternalError("Explicit service required");
-			const snapshot = await loadLibrarySnapshot([input.service]);
-			const selected = snapshot.items.filter((item) =>
-				input.ids?.includes(item.id),
-			);
-			if (
-				!snapshot.complete ||
-				selected.length !== input.ids?.length ||
-				selected.some((item) => !item.complete)
-			)
-				throw createInternalError(
-					"Complete exact file manifest required for whole-title removal",
-				);
-			if (input.deleteFiles && !input.users?.length)
-				throw createInternalError(
-					"Explicit users and servers required to protect playback during whole-title removal",
-				);
-			const evidence = [];
-			for (const item of selected) {
-				const watch = input.users?.length
-					? await getWatchEvidence(item, input.users)
-					: null;
-				if (
-					input.deleteFiles &&
-					(!watch?.complete ||
-						watch.activePlayback !== false ||
-						watch.favourite !== false)
-				)
-					throw createInternalError(
-						"Playback/favourite protection blocks whole-title deletion",
-					);
-				evidence.push({ item, watch });
-			}
-			libraryEvidence = evidence;
+			libraryEvidence = await this.wholeTitleEvidence(input);
 		}
 		return {
 			manifest: immutablePreview({
@@ -796,13 +940,18 @@ export class ArrMcpServer {
 				}),
 				preview,
 				libraryEvidence,
-				instances: await instanceBindings(),
+				ruleContext,
+				instances: await instanceBindings(
+					input.users?.map((user) => user.server) ?? [],
+					name === "remediate_reported_issue",
+				),
 			}),
 			token:
 				typeof preview.confirmationToken === "string"
 					? preview.confirmationToken
 					: undefined,
 			preview,
+			action,
 		};
 	}
 
@@ -815,34 +964,120 @@ export class ArrMcpServer {
 		const prepared = await this.prepareApproval(name, input);
 		const store = new ApprovalStore();
 		const claim = await store.claim(input.approvalId, prepared.manifest);
-		const permit = await removalPermit(
-			claim.id,
-			claim.planHash,
-			name,
-			input,
-			prepared.preview,
-		);
 		try {
-			const result = await withRemovalAuthority(permit, () =>
-				this.executeTool(
-					name,
-					{ ...input, confirmationToken: prepared.token },
-					true,
-				),
+			const permit = await removalPermit(
+				claim.id,
+				claim.planHash,
+				name,
+				input,
+				prepared.preview,
 			);
+			if (name === "remove_content" && input.target === "library") {
+				const manifest = z
+					.object({ libraryEvidence: z.unknown(), instances: z.unknown() })
+					.parse(claim.plan);
+				const approvedRows = z
+					.array(
+						z.object({
+							item: z
+								.object({
+									id: z.number().int().positive(),
+									service: z.string(),
+								})
+								.passthrough(),
+							watch: z.unknown(),
+						}),
+					)
+					.parse(manifest.libraryEvidence);
+				permit.beforeRemoval = async (url) => {
+					const approved = approvedRows.find(
+						(row) => String(row.item.id) === url.pathname.split("/").at(-1),
+					);
+					if (!approved)
+						throw createInternalError(
+							"Whole-title DELETE outside the claimed evidence",
+						);
+					const bindings = await instanceBindings(
+						input.users?.map((user) => user.server) ?? [],
+					);
+					if (hashPlan(bindings) !== hashPlan(manifest.instances))
+						throw createInternalError(
+							"Instance or viewer bindings changed before whole-title deletion",
+						);
+					const fresh = await this.wholeTitleEvidence({
+						...input,
+						ids: [approved.item.id],
+					});
+					if (
+						fresh.length !== 1 ||
+						hashPlan(immutablePreview(fresh[0])) !== hashPlan(approved)
+					)
+						throw createInternalError(
+							"Exact file, episode or watch evidence changed before whole-title deletion; approval consumed without deleting this title",
+						);
+				};
+			}
+			let result: unknown = await withRemovalAuthority(permit, () =>
+				prepared.action
+					? executeLibraryAction(input, prepared.action, {
+							loadLibrarySnapshot,
+							getWatchEvidence,
+						})
+					: this.executeTool(
+							name,
+							{ ...input, confirmationToken: prepared.token },
+							true,
+						),
+			);
+			if (name === "remediate_reported_issue") {
+				const remediation = z
+					.object({ ok: z.boolean(), data: z.record(z.unknown()).optional() })
+					.parse(result);
+				if (remediation.ok) {
+					const deletionVerified = await verifyRemediationAbsence(
+						prepared.preview,
+					);
+					result = {
+						ok: deletionVerified,
+						data: {
+							...remediation.data,
+							deletionVerified,
+							verified: false,
+							executionState: deletionVerified ? "pending" : "uncertain",
+							uncertain: !deletionVerified,
+						},
+						...(!deletionVerified && {
+							error: createInternalError(
+								"Remediation was submitted but deletion absence could not be verified; reconcile without replay",
+							),
+						}),
+					};
+				}
+			}
 			const outcome = z
 				.object({ ok: z.boolean(), data: z.unknown().optional() })
 				.parse(result);
-			const details = JSON.stringify(outcome.data ?? {});
-			const verified =
-				outcome.ok &&
-				!/"failed":\s*[1-9]|"partial":\s*true|"uncertain":\s*true/.test(
-					details,
-				);
-			await store.finish(claim.id, verified ? "completed" : "partial", {
-				ok: outcome.ok,
-				verified,
-			});
+			const { state, verified } = classifyExecution(name, result);
+			if (name === "remove_content" && !verified && outcome.ok) {
+				outcome.ok = false;
+				result = {
+					...outcome,
+					error: createInternalError(
+						"Approved removal did not fully verify; inspect per-target results without replay",
+					),
+				};
+			}
+			await store.finish(
+				claim.id,
+				state,
+				JSON.parse(
+					JSON.stringify({
+						ok: outcome.ok,
+						verified,
+						data: outcome.data ?? null,
+					}),
+				),
+			);
 			return result;
 		} catch {
 			await store.finish(claim.id, "uncertain");
@@ -879,6 +1114,20 @@ export class ArrMcpServer {
 				`Invalid field: ${parsed.error.issues.map((issue) => issue.path[0]).join(", ")}`,
 			);
 		const input = parsed.data;
+		if (
+			["season", "files"].includes(input.target ?? "") &&
+			[
+				input.blocklist,
+				input.removeFromClient,
+				input.removeFromDownloader,
+				input.addImportExclusion,
+				input.manualImport,
+			].some((value) => value === true)
+		)
+			throw new McpError(
+				ErrorCode.InvalidParams,
+				"Legacy downloader, import, exclusion and blocklist side effects are not supported for season/file cleanup",
+			);
 		if (tool.name === "reported_issues" && (input.limit ?? 25) > 100)
 			throw new McpError(
 				ErrorCode.InvalidParams,
@@ -2284,7 +2533,7 @@ export class ArrMcpServer {
 
 async function main() {
 	const server = new ArrMcpServer();
-	const config = await loadConfigFromEnvOnly();
+	const config = await loadRuntimeConfig();
 	server.initialize(config);
 	await server.run();
 }

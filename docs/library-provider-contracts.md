@@ -35,8 +35,7 @@ or credentials. No cache, database, config file or credential file is written.
   schema failures leave it unknown (`null`). `isHealthy:false` is not a claim
   that a server is offline.
 
-The parent dispatcher owns registration, output envelopes and startup. The
-isolated module tests run with:
+`src/index.ts` registers these five tools and owns output envelopes/startup. Focused module checks can be run with:
 
 ```sh
 npm ci --include=dev --ignore-scripts
@@ -44,8 +43,7 @@ npm run build
 node --test tests/library-*.test.mjs
 ```
 
-The parent must add that last command to its final `npm test` script; this
-workstream intentionally does not edit package files or `src/index.ts`.
+The integrated `npm test` includes top-level integration test files. Run final gates after runtime changes; focused commands alone do not certify a release.
 
 ## MCP inputs
 
@@ -197,18 +195,15 @@ fail explicitly rather than inventing a scale or dropping a bad rating.
   proof of completion. Explicit multi-version `MediaSources` are unknown.
   Last-played timestamps are real summaries, compared chronologically including
   timezone offsets; they are not converted into invented event history.
-- Jellyfin favourites cover the root and all selected episodes. Missing flags
+- Jellyfin favourites cover the root, relevant seasons and all selected episodes. Missing flags
   are unknown. Plex favourites/watchlist are **unsupported**: ratings are not
-  favourites, `favourite:null` is returned, and Plex evidence therefore always
-  blocks cleanup even when a configured viewer is watched.
+  favourites. `favourite:null,favouriteSupported:false` and limitations are returned; cleanup blocks by default unless explicit `allowUnsupportedFavourites:true` acknowledges the unsupported capability. Failed/missing favourite evidence is not an unsupported-capability waiver.
 - Sessions cover the matching movie or any episode of the series, including
   playback by users outside the requested watch scopes. An unavailable session
   read is not an empty list. Series playback protection is deliberately broader
   than a requested season. Read results are observations, not locks against a
   playback session starting after the read.
-- `complete` requires complete ARR metadata, every selected viewer known, known
-  favourite/session coverage and no blockers. An incomplete source never
-  yields affirmative cleanup permission. Watch state is per provider metadata
+- `complete` requires complete ARR metadata, every selected viewer known, known session coverage and no blockers. Unsupported favourite capability is separately marked, never fabricated false; policy must still decide whether to block. Missing Jellyfin favourite coverage remains a blocker. Complete watch evidence alone never grants cleanup authority. Watch state is per provider metadata
   item, not a claim that a particular encoding/file version was viewed; removal
   must separately bind and re-read exact ARR file identities.
 
@@ -242,30 +237,6 @@ it is never inserted into the shared model, retention conditions or commands.
 
 ## Verification limits
 
-Final local verification on Node v24.22.0:
+Run `npm run build`, `npm run check`, and `npm test` on the final integrated revision; focused library tests are `node --test tests/library-*.test.mjs` after building. Fixtures exercise local HTTP/fetch boundaries, not live provider permissions or compatibility. These commands are verification instructions, not assertions of a passed candidate, test count, installed-package behavior or publication. Unknown versions/DTOs and unsupported capabilities remain limitations.
 
-- `npm ci --include=dev --ignore-scripts`: passed; no dependency changes.
-- `npm run build`: passed with strict TypeScript and no `any` additions.
-- `node --test tests/library-*.test.mjs`: **15 passed, 0 failed**.
-- Existing `npm test`: **225 unit tests and 26 MCP tests passed**. This baseline
-  script does not yet include `library-*.test.mjs`; parent wiring remains required.
-- Scoped `biome check` on every new source/test file: passed.
-- Full `npm run check`: blocked solely by the pre-existing formatter layout of
-  `src/library/model.ts:37` in the supplied contract. That parent-owned file was
-  not edited; parent can apply its formatter-only fix during integration.
-
-`tests/library-intelligence.test.mjs` uses actual loopback HTTP responses through
-`fetchJson`, plus a fetch-boundary TMDB fixture. It clears operator service
-configuration and forbids non-loopback network requests outside that explicit
-fixture. It covers paging/progress, authentication and schema failures,
-per-viewer disagreement, ambiguous/conflicting IDs, exact coordinates,
-multi-episode files, session/favourite protection, timezone ordering,
-standalone discovery and review provenance. RED failures were observed before
-implementing each end-to-end feature slice and the multi-version, rating,
-chronological timestamp and undated-calendar guards.
-
-No live providers, installed-package MCP integration or new Node-version matrix
-were exercised by this workstream. Existing repository tests remain unchanged;
-parent integration must run the new tests in its final script and re-run MCP
-wire/package checks after registration. Unknown versions/DTOs and unsupported
-capabilities are limitations, never simulated evidence.
+See [configuration](configuration.md#library-watch-and-review-providers), [tool reference](api-reference.md), [approval protocol](approval-protocol.md), [rules](retention-rules.md), [policy options](retention-policy-options.md) and [migration](retention-migration.md).

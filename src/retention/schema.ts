@@ -20,6 +20,7 @@ export const ruleSchema = z
 	.object({
 		services: z.array(z.string().min(1).max(200)).min(1).max(100),
 		users: z.array(viewerSchema).min(1).max(100),
+		watchState: z.enum(["watched", "unwatched"]).default("watched"),
 		watchedPolicy: z
 			.enum(["all-selected", "any-selected"])
 			.default("all-selected"),
@@ -41,6 +42,7 @@ export const ruleSchema = z
 			.optional(),
 		protectedTags: z.array(z.string().min(1).max(200)).max(100),
 		includeSpecials: z.boolean().default(false),
+		allowUnsupportedFavourites: z.boolean().default(false),
 		maxCount: z.number().int().min(1).max(10000),
 		maxBytes: bytes,
 		intervalHours: z.number().positive().max(87600).optional(),
@@ -58,6 +60,11 @@ export const ruleSchema = z
 			ctx.addIssue({
 				code: "custom",
 				message: "Season rules cannot remove a whole title",
+			});
+		if (rule.target === "completed-season" && rule.watchState !== "watched")
+			ctx.addIssue({
+				code: "custom",
+				message: "Season rules require watchState watched",
 			});
 	});
 export type RetentionRule = z.infer<typeof ruleSchema>;

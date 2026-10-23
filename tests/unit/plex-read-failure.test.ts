@@ -311,7 +311,14 @@ if (process.argv[2] === "--stdio-provider") {
 			assert.equal(result.isError, undefined);
 			assert.deepEqual(result.structuredContent, {
 				ok: true,
-				data: { total: 0, reports: [] },
+				data: {
+					total: 0,
+					reports: [],
+					provider: "plex",
+					hasMore: false,
+					nextCursor: null,
+					complete: true,
+				},
 			});
 			assert.deepEqual(requests, ["POST https://community.plex.tv/api"]);
 		}),
@@ -348,7 +355,14 @@ if (process.argv[2] === "--stdio-provider") {
 			assert.equal(result.isError, undefined);
 			assert.deepEqual(result.structuredContent, {
 				ok: true,
-				data: { total: 0, reports: [] },
+				data: {
+					total: 0,
+					reports: [],
+					provider: "plex",
+					hasMore: false,
+					nextCursor: null,
+					complete: true,
+				},
 			});
 		}),
 		test("missing Plex configuration retains its explicit argument guidance", async () => {
