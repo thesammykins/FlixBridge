@@ -2,7 +2,7 @@
 
 ## Verdict and scope
 
-Local verification: **PASS WITH RESIDUAL RISK**. This is a source/package candidate, not a published release or a live-provider compatibility certification. Upstream submission is blocked by invalid local GitHub authentication. Human review/merge and final publication approval remain separate gates.
+Local verification: **PASS WITH RESIDUAL RISK**. This is a source/package candidate, not a published release or a live-provider compatibility certification. GitHub authentication has been restored and the candidate is prepared for upstream review. Human review/merge and final publication approval remain separate gates.
 
 The implementation exposes 32 MCP tools: 20 preserved names and 12 library/watch, approval and retention additions. The running deployment, production media, credentials and host schedules were not changed. No tag, GitHub merge or package publication was performed.
 
