@@ -15,6 +15,10 @@ The workflow uses `contents: read`, checkout without persisted credentials and c
 
 ## Release status
 
-There is no publishing job or separate release workflow in this tree. CI does not change the package version/changelog, push commits/tags, create GitHub releases, notify a webhook or publish to npm. Conventional Commit messages do not trigger a version bump.
+[`release.yml`](release.yml) defines **Release npm**, separate from Verify. It runs only on manual dispatch in the canonical repository at `refs/heads/main`, with explicit full expected commit, stable package version and approved tarball SHA-256 inputs. It never changes package/version/changelog, pushes commits/tags, creates GitHub releases or notifies webhooks. Conventional Commits do not trigger releases.
+
+Release pins Node 24.22.1/npm 12.2.1, verifies clean commit/package/lock identity against public remote main before dependency installation and immediately before publication, runs locked install/check/build/full tests/audit, and packs exactly once with lifecycle scripts disabled. It validates the manifest, regular tar member allowlist, packed package identity and approved hash. A fresh omit-dev consumer installs that exact tarball, exercises installed stdio MCP with sanitized offline fixtures and checks retention CLI help. It never runs live smoke/debug scripts.
+
+Only after those gates and fail-closed unauthenticated registry absence checking does the final step receive `NPM_TOKEN` and publish the exact tarball with public access, latest tag and provenance. Independent readback runs even on publish command failure, with bounded read-only retries and no publish retry. See the [operator setup](../SETUP.md) for ambiguous failure recovery and remaining credential/hosted-reproduction checks. No extra artifact-upload action is used; verified hashes are printed and the pack manifest is checked, but failed hosted artifacts are not retained.
 
 Final publication requires separate maintainer approval and a reviewed release mechanism tied to an exact artifact/version. No protected release environment or required reviewer configuration is established by this file. See [setup and release boundary](../SETUP.md).

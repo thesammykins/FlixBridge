@@ -3,7 +3,9 @@
 ## Work on the intended artifact
 
 - Keep service-owned checkouts and unrelated changes intact; use an isolated worktree.
-- Node.js 20+ is required. CI verifies Node 20, 22 and 24; it does not publish.
+- Node.js 20+ is required. Verify CI tests Node 20, 22 and 24 without publishing.
+  Separately authorized manual Release npm dispatches on main bind an exact commit,
+  version and approved tarball hash; see `.github/SETUP.md`. Only humans merge.
 - Install with `npm ci --include=dev --ignore-scripts`. Runtime gates are
   `npm run build`, `npm run check`, and `npm test` (unit runner plus every top-level
   `tests/*.test.mjs` integration suite, including real MCP/CLI/approval storage flows).

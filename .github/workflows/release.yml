@@ -1,0 +1,87 @@
+name: Release npm
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_commit:
+        description: Full reviewed main commit (40 lowercase hex characters)
+        required: true
+        type: string
+      package_version:
+        description: Exact stable package version already committed
+        required: true
+        type: string
+      expected_sha256:
+        description: Reviewed packed tarball SHA-256 (64 lowercase hex characters)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-npm
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.repository == 'thesammykins/FlixBridge' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write # npm provenance only; no repository write authority
+    env:
+      EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+      PACKAGE_VERSION: ${{ inputs.package_version }}
+      EXPECTED_SHA256: ${{ inputs.expected_sha256 }}
+      ARTIFACT_DIR: ${{ runner.temp }}/release-artifact
+      CONSUMER_DIR: ${{ runner.temp }}/release-consumer
+      NPM_CONFIG_REGISTRY: https://registry.npmjs.org
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.22.1
+          registry-url: https://registry.npmjs.org
+      - name: Bind clean main identity before dependencies
+        run: node scripts/release-preflight.mjs identity
+      - name: Pin npm and verify tools
+        run: |
+          npm install --global npm@12.2.1 --ignore-scripts
+          test "$(node --version)" = v24.22.1
+          test "$(npm --version)" = 12.2.1
+      - name: Verify locked source offline and audit
+        run: |
+          npm ci --include=dev --ignore-scripts
+          npm run check
+          npm run build
+          npm test
+          npm audit --audit-level=moderate
+      - name: Pack once and verify approved artifact
+        run: |
+          mkdir "$ARTIFACT_DIR"
+          npm pack --ignore-scripts --json --pack-destination "$ARTIFACT_DIR" > "$ARTIFACT_DIR/pack.json"
+          node scripts/release-preflight.mjs artifact
+      - name: Consume the exact tarball without development dependencies
+        run: |
+          mkdir "$CONSUMER_DIR"
+          npm install --prefix "$CONSUMER_DIR" --omit=dev --ignore-scripts --no-audit --no-fund "$ARTIFACT_DIR/thesammykins-flixbridge-$PACKAGE_VERSION.tgz"
+          MCP_TEST_BIN="$CONSUMER_DIR/node_modules/.bin/flixbridge" node --test tests/mcp-client.test.mjs
+          "$CONSUMER_DIR/node_modules/.bin/flixbridge-retention" --help
+      - name: Recheck main, clean tree, artifact and public version absence
+        run: |
+          node scripts/release-preflight.mjs identity
+          node scripts/release-preflight.mjs artifact
+          node scripts/release-preflight.mjs available
+      - name: Publish exact verified tarball
+        id: publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish "$ARTIFACT_DIR/thesammykins-flixbridge-$PACKAGE_VERSION.tgz" --ignore-scripts --access public --tag latest --provenance
+      - name: Independently read back even after a failed publish command
+        if: ${{ always() && steps.publish.outcome != 'skipped' }}
+        run: node scripts/release-preflight.mjs readback
