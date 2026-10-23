@@ -2,7 +2,9 @@
 
 ## Verdict and scope
 
-Local verification: **PASS WITH RESIDUAL RISK**. This is a source/package candidate, not a published release or a live-provider compatibility certification. GitHub authentication has been restored and the candidate is prepared for upstream review. Human review/merge and final publication approval remain separate gates.
+Release verdict: **BLOCKED — dependency security audit**. Functional verification passed, but the hosted audit and a fresh public-registry audit report one high-severity vulnerability in locked Zod 3.25.76: [GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5), uncontrolled memory consumption while validating oversized collections. The advisory lists versions below 4.6.6 as affected; npm proposes 4.6.7, a major-version migration. That migration requires explicit approval; the audit gate has not been waived or weakened.
+
+This is a source/package candidate, not a published release or a live-provider compatibility certification. GitHub authentication has been restored and the candidate is submitted for upstream review. Human review/merge and final publication approval remain separate gates. The existing tarball is **not approved for production installation or release** while this blocker remains.
 
 The implementation exposes 32 MCP tools: 20 preserved names and 12 library/watch, approval and retention additions. The running deployment, production media, credentials and host schedules were not changed. No tag, GitHub merge or package publication was performed.
 
@@ -22,7 +24,9 @@ Re-fetch main and PR #10 again before an eventual push if either has moved.
 | --- | --- |
 | `npm run build` | Pass; TypeScript compiled after deleting `dist` |
 | `npm run check` | Pass; 99 files checked, no fixes required |
-| `npm audit --audit-level=moderate` | Pass; current registry audit reported zero vulnerabilities |
+| Earlier local `npm audit --audit-level=moderate` | Reported zero vulnerabilities at that earlier snapshot; superseded for release readiness by the failing hosted/fresh audit below |
+| Hosted and fresh public-registry audit | **Fail: one high-severity Zod advisory; release blocked** |
+| Hosted functional matrix, Node 20/22/24 | All three test jobs passed on submitted head `47f3f04`; later documentation-only heads must retain their own CI readback |
 | `npm test`, Node 24.22.0 | 246 unit + 168 integration tests passed; zero failures/skips |
 | Built JavaScript integration suite, Node 20.20.2 | 168 passed; zero failures/skips |
 | Installed exact tarball, Node 20.20.2 and 24.22.0 | 21 critical tests passed on each runtime |
