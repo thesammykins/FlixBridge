@@ -591,13 +591,13 @@ export async function playbackHistory(
 				Metadata: z.array(entry).optional(),
 			}),
 		}),
-		await mediaReader(server)("status/sessions/history", {
+		await mediaReader(server)("status/sessions/history/all", {
 			accountID: userId,
 			"X-Plex-Container-Start": offset,
 			"X-Plex-Container-Size": pageSize,
 			sort: "viewedAt:desc",
 		}),
-		"Plex /status/sessions/history",
+		"Plex /status/sessions/history/all",
 	);
 	const records = result.Metadata ?? [];
 	if (

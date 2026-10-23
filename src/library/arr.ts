@@ -196,6 +196,7 @@ function ratings(
 		imdb: 10,
 		tmdb: 10,
 		tvdb: 10,
+		trakt: 10,
 		metacritic: 100,
 		rottenTomatoes: 100,
 	};

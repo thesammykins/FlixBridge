@@ -183,7 +183,7 @@ fail explicitly rather than inventing a scale or dropping a bad rating.
   come from that user's endpoint, not a server-global counter.
 - Plex: `/accounts`, `/identity`, `/library/sections`,
   `/library/sections/{key}/all`, `/library/metadata/{key}/allLeaves`,
-  `/status/sessions`, `/status/sessions/history`. Metadata pages require
+  `/status/sessions`, `/status/sessions/history/all`. Metadata pages require
   `size,totalSize` and stable offsets/totals; missing coverage is unknown.
 - Joins require at least one equal shared TVDB/TMDB/IMDb provider ID and no
   conflicting shared IDs. Duplicate provider copies are ambiguous. Plex modern

@@ -19,6 +19,11 @@
 - Explicit private state stores rule revisions, scheduler attempts and approvals/execution outcomes, not credentials or a second source configuration. Media-only read configurations are supported; removal still requires ARR/downloader targets.
 - Partial, pending and uncertain results remain distinct from verified success. Monitoring and deletion are separate nontransactional writes; failures do not imply rollback, and uncertain execution is not automatically retryable.
 
+### Fixed
+
+- Preserve Radarr's Trakt ratings on their native 0..10 scale, including vote counts; unknown providers and out-of-range values still fail closed.
+- Read Plex playback events from the paginated `/status/sessions/history/all` route, preserving explicit account filtering and URL base paths.
+
 ### Scope and evidence limits
 
 - New library workflows do not support Sonarr v5; new mutations reject `auto`/strict v5 rather than downgrading. Plex requires explicit per-user token bindings and cannot supply favourites/watchlist protection. Logical file bytes are estimates, not guaranteed recovered disk space.

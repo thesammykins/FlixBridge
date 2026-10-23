@@ -433,7 +433,8 @@ test("Plex uses configured per-user tokens, exact GUIDs and real account-scoped 
 					},
 				},
 			];
-		if (url.pathname === "/prefix/status/sessions/history") {
+		// python-plexapi server.history uses the paginated /history/all route.
+		if (url.pathname === "/prefix/status/sessions/history/all") {
 			assert.equal(url.searchParams.get("accountID"), "9");
 			return [
 				200,
@@ -481,6 +482,37 @@ test("Plex uses configured per-user tokens, exact GUIDs and real account-scoped 
 	assert.equal(events.data.events[0].watchedAt, "1970-01-01T00:01:40.000Z");
 	assert.equal(events.data.total, 1);
 	assert.equal((await mediaSystemStatus("plex-test")).ok, true);
+});
+
+test("Radarr Trakt ratings retain their native ten-point scale and reject unsupported values", async () => {
+	const { runLibraryTool } = await moduleUnderTest();
+	process.env.RADARR_TEST_URL = base;
+	process.env.RADARR_TEST_API_KEY = "fixture-secret";
+	let extraRatings = { trakt: { value: 9.2, votes: 123, type: "user" } };
+	route = (url) =>
+		url.pathname === "/prefix/api/v3/movie/1"
+			? [200, { ...movie, ratings: { ...movie.ratings, ...extraRatings } }]
+			: arrRoute(url);
+	const input = { service: "radarr-test", itemId: 1 };
+	const result = await runLibraryTool("media_detail", input);
+	assert.equal(result.ok, true);
+	assert.deepEqual(
+		result.data.ratings.find((entry) => entry.source === "trakt"),
+		{
+			source: "trakt",
+			value: 9.2,
+			scale: 10,
+			votes: 123,
+		},
+	);
+	for (const invalid of [
+		{ trakt: { value: 10.1, votes: 123 } },
+		{ trakt: { value: -1, votes: 123 } },
+		{ unknownProvider: { value: 9.2, votes: 123 } },
+	]) {
+		extraRatings = invalid;
+		assert.equal((await runLibraryTool("media_detail", input)).ok, false);
+	}
 });
 
 test("optional TMDB reviews are actual provider text, attributed, bounded and never conditions", async () => {
