@@ -331,6 +331,19 @@ await describe("Release policy", [
 			/^ {4}permissions:\n {6}contents: read\n {6}id-token: write/m,
 		);
 		assert.match(workflow, /^on:\n {2}workflow_dispatch:\n {4}inputs:/m);
+		const jobEnvironment = workflow.match(
+			/^ {4}env:\n([\s\S]*?)^ {4}steps:/m,
+		)?.[1];
+		assert.ok(jobEnvironment, "release job environment must be explicit");
+		assert.doesNotMatch(
+			jobEnvironment,
+			/\$\{\{\s*runner\./,
+			"runner context is unavailable in job-level env",
+		);
+		assert.ok(
+			workflow.includes('"$RUNNER_TEMP" >> "$GITHUB_ENV"'),
+			"release paths must be resolved on the runner",
+		);
 		for (const key of ["expected_commit", "package_version", "expected_sha256"])
 			assert.match(
 				workflow,

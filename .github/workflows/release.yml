@@ -35,8 +35,6 @@ jobs:
       EXPECTED_COMMIT: ${{ inputs.expected_commit }}
       PACKAGE_VERSION: ${{ inputs.package_version }}
       EXPECTED_SHA256: ${{ inputs.expected_sha256 }}
-      ARTIFACT_DIR: ${{ runner.temp }}/release-artifact
-      CONSUMER_DIR: ${{ runner.temp }}/release-consumer
       NPM_CONFIG_REGISTRY: https://registry.npmjs.org
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -47,6 +45,10 @@ jobs:
         with:
           node-version: 24.22.1
           registry-url: https://registry.npmjs.org
+      - name: Resolve isolated runner-local release paths
+        run: |
+          printf 'ARTIFACT_DIR=%s/release-artifact\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+          printf 'CONSUMER_DIR=%s/release-consumer\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
       - name: Bind clean main identity before dependencies
         run: node scripts/release-preflight.mjs identity
       - name: Pin npm and verify tools
