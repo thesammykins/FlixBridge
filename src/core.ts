@@ -1,4 +1,5 @@
 import { debugHttp } from "./debug.js";
+import { removalRequestAllowed } from "./removal-authority.js";
 import { requestSignal } from "./request-context.js";
 import type { InternalError, ServiceError } from "./services/base.js";
 
@@ -59,6 +60,10 @@ export async function fetchJson<T>(
 		if (!headers.has("Accept")) headers.set("Accept", "application/json");
 		let response: Response;
 		for (let hop = 0; ; hop++) {
+			if (!removalRequestAllowed(target, method))
+				throw createInternalError(
+					"Authenticated human approval is required for this exact removal target",
+				);
 			if (controller.signal.aborted) await aborted;
 			response = await Promise.race([
 				fetch(target.toString(), {

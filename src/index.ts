@@ -11,12 +11,42 @@ import {
 } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { z } from "zod";
+import {
+	immutablePreview,
+	instanceBindings,
+	removalPermit,
+} from "./approval-plans.js";
+import {
+	approvalIdInput,
+	approvalInput,
+	approvalTools,
+	monitoringInput,
+} from "./approval-tools.js";
+import { sendApprovalRequest } from "./approval/bridge.js";
+import { ApprovalStore } from "./approval/store.js";
 import { loadConfigFromEnvOnly } from "./config.js";
 import { createInternalError, serializeError } from "./core.js";
 import { debugToolTiming } from "./debug.js";
+import {
+	executeLibraryAction,
+	prepareLibraryAction,
+} from "./library/actions.js";
+import {
+	getWatchEvidence,
+	libraryTools,
+	loadLibrarySnapshot,
+	mediaServers,
+	mediaSystemStatus,
+	runLibraryTool,
+} from "./library/intelligence.js";
 import { VersionCheckedServer } from "./mcp-version.js";
 import { metricsCollector } from "./metrics.js";
+import {
+	type RemovalAuthority,
+	withRemovalAuthority,
+} from "./removal-authority.js";
 import { ToolAdmission } from "./request-context.js";
+import { retentionTools, runRetentionTool } from "./retention/tools.js";
 import type {
 	ManualImportPreviewData,
 	OperationResult,
@@ -106,7 +136,7 @@ const tools: Tool[] = [
 				downloader: { type: "string" },
 				target: {
 					type: "string",
-					enum: ["queue", "library", "downloader_queue"],
+					enum: ["queue", "library", "downloader_queue", "season", "files"],
 				},
 				ids: {
 					type: "array",
@@ -122,6 +152,32 @@ const tools: Tool[] = [
 				manualImport: { type: "boolean" },
 				confirmationToken: { type: "string" },
 				queueTimeoutMs: { type: "number" },
+				approvalId: { type: "string" },
+				itemId: { type: "integer", minimum: 1 },
+				seasonNumbers: {
+					type: "array",
+					minItems: 1,
+					maxItems: 100,
+					items: {
+						type: "integer",
+						minimum: 0,
+						maximum: Number.MAX_SAFE_INTEGER,
+					},
+				},
+				users: {
+					type: "array",
+					minItems: 1,
+					maxItems: 100,
+					items: {
+						type: "object",
+						properties: {
+							server: { type: "string", minLength: 1, maxLength: 256 },
+							userId: { type: "string", minLength: 1, maxLength: 256 },
+						},
+						required: ["server", "userId"],
+						additionalProperties: false,
+					},
+				},
 			},
 			required: ["ids"],
 		},
@@ -267,7 +323,8 @@ const tools: Tool[] = [
 		inputSchema: {
 			type: "object",
 			properties: {
-				limit: { type: "number" },
+				limit: { type: "number", maximum: 100 },
+				after: { type: "string" },
 			},
 			required: [],
 		},
@@ -323,6 +380,8 @@ const tools: Tool[] = [
 	},
 ];
 
+tools.push(...libraryTools, ...approvalTools, ...retentionTools);
+
 // Envelope guarantee only: service-specific data remains deliberately unconstrained.
 const outputSchema: NonNullable<Tool["outputSchema"]> = {
 	type: "object",
@@ -354,6 +413,11 @@ const writeTools = new Set([
 	"all_services_diagnostics",
 	"remediate_reported_issue",
 	"update_quality_profile",
+	"request_approval",
+	"cancel_approval",
+	"update_monitoring",
+	"retention_rules",
+	"retention_evaluate",
 ]);
 const OutputEnvelope = z
 	.object({
@@ -383,11 +447,13 @@ for (const tool of tools) {
 				type: "integer",
 				minimum: name === "queueTimeoutMs" ? 1000 : 1,
 				maximum:
-					name === "queueTimeoutMs"
-						? 60000
-						: ["limit", "pageSize"].includes(name)
-							? 1000
-							: Number.MAX_SAFE_INTEGER,
+					typeof field.maximum === "number"
+						? field.maximum
+						: name === "queueTimeoutMs"
+							? 60000
+							: ["limit", "pageSize"].includes(name)
+								? 1000
+								: Number.MAX_SAFE_INTEGER,
 			});
 		if (field.type === "string")
 			Object.assign(field, { minLength: 1, maxLength: 4096 });
@@ -437,6 +503,7 @@ export const InputSchema = z.object({
 		.max(1000)
 		.optional(),
 	since: z.string().min(1).max(4096).optional(),
+	after: z.string().min(1).max(4096).optional(),
 	limit: z.number().int().positive().max(1000).optional(),
 	query: z.string().min(1).max(4096).optional(),
 	foreignId: z
@@ -458,7 +525,32 @@ export const InputSchema = z.object({
 	includeDownloader: z.boolean().optional(),
 	downloader: z.string().min(1).max(4096).optional(),
 	detailed: z.boolean().optional(),
-	target: z.enum(["queue", "library", "downloader_queue"]).optional(),
+	target: z
+		.enum(["queue", "library", "downloader_queue", "season", "files"])
+		.optional(),
+	seasonNumbers: z
+		.array(z.number().int().nonnegative().safe())
+		.min(1)
+		.max(100)
+		.optional(),
+	users: z
+		.array(
+			z
+				.object({
+					server: z.string().min(1).max(256),
+					userId: z.string().min(1).max(256),
+				})
+				.strict(),
+		)
+		.min(1)
+		.max(100)
+		.optional(),
+	approvalId: z.string().uuid().optional(),
+	episodeIds: z
+		.array(z.number().int().positive().safe())
+		.min(1)
+		.max(1000)
+		.optional(),
 	dryRun: z.boolean().optional(),
 	deleteFiles: z.boolean().optional(),
 	addImportExclusion: z.boolean().optional(),
@@ -556,10 +648,9 @@ export class ArrMcpServer {
 			const tool = tools.find((tool) => tool.name === name);
 			if (!tool) throw new McpError(ErrorCode.InvalidParams, "Unknown tool");
 			try {
-				const input = this.parseToolInput(tool, args);
 				return this.toolResult(
 					await this.admission.run(ctx.mcpReq.signal, () =>
-						this.executeTool(name, input),
+						this.callTool(name, args ?? {}),
 					),
 				);
 			} catch (error) {
@@ -572,13 +663,196 @@ export class ArrMcpServer {
 						error: createInternalError(error.message),
 					});
 				}
-				console.error("Tool execution failed");
-				throw new McpError(
-					ErrorCode.InternalError,
-					"Unexpected internal error",
-				);
+				return this.toolResult({ ok: false, error: serializeError(error) });
 			}
 		});
+	}
+
+	async callTool(
+		name: string,
+		args: Record<string, unknown> = {},
+	): Promise<unknown> {
+		if (libraryTools.some((tool) => tool.name === name))
+			return runLibraryTool(name, args);
+		if (retentionTools.some((tool) => tool.name === name))
+			return runRetentionTool(name, args, {
+				loadLibrarySnapshot,
+				getWatchEvidence,
+			});
+		if (name === "request_approval") {
+			const request = approvalInput.parse(args);
+			const tool = tools.find((t) => t.name === request.tool);
+			if (!tool) throw createInternalError("Unknown approval tool");
+			const input: z.infer<typeof InputSchema> =
+				request.tool === "update_monitoring"
+					? monitoringInput.parse(request.arguments)
+					: this.parseToolInput(tool, request.arguments);
+			if (
+				request.tool === "remediate_reported_issue" &&
+				input.action !== "remove_and_regrab"
+			)
+				throw createInternalError(
+					"Only destructive remediation uses approval requests",
+				);
+			const prepared = await this.prepareApproval(request.tool, input);
+			const store = new ApprovalStore();
+			const record = await store.create(prepared.manifest);
+			let notification: unknown = {
+				sent: false,
+				reason: "No approval webhook configured",
+			};
+			if (process.env.FLIX_BRIDGE_APPROVAL_WEBHOOK_URL) {
+				try {
+					notification = await sendApprovalRequest(store, record.id);
+				} catch {
+					notification = {
+						sent: false,
+						reason: "Approval notification failed; request remains pending",
+					};
+				}
+			}
+			return { ok: true, data: { ...record, notification } };
+		}
+		if (name === "approval_status" || name === "cancel_approval") {
+			const { requestId } = approvalIdInput.parse(args);
+			const store = new ApprovalStore();
+			return {
+				ok: true,
+				data:
+					name === "cancel_approval"
+						? await store.cancel(requestId)
+						: await store.get(requestId),
+			};
+		}
+		if (name === "update_monitoring")
+			return this.executeTool(name, monitoringInput.parse(args));
+		const tool = tools.find((tool) => tool.name === name);
+		if (!tool) throw createInternalError("Unknown tool");
+		return this.executeTool(name, this.parseToolInput(tool, args));
+	}
+
+	private async prepareApproval(
+		name: string,
+		input: z.infer<typeof InputSchema>,
+	) {
+		const previewResult = z
+			.object({
+				ok: z.boolean(),
+				data: z.unknown().optional(),
+				error: z.unknown().optional(),
+			})
+			.parse(await this.executeTool(name, { ...input, dryRun: true }, true));
+		if (!previewResult.ok || previewResult.data === undefined)
+			throw createInternalError(
+				"Fresh exact-target preview failed; no approval can be requested",
+			);
+		const preview = z.record(z.unknown()).parse(previewResult.data);
+		let libraryEvidence: unknown = null;
+		if (name === "remove_content" && input.target === "library") {
+			if (!input.service)
+				throw createInternalError("Explicit service required");
+			const snapshot = await loadLibrarySnapshot([input.service]);
+			const selected = snapshot.items.filter((item) =>
+				input.ids?.includes(item.id),
+			);
+			if (
+				!snapshot.complete ||
+				selected.length !== input.ids?.length ||
+				selected.some((item) => !item.complete)
+			)
+				throw createInternalError(
+					"Complete exact file manifest required for whole-title removal",
+				);
+			if (input.deleteFiles && !input.users?.length)
+				throw createInternalError(
+					"Explicit users and servers required to protect playback during whole-title removal",
+				);
+			const evidence = [];
+			for (const item of selected) {
+				const watch = input.users?.length
+					? await getWatchEvidence(item, input.users)
+					: null;
+				if (
+					input.deleteFiles &&
+					(!watch?.complete ||
+						watch.activePlayback !== false ||
+						watch.favourite !== false)
+				)
+					throw createInternalError(
+						"Playback/favourite protection blocks whole-title deletion",
+					);
+				evidence.push({ item, watch });
+			}
+			libraryEvidence = evidence;
+		}
+		return {
+			manifest: immutablePreview({
+				tool: name,
+				arguments: immutablePreview({
+					...input,
+					dryRun: undefined,
+					approvalId: undefined,
+					confirmationToken: undefined,
+				}),
+				preview,
+				libraryEvidence,
+				instances: await instanceBindings(),
+			}),
+			token:
+				typeof preview.confirmationToken === "string"
+					? preview.confirmationToken
+					: undefined,
+			preview,
+		};
+	}
+
+	private async executeApproved(
+		name: string,
+		input: z.infer<typeof InputSchema>,
+	): Promise<unknown> {
+		if (!input.approvalId)
+			throw createInternalError("Authenticated human approvalId is required");
+		const prepared = await this.prepareApproval(name, input);
+		const store = new ApprovalStore();
+		const claim = await store.claim(input.approvalId, prepared.manifest);
+		const permit = await removalPermit(
+			claim.id,
+			claim.planHash,
+			name,
+			input,
+			prepared.preview,
+		);
+		try {
+			const result = await withRemovalAuthority(permit, () =>
+				this.executeTool(
+					name,
+					{ ...input, confirmationToken: prepared.token },
+					true,
+				),
+			);
+			const outcome = z
+				.object({ ok: z.boolean(), data: z.unknown().optional() })
+				.parse(result);
+			const details = JSON.stringify(outcome.data ?? {});
+			const verified =
+				outcome.ok &&
+				!/"failed":\s*[1-9]|"partial":\s*true|"uncertain":\s*true/.test(
+					details,
+				);
+			await store.finish(claim.id, verified ? "completed" : "partial", {
+				ok: outcome.ok,
+				verified,
+			});
+			return result;
+		} catch {
+			await store.finish(claim.id, "uncertain");
+			return {
+				ok: false,
+				error: createInternalError(
+					"Approved operation may have changed state; execution is consumed. Reconcile before requesting another approval",
+				),
+			};
+		}
 	}
 
 	private parseToolInput(
@@ -605,6 +879,11 @@ export class ArrMcpServer {
 				`Invalid field: ${parsed.error.issues.map((issue) => issue.path[0]).join(", ")}`,
 			);
 		const input = parsed.data;
+		if (tool.name === "reported_issues" && (input.limit ?? 25) > 100)
+			throw new McpError(
+				ErrorCode.InvalidParams,
+				"Report page limit must be at most 100",
+			);
 		if (
 			input.ids &&
 			tool.name !== "remove_content" &&
@@ -652,7 +931,23 @@ export class ArrMcpServer {
 		};
 	}
 
-	private async executeTool(name: string, input: z.infer<typeof InputSchema>) {
+	private async executeTool(
+		name: string,
+		input: z.infer<typeof InputSchema>,
+		approved = false,
+	): Promise<unknown> {
+		if (
+			(name === "remove_content" && input.dryRun === false) ||
+			(name === "remediate_reported_issue" &&
+				input.action === "remove_and_regrab" &&
+				input.dryRun !== true)
+		) {
+			if (!input.approvalId)
+				throw createInternalError(
+					"Authenticated human approvalId is required; a preview token is not consent",
+				);
+			if (!approved) return this.executeApproved(name, input);
+		}
 		let result: unknown;
 
 		// Handle multi-service tools
@@ -674,6 +969,7 @@ export class ArrMcpServer {
 							name,
 							type: "sabnzbd",
 						})),
+						mediaServers: mediaServers(),
 						summary: {
 							totalServices: services.length,
 							totalDownloaders: downloaders.length,
@@ -689,10 +985,35 @@ export class ArrMcpServer {
 			result = await debugToolTiming(name, "multi", () =>
 				this.runDownloadStatus(input),
 			);
+		} else if (
+			name === "system_status" &&
+			mediaServers().some((server) => server.name === input.service)
+		) {
+			result = await mediaSystemStatus(input.service ?? "");
+		} else if (
+			name === "update_monitoring" ||
+			(name === "remove_content" &&
+				["season", "files"].includes(input.target ?? ""))
+		) {
+			const prepared = await prepareLibraryAction(input, {
+				loadLibrarySnapshot,
+				getWatchEvidence,
+			});
+			if (input.dryRun !== false) return { ok: true, data: prepared };
+			if (!approved) return this.executeApproved(name, input);
+			return executeLibraryAction(input, prepared, {
+				loadLibrarySnapshot,
+				getWatchEvidence,
+			});
 		} else if (name === "remove_content") {
 			result = await this.handleRemoveContent(input);
 		} else if (name === "reported_issues") {
-			result = await this.handleReportedIssues(input.limit);
+			try {
+				result = await this.handleReportedIssues(input.limit, input.after);
+			} catch (error) {
+				if (error instanceof McpError) throw error;
+				result = { ok: false, error: serializeError(error) };
+			}
 		} else if (name === "remediate_reported_issue") {
 			result = await this.handleRemediateReportedIssue({
 				reportId: input.reportId,
@@ -1853,17 +2174,21 @@ export class ArrMcpServer {
 		return client;
 	}
 
-	private async handleReportedIssues(limit?: number) {
+	private async handleReportedIssues(limit?: number, after?: string) {
 		const client = this.plexClient();
-		const result = await client.listReports(limit ?? 25);
+		const result = await client.listReportsPage({ limit: limit ?? 25, after });
 		if (!result.ok || !result.data) return result;
 
 		const services = serviceRegistry.getAll();
-		const reports = await resolveReports(client, result.data, services);
+		const reports = await resolveReports(client, result.data.reports, services);
 		return {
 			ok: true,
 			data: {
 				total: reports.length,
+				provider: "plex",
+				hasMore: result.data.hasMore,
+				nextCursor: result.data.nextCursor,
+				complete: result.data.complete,
 				reports: reports.map((r) => ({
 					id: r.id,
 					message: r.message,
@@ -1872,6 +2197,8 @@ export class ArrMcpServer {
 					item: r.item,
 					matches: r.matches,
 					comments: r.comments,
+					commentsComplete: r.commentsComplete,
+					commentCoverage: r.commentCoverage,
 					resolved: r.resolved,
 					resolutionState: r.resolutionState,
 				})),

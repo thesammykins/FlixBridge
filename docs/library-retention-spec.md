@@ -4,6 +4,10 @@
 
 Implement the approved tool draft: Plex/Jellyfin library and per-user watch intelligence; ARR metadata, ratings and calendar; explainable cleanup recommendations; deterministic, versioned retention rules; durable hash-bound human approval; season/file/whole-title removal and monitoring; optional callback bridge and scheduler CLI. No production media/configuration changes, no new host schedules, no merge or publication. Existing service-owned checkout is untouched. Baseline: upstream main 67d5638 (1.0 release); unrelated dirty checkout is not the base.
 
+## Release and merge contract
+
+Target release: **1.1.0**, as directed by the maintainer. Preserve PR #10 (`fix/plex-read-errors`, observed head `b2265039d23505a092d1c30817f19fd17b887ee6`): normalized Plex report-read failures, regression tests and distribution documentation. Integrate its commits locally without approving/merging its GitHub PR. Reconcile its candidate version to 1.1.0 only in this feature branch, keep its historical changelog entry, and verify the combined runtime/tests. Re-fetch the PR head before final handoff and check merge compatibility again. Existing tool names remain; stronger removal consent is an explicit security tightening documented for 1.1, not an accidental version bump.
+
 ## Invariants and acceptance criteria
 
 - All removal paths (ARR queue/library, downloader, remediation, new season/file cleanup and internal diagnostics) require authenticated human approval of an exact immutable canonical SHA-256 plan. A preview token is not consent. No MCP tool may approve itself.
