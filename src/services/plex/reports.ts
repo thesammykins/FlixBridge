@@ -15,6 +15,18 @@ export interface PlexConfig {
 }
 
 const GRAPHQL_URL = "https://community.plex.tv/api";
+const COMMENT_LIMIT = 20;
+// Opaque IDs/cursors: validate bounds, never decode or repair provider tokens.
+const OpaqueTokenSchema = z
+	.string()
+	.min(1)
+	.max(2048)
+	.regex(/^\S+$/u)
+	.refine((value) =>
+		Array.from(value).every(
+			(char) => char.charCodeAt(0) >= 32 && char.charCodeAt(0) !== 127,
+		),
+	);
 
 function gqlHeaders(
 	token: string,
@@ -63,11 +75,11 @@ function parseGraphql<T>(payload: unknown, schema: z.ZodType<T>): T {
 
 // Report node — field set mirrors the web app's getReportedIssues query.
 const ReportNodeSchema = z.object({
-	id: z.string(),
+	id: OpaqueTokenSchema,
 	message: z.string(),
 	url: z.string(),
 	date: z.string(),
-	commentCount: z.number().optional(),
+	commentCount: z.number().int().nonnegative().safe().optional(),
 	user: z
 		.object({
 			id: z.string(),
@@ -78,7 +90,7 @@ const ReportNodeSchema = z.object({
 });
 
 const CommentNodeSchema = z.object({
-	id: z.string(),
+	id: OpaqueTokenSchema,
 	message: z.string().optional(),
 	date: z.string().optional(),
 	user: z
@@ -98,6 +110,14 @@ export interface PlexReport {
 	commentCount: number;
 	user?: { id: string; username?: string; displayName?: string };
 	comments: PlexComment[];
+	// Optional for source compatibility with callers constructing report fixtures.
+	commentsComplete?: boolean;
+	commentCoverage?: {
+		limit: number;
+		returned: number;
+		total: number | null;
+		complete: boolean;
+	};
 }
 
 export interface PlexComment {
@@ -150,7 +170,28 @@ export class PlexReportsClient {
 	}
 
 	async listReports(limit = 25): Promise<OperationResult<PlexReport[]>> {
+		const result = await this.listReportsPage({ limit });
+		return result.ok && result.data
+			? { ok: true, data: result.data.reports }
+			: { ok: false, error: result.error };
+	}
+
+	async listReportsPage({
+		limit = 25,
+		after,
+	}: { limit?: number; after?: string } = {}): Promise<
+		OperationResult<{
+			reports: PlexReport[];
+			hasMore: boolean;
+			nextCursor: string | null;
+			complete: boolean;
+		}>
+	> {
 		try {
+			z.object({
+				limit: z.number().int().min(1).max(100),
+				after: OpaqueTokenSchema.optional(),
+			}).parse({ limit, after });
 			const payload = await fetchJson<unknown>(GRAPHQL_URL, {
 				method: "POST",
 				timeoutMs: 15000,
@@ -162,23 +203,44 @@ export class PlexReportsClient {
 							pageInfo { hasNextPage endCursor }
 						}
 					}`,
-					variables: { first: limit, after: null },
+					variables: { first: limit, after: after ?? null },
 				}),
 			});
 			const data = parseGraphql(
 				payload,
 				z.object({
 					reports: z.object({
-						nodes: z.array(z.unknown()),
-						pageInfo: z.object({ hasNextPage: z.boolean() }).passthrough(),
+						nodes: z.array(ReportNodeSchema).max(limit),
+						pageInfo: z.object({
+							hasNextPage: z.boolean(),
+							endCursor: OpaqueTokenSchema.nullish(),
+						}),
 					}),
 				}),
 			);
+			const { nodes, pageInfo } = data.reports;
+			if (
+				new Set(nodes.map((node) => node.id)).size !== nodes.length ||
+				(after !== undefined &&
+					nodes.length > 0 &&
+					pageInfo.endCursor === after) ||
+				(pageInfo.hasNextPage && (!pageInfo.endCursor || nodes.length === 0))
+			)
+				throw createInternalError(
+					"Plex report pagination failed validation; cannot establish a progressing page boundary.",
+				);
 
 			const reports: PlexReport[] = [];
-			for (const raw of data.reports.nodes) {
-				const node = ReportNodeSchema.parse(raw);
+			for (const node of nodes) {
 				const comments = await this.listReportComments(node.id);
+				if (
+					node.commentCount !== undefined &&
+					comments.length > node.commentCount
+				)
+					throw createInternalError(
+						"Plex comment count changed or failed validation; retry the report page.",
+					);
+				const commentsComplete = node.commentCount === comments.length;
 				reports.push({
 					id: node.id,
 					message: node.message,
@@ -187,9 +249,29 @@ export class PlexReportsClient {
 					commentCount: node.commentCount ?? comments.length,
 					user: node.user,
 					comments,
+					commentsComplete,
+					commentCoverage: {
+						limit: COMMENT_LIMIT,
+						returned: comments.length,
+						total: node.commentCount ?? null,
+						complete: commentsComplete,
+					},
 				});
 			}
-			return { ok: true, data: reports };
+			return {
+				ok: true,
+				data: {
+					reports,
+					hasMore: data.reports.pageInfo.hasNextPage,
+					nextCursor: data.reports.pageInfo.hasNextPage
+						? (data.reports.pageInfo.endCursor ?? null)
+						: null,
+					complete:
+						!after &&
+						!data.reports.pageInfo.hasNextPage &&
+						reports.every((report) => report.commentsComplete),
+				},
+			};
 		} catch (error) {
 			return handleError(error, "plex");
 		}
@@ -206,22 +288,24 @@ export class PlexReportsClient {
 						nodes { __typename date id message user { id username displayName } }
 					}
 				}`,
-				variables: { id: reportId, first: 20 },
+				variables: { id: reportId, first: COMMENT_LIMIT },
 			}),
 		});
 		const data = parseGraphql(
 			payload,
-			z.object({ reportComments: z.object({ nodes: z.array(z.unknown()) }) }),
+			z.object({
+				reportComments: z.object({
+					nodes: z
+						.array(CommentNodeSchema)
+						.max(COMMENT_LIMIT)
+						.refine(
+							(nodes) =>
+								new Set(nodes.map((node) => node.id)).size === nodes.length,
+						),
+				}),
+			}),
 		);
-		return data.reportComments.nodes.map((raw) => {
-			const node = CommentNodeSchema.parse(raw);
-			return {
-				id: node.id,
-				message: node.message,
-				date: node.date,
-				user: node.user,
-			};
-		});
+		return data.reportComments.nodes;
 	}
 
 	async createReportComment(

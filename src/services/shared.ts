@@ -94,21 +94,26 @@ const SearchArraySchema = z.array(
 	}),
 );
 const HistorySchema = z.object({
-	records: z.array(
-		z.object({
-			id: z.number(),
-			sourceTitle: z.string().nullish(),
-			title: z.string().nullish(),
-			quality: z
-				.object({
-					quality: z.object({ name: z.string().optional() }).nullish(),
-				})
-				.nullish(),
-			date: z.string(),
-			eventType: z.string(),
-		}),
-	),
-	totalRecords: z.number().optional(),
+	records: z
+		.array(
+			z.object({
+				id: z.number().int().positive().safe(),
+				sourceTitle: z.string().nullish(),
+				title: z.string().nullish(),
+				quality: z
+					.object({
+						quality: z.object({ name: z.string().optional() }).nullish(),
+					})
+					.nullish(),
+				date: z.string(),
+				eventType: z.string(),
+			}),
+		)
+		.refine(
+			(records) =>
+				new Set(records.map((record) => record.id)).size === records.length,
+		),
+	totalRecords: z.number().int().nonnegative().safe().optional(),
 });
 const ManualImportSchema = z.array(
 	z
@@ -694,7 +699,7 @@ export abstract class BaseArrService {
 				? response.records.slice(start, start + (options.pageSize ?? 20))
 				: response.records;
 
-			const items = records.slice(0, 20).map((item) => ({
+			const items = records.map((item) => ({
 				id: item.id,
 				title: item.sourceTitle || item.title || "Unknown",
 				quality: item.quality?.quality?.name || "Unknown",
@@ -708,13 +713,12 @@ export abstract class BaseArrService {
 				data: {
 					service: this.serviceName,
 					mediaKind: this.mediaKind,
-					total: response.totalRecords || records.length,
+					total: response.totalRecords ?? records.length,
 					items,
 					truncated:
-						records.length > 20 ||
-						(this.apiFamily() === 5 &&
-							((response.totalRecords ?? records.length) !== items.length ||
-								(options.page ?? 1) !== 1)),
+						response.totalRecords === undefined ||
+						response.totalRecords !== items.length ||
+						(options.page ?? 1) !== 1,
 				},
 			};
 		} catch (error) {
