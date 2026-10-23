@@ -1,7 +1,7 @@
 name: Verify
 
-# Publication is intentionally absent. A separate reviewed release gate and
-# final artifact approval are required before adding any publishing workflow.
+# This verification workflow has no publication authority. The separately
+# reviewed release.yml dispatch binds main, package version and exact bytes.
 permissions:
   contents: read
 

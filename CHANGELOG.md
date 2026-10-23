@@ -13,7 +13,7 @@
 ### Changed
 
 - Refresh all seven direct dependencies to current stable releases: MCP server/client 2.4.0, Zod 4.6.7, Biome 2.6.2, TypeScript 7.0.2, tsx 4.23.15 and Node declarations 26.6.5. Re-resolve compatible transitive dependencies without forced major overrides. Migrate explicit record keys, compiler settings and the existing code-only lint scope; retain Node 20 runtime compatibility checks.
-- Update checkout/setup-node CI actions to current v7.0.1/v7.1.0 releases, pinned to resolved commit identities. Verification remains read-only and publishing stays absent.
+- Update checkout/setup-node CI actions to current v7.0.1/v7.1.0 releases, pinned to resolved commit identities. Verification remains read-only; a separate manual main-only npm release workflow requires a reviewed commit and exact tarball hash, repeats the gates, and independently reads back the published bytes.
 - Reject oversized monitoring scopes before collecting element-level validation issues, covering the Zod resource-exhaustion regression.
 - All explicit removal scopes, including existing queue/downloader/title removal and Plex `remove_and_regrab`, now require authenticated human `approvalId` execution authority. Preview confirmation tokens alone are insufficient; fresh evidence and a durable one-use claim precede removal. Existing tool names remain; this is an incompatible removal-authority change. `manual_import` retains its existing confirmation flow. Other writes still require operator authority.
 - Explicit private state stores rule revisions, scheduler attempts and approvals/execution outcomes, not credentials or a second source configuration. Media-only read configurations are supported; removal still requires ARR/downloader targets.
@@ -23,6 +23,7 @@
 
 - Preserve Radarr's Trakt ratings on their native 0..10 scale, including vote counts; unknown providers and out-of-range values still fail closed.
 - Read Plex playback events from the paginated `/status/sessions/history/all` route, preserving explicit account filtering and URL base paths.
+- Route `system_status` for exact configured downloader names to SABnzbd's existing read-only queue-status contract; retain ARR/Plex precedence and explicit authentication failures.
 
 ### Scope and evidence limits
 
