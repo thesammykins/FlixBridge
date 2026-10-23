@@ -492,7 +492,7 @@ export class SabnzbdService {
 				const response = await fetchJson<{ status?: boolean; error?: string }>(
 					url,
 				);
-				if (!response || response.status !== true) {
+				if (response?.status !== true) {
 					throw {
 						kind: "internal",
 						message: "SABnzbd did not acknowledge deletion",

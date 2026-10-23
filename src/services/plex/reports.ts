@@ -179,7 +179,10 @@ export class PlexReportsClient {
 	async listReportsPage({
 		limit = 25,
 		after,
-	}: { limit?: number; after?: string } = {}): Promise<
+	}: {
+		limit?: number;
+		after?: string;
+	} = {}): Promise<
 		OperationResult<{
 			reports: PlexReport[];
 			hasMore: boolean;

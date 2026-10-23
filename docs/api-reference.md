@@ -15,7 +15,7 @@ The MCP boundary enforces advertised required fields, rejects unknown arguments 
 - Other input strings are nonempty and at most 4096 characters. `queueTimeoutMs`: integer 1000–60000.
 - Only the tool’s advertised fields are accepted at the MCP boundary. Additional scope/confirmation checks apply at dispatch. Send documented fields rather than internal option names.
 
-The runtime uses SDK `@modelcontextprotocol/server` 2.3.1 `serveStdio` with legacy
+The runtime uses SDK `@modelcontextprotocol/server` 2.4.0 `serveStdio` with legacy
 serving enabled. Current MCP `2026-07-28` uses modern discovery/per-request protocol
 metadata, without requiring legacy `initialize`; a version guard rejects unsupported
 modern versions even after a supported request. Legacy initialization supports

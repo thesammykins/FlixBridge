@@ -2,9 +2,9 @@
 
 ## Verdict and scope
 
-Release verdict: **BLOCKED — dependency security audit**. Functional verification passed, but the hosted audit and a fresh public-registry audit report one high-severity vulnerability in locked Zod 3.25.76: [GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5), uncontrolled memory consumption while validating oversized collections. The advisory lists versions below 4.6.6 as affected; npm proposes 4.6.7, a major-version migration. That migration requires explicit approval; the audit gate has not been waived or weakened.
+Local verification: **PASS WITH RESIDUAL RISK** after the authorized dependency refresh. Zod 4.6.7 replaces affected 3.25.76; the fresh public-registry audit reports zero vulnerabilities. The oversized monitoring-scope regression went RED with element-level error accumulation on Zod 3 and GREEN with top-level rejection on Zod 4.6.7. The audit gate has not been waived or weakened. See the [complete dependency snapshot and upstream constraints](dependency-refresh.md).
 
-This is a source/package candidate, not a published release or a live-provider compatibility certification. GitHub authentication has been restored and the candidate is submitted for upstream review. Human review/merge and final publication approval remain separate gates. The existing tarball is **not approved for production installation or release** while this blocker remains.
+This is a source/package candidate, not a published release or a live-provider compatibility certification. Human review/merge, exact-head hosted checks and final publication approval remain separate gates. Older tarballs and audit snapshots are superseded, not evidence for the refreshed candidate.
 
 The implementation exposes 32 MCP tools: 20 preserved names and 12 library/watch, approval and retention additions. The running deployment, production media, credentials and host schedules were not changed. No tag, GitHub merge or package publication was performed.
 
@@ -14,7 +14,7 @@ The implementation exposes 32 MCP tools: 20 preserved names and 12 library/watch
 - PR #10 head re-fetched and included as an ancestor: `b2265039d23505a092d1c30817f19fd17b887ee6`.
 - Normalized Plex read failures, regression assertions and the upstream Support section were preserved.
 - Changelog history from the `1.0.1` heading onward is byte-identical to PR #10. Only the new 1.1 candidate section precedes it.
-- Root package/lock version is `1.1.0`. The dependency graph is unchanged; the additional CLI bin is intentional.
+- Root package/lock version is `1.1.0`. All seven direct dependencies are now exact-pinned current stable versions; compatible transitives were refreshed. The additional CLI bin is intentional. CI actions are current stable releases pinned by commit.
 
 Re-fetch main and PR #10 again before an eventual push if either has moved.
 
@@ -23,18 +23,19 @@ Re-fetch main and PR #10 again before an eventual push if either has moved.
 | Check | Observed result |
 | --- | --- |
 | `npm run build` | Pass; TypeScript compiled after deleting `dist` |
-| `npm run check` | Pass; 99 files checked, no fixes required |
-| Earlier local `npm audit --audit-level=moderate` | Reported zero vulnerabilities at that earlier snapshot; superseded for release readiness by the failing hosted/fresh audit below |
-| Hosted and fresh public-registry audit | **Fail: one high-severity Zod advisory; release blocked** |
-| Hosted functional matrix, Node 20/22/24 | All three test jobs passed on submitted head `47f3f04`; later documentation-only heads must retain their own CI readback |
-| `npm test`, Node 24.22.0 | 246 unit + 168 integration tests passed; zero failures/skips |
-| Built JavaScript integration suite, Node 20.20.2 | 168 passed; zero failures/skips |
-| Installed exact tarball, Node 20.20.2 and 24.22.0 | 21 critical tests passed on each runtime |
+| `npm run check` | Pass; 100 code/JSON files checked, no fixes or warnings |
+| Clean locked install | `npm ci --include=dev --ignore-scripts` passed |
+| Fresh public-registry audit | Pass; zero production/development vulnerabilities |
+| Current direct dependency metadata | All seven installed versions match registry `latest`; no outdated production dependencies |
+| Hosted functional/security matrix | Inspect PR checks for the exact refreshed head; previous Zod 3 security failure is historical, not a waived check |
+| `npm test`, Node 24.22.1 | 246 unit + 169 integration tests passed; zero failures/skips |
+| Built JavaScript integration suite, Node 20.20.2 | 169 passed; zero failures/skips |
+| Installed exact tarball, Node 20.20.2 and 24.22.1 | 22 critical tests passed on each runtime |
 | Installed MCP client consumption, Node 20.20.2 | 3 SDK-client modes passed: default legacy, automatic modern, pinned modern |
 | Installed retention bin | `--help` succeeded with an empty credential environment and Node 20 |
 | Clean-output regression | A synthetic obsolete generated module was removed by the normal build and absent from the tarball |
 | Package contents/integrity | 81 allowed files; npm SHA-512 integrity independently matched actual bytes |
-| Documentation | 29 JSON examples parsed; 139 local/repository link targets resolved |
+| Documentation | 29 JSON examples parsed; 144 local/repository link targets resolved |
 | Whitespace | `git diff --check` passed |
 
 The installed tests retain the original assertions and synthetic provider fixtures. Adaptations change only product import locations and stdio/CLI executable paths to the installed package; the product is not bundled or patched to obtain a pass. Exact runtime executables, private consumer paths, fixture hashes and logs are retained in the local evidence bundle, outside the public tree.
@@ -43,10 +44,10 @@ The installed tests retain the original assertions and synthetic provider fixtur
 
 - Package: `@thesammykins/flixbridge@1.1.0`
 - File: `thesammykins-flixbridge-1.1.0.tgz`
-- SHA-256: `8219cd2a68b0ca67811c3d2037e62309047b674e99a0051751767a825483803d`
+- SHA-256: `0e370f59ddf5e322cfe745dbcbd6d7192bf1a2d5bb35909719752a5f6418252c`
 - Contents: generated `dist` modules/declarations, README, LICENSE and package metadata only.
 
-An earlier package was superseded after independent review reproduced a whole-title post-claim substitution defect. Its passing earlier checks are not evidence for this artifact. It was quarantined, not published.
+Earlier packages were superseded after independent review reproduced a whole-title post-claim substitution defect, then after the Zod audit blocked the pre-refresh candidate. Their passing earlier checks are not evidence for this artifact. They were not published; use the exact refreshed digest above.
 
 ## Security and correctness evidence
 

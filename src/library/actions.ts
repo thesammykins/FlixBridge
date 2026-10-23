@@ -451,8 +451,7 @@ export async function executeLibraryAction(
 			);
 			if (
 				!fresh.complete ||
-				!item ||
-				!item.complete ||
+				!item?.complete ||
 				JSON.stringify(retentionIdentity(item)) !==
 					JSON.stringify(retentionIdentity(plan.item))
 			)

@@ -9,7 +9,7 @@ export function classifyExecution(
 	const outcome = z
 		.object({ ok: z.boolean(), data: z.unknown().optional() })
 		.parse(result);
-	const data = z.record(z.unknown()).safeParse(outcome.data);
+	const data = z.record(z.string(), z.unknown()).safeParse(outcome.data);
 	if (data.success && data.data.uncertain === true)
 		return { state: "uncertain", verified: false };
 	if (!outcome.ok || !data.success || tool === "remediate_reported_issue")

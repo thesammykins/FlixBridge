@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { instanceBindings } from "../dist/approval-plans.js";
+
 test("approval instance bindings include selected media server, credential and actual server identity without exposing values", async () => {
 	const env = { ...process.env };
 	const original = globalThis.fetch;

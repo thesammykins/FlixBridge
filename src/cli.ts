@@ -11,12 +11,11 @@ import { ArrMcpServer } from "./index.js";
 import {
 	getWatchEvidence,
 	loadLibrarySnapshot,
-	mediaServers,
 } from "./library/intelligence.js";
-import { recommendationArguments } from "./retention-requests.js";
 import { evaluateRule, getRule, runDueRules } from "./retention/rules.js";
 import { evaluationTimeSchema } from "./retention/schema.js";
 import { cleanupCandidates } from "./retention/tools.js";
+import { recommendationArguments } from "./retention-requests.js";
 import { loadRuntimeConfig } from "./runtime-config.js";
 
 const help = `FlixBridge retention — opt-in local operation
@@ -97,7 +96,7 @@ export async function runCli(
 					"remediate_reported_issue",
 					"update_monitoring",
 				]),
-				arguments: z.record(z.unknown()),
+				arguments: z.record(z.string(), z.unknown()),
 			})
 			.passthrough()
 			.parse(record.plan);

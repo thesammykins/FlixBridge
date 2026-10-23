@@ -60,3 +60,7 @@
 - Review Git tree and packed npm artifact separately. Publication, pushes with external
   effects, live writes and history rewriting need their own authority; local gates
   are not release approval.
+- Biome 2 checks the existing JavaScript/TypeScript/JSON scope explicitly; do not
+  auto-format historical changelog/Markdown or workflow YAML as dependency-migration churn.
+- Dependency freshness means latest stable direct packages and latest compatible
+  upstream transitive ranges; document held ranges instead of forcing incompatible majors.

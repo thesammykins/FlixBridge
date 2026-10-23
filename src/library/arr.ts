@@ -142,7 +142,7 @@ const titleSchema = z.object({
 	imdbId: z.string().nullish(),
 	added: z.string().datetime({ offset: true }).optional(),
 	tags: z.array(id),
-	ratings: z.union([rating, z.record(rating)]).optional(),
+	ratings: z.union([rating, z.record(z.string(), rating)]).optional(),
 	seasons: z
 		.array(z.object({ seasonNumber: count, monitored: z.boolean() }))
 		.optional(),

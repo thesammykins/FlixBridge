@@ -6,8 +6,8 @@ import { setTimeout as delay } from "node:timers/promises";
 import { z } from "zod";
 import { createInternalError } from "../core.js";
 import {
-	type RetentionRule,
 	evaluationTimeSchema,
+	type RetentionRule,
 	ruleSchema,
 } from "./schema.js";
 
@@ -370,7 +370,7 @@ export async function runDueRules<T>(
 					a.version === context.version &&
 					a.evaluationTime === evaluationTime,
 			);
-			if (!attempt || attempt.status !== "reserved")
+			if (attempt?.status !== "reserved")
 				throw createInternalError("Scheduler reservation changed");
 			attempt.status = outcome.status;
 		});

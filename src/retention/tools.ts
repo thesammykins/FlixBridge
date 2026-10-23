@@ -18,8 +18,8 @@ import {
 	reviseRuleSchema,
 } from "./rules.js";
 import {
-	type RetentionRuleInput,
 	evaluationTimeSchema,
+	type RetentionRuleInput,
 	ruleSchema,
 } from "./schema.js";
 

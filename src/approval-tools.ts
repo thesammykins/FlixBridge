@@ -9,7 +9,7 @@ export const approvalInput = z
 			"remediate_reported_issue",
 			"update_monitoring",
 		]),
-		arguments: z.record(z.unknown()),
+		arguments: z.record(z.string(), z.unknown()),
 	})
 	.strict();
 export const approvalIdInput = z

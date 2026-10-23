@@ -44,7 +44,7 @@ export function removalRequestAllowed(url: URL, method: string): boolean {
 		);
 	if (method.toUpperCase() !== "DELETE" && !sabRemoval) return true;
 	const permit = authority.getStore();
-	if (!permit || !permit.approvalId || !/^[a-f0-9]{64}$/.test(permit.planHash))
+	if (!permit?.approvalId || !/^[a-f0-9]{64}$/.test(permit.planHash))
 		return false;
 	return permit.allowed.some(
 		(target) =>

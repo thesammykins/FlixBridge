@@ -4,20 +4,12 @@
  */
 
 import type {
-	AddData,
-	AddRequest,
 	GrabData,
-	HistoryData,
-	HistoryOptions,
-	ImportIssueData,
 	OperationResult,
-	QualityProfileData,
 	QueueData,
 	QueueDiagnosticsData,
 	QueueOptions,
 	RootFolderData,
-	SearchData,
-	SearchOptions,
 	ServiceConfig,
 	SystemStatusData,
 } from "../../src/services/base.js";
@@ -114,7 +106,7 @@ export class MockSonarrService extends BaseArrService {
 	}
 
 	async queueList(
-		options: QueueOptions = {},
+		_options: QueueOptions = {},
 	): Promise<OperationResult<QueueData>> {
 		const response = this.mockResponses[
 			"/queue"
@@ -429,7 +421,7 @@ export class MockRadarrService extends BaseArrService {
 	}
 
 	async queueList(
-		options: QueueOptions = {},
+		_options: QueueOptions = {},
 	): Promise<OperationResult<QueueData>> {
 		const response = this.mockResponses[
 			"/queue"
@@ -666,7 +658,7 @@ export class MockRadarrService extends BaseArrService {
 export function createMockFetch(responses: MockResponse): typeof global.fetch {
 	return async (
 		input: RequestInfo | URL,
-		init?: RequestInit,
+		_init?: RequestInit,
 	): Promise<Response> => {
 		const url =
 			typeof input === "string"

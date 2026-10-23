@@ -218,7 +218,7 @@ export const jellyItemSchema = z.object({
 	Id: z.string().min(1),
 	Name: z.string(),
 	Type: z.string(),
-	ProviderIds: z.record(z.string()).optional(),
+	ProviderIds: z.record(z.string(), z.string()).optional(),
 	MediaSources: z
 		.array(z.object({ Id: z.string().optional(), Path: z.string().optional() }))
 		.optional(),

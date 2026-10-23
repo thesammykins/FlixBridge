@@ -5,9 +5,9 @@ import { join } from "node:path";
 import test from "node:test";
 import {
 	cleanup_candidates,
-	retentionTools,
 	retention_evaluate,
 	retention_rules,
+	retentionTools,
 	runRetentionTool,
 } from "../dist/retention/tools.js";
 

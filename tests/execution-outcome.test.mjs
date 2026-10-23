@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+
 test("accepted remediation is never durable verified completion", async () => {
 	let classify;
 	try {

@@ -12,6 +12,9 @@
 
 ### Changed
 
+- Refresh all seven direct dependencies to current stable releases: MCP server/client 2.4.0, Zod 4.6.7, Biome 2.6.2, TypeScript 7.0.2, tsx 4.23.15 and Node declarations 26.6.5. Re-resolve compatible transitive dependencies without forced major overrides. Migrate explicit record keys, compiler settings and the existing code-only lint scope; retain Node 20 runtime compatibility checks.
+- Update checkout/setup-node CI actions to current v7.0.1/v7.1.0 releases, pinned to resolved commit identities. Verification remains read-only and publishing stays absent.
+- Reject oversized monitoring scopes before collecting element-level validation issues, covering the Zod resource-exhaustion regression.
 - All explicit removal scopes, including existing queue/downloader/title removal and Plex `remove_and_regrab`, now require authenticated human `approvalId` execution authority. Preview confirmation tokens alone are insufficient; fresh evidence and a durable one-use claim precede removal. Existing tool names remain; this is an incompatible removal-authority change. `manual_import` retains its existing confirmation flow. Other writes still require operator authority.
 - Explicit private state stores rule revisions, scheduler attempts and approvals/execution outcomes, not credentials or a second source configuration. Media-only read configurations are supported; removal still requires ARR/downloader targets.
 - Partial, pending and uncertain results remain distinct from verified success. Monitoring and deletion are separate nontransactional writes; failures do not imply rollback, and uncertain execution is not automatically retryable.

@@ -1,13 +1,13 @@
+export {
+	type ApprovalBridgeOptions,
+	createApprovalBridge,
+	sendApprovalRequest,
+	verifyApprovalSignature,
+} from "./bridge.js";
 export { hashPlan } from "./hash.js";
 export {
-	ApprovalStore,
+	type ApprovalDecision,
 	type ApprovalRecord,
 	type ApprovalState,
-	type ApprovalDecision,
+	ApprovalStore,
 } from "./store.js";
-export {
-	createApprovalBridge,
-	verifyApprovalSignature,
-	sendApprovalRequest,
-	type ApprovalBridgeOptions,
-} from "./bridge.js";

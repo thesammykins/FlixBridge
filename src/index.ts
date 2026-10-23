@@ -11,6 +11,9 @@ import {
 } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { z } from "zod";
+import { sendApprovalRequest } from "./approval/bridge.js";
+import { hashPlan } from "./approval/hash.js";
+import { ApprovalStore } from "./approval/store.js";
 import {
 	immutablePreview,
 	instanceBindings,
@@ -22,10 +25,6 @@ import {
 	approvalTools,
 	monitoringInput,
 } from "./approval-tools.js";
-import { sendApprovalRequest } from "./approval/bridge.js";
-import { hashPlan } from "./approval/hash.js";
-import { ApprovalStore } from "./approval/store.js";
-import { loadConfigFromEnvOnly } from "./config.js";
 import { createInternalError, isTrustedError, serializeError } from "./core.js";
 import { debugToolTiming } from "./debug.js";
 import {
@@ -48,15 +47,15 @@ import {
 } from "./library/intelligence.js";
 import { VersionCheckedServer } from "./mcp-version.js";
 import { metricsCollector } from "./metrics.js";
-import {
-	type RemovalAuthority,
-	withRemovalAuthority,
-} from "./removal-authority.js";
+import { withRemovalAuthority } from "./removal-authority.js";
 import { ToolAdmission } from "./request-context.js";
-import { recommendationArguments } from "./retention-requests.js";
 import { getRule } from "./retention/rules.js";
-import { retentionTools, runRetentionTool } from "./retention/tools.js";
-import { cleanupCandidates } from "./retention/tools.js";
+import {
+	cleanupCandidates,
+	retentionTools,
+	runRetentionTool,
+} from "./retention/tools.js";
+import { recommendationArguments } from "./retention-requests.js";
 import { loadRuntimeConfig } from "./runtime-config.js";
 import type {
 	ManualImportPreviewData,
@@ -71,10 +70,10 @@ import type {
 	SabnzbdRemovalResult,
 } from "./services/downloaders/sabnzbd.js";
 import {
-	type RemediateInput,
 	executeRemediation,
 	mintRemoveToken,
 	planRemediation,
+	type RemediateInput,
 	resolveReports,
 } from "./services/plex/remediation.js";
 import {
@@ -924,7 +923,7 @@ export class ArrMcpServer {
 				: createInternalError(
 						"Fresh exact-target preview failed; no approval can be requested",
 					);
-		const preview = z.record(z.unknown()).parse(previewResult.data);
+		const preview = z.record(z.string(), z.unknown()).parse(previewResult.data);
 		let libraryEvidence: unknown = null;
 		if (name === "remove_content" && input.target === "library") {
 			libraryEvidence = await this.wholeTitleEvidence(input);
@@ -1031,7 +1030,10 @@ export class ArrMcpServer {
 			);
 			if (name === "remediate_reported_issue") {
 				const remediation = z
-					.object({ ok: z.boolean(), data: z.record(z.unknown()).optional() })
+					.object({
+						ok: z.boolean(),
+						data: z.record(z.string(), z.unknown()).optional(),
+					})
 					.parse(result);
 				if (remediation.ok) {
 					const deletionVerified = await verifyRemediationAbsence(
@@ -1677,7 +1679,7 @@ export class ArrMcpServer {
 			);
 		}
 		const record = this.pendingConfirmations.get(token);
-		if (!record || record.scope !== "manual_import") {
+		if (record?.scope !== "manual_import") {
 			throw new McpError(
 				ErrorCode.InvalidParams,
 				"Invalid or unknown confirmation token. Run a dry run first.",
@@ -1939,7 +1941,7 @@ export class ArrMcpServer {
 		}
 
 		const record = this.pendingConfirmations.get(token);
-		if (!record || record.scope !== "service") {
+		if (record?.scope !== "service") {
 			throw new McpError(
 				ErrorCode.InvalidParams,
 				"Invalid or unknown confirmation token. Run a dry run first.",
@@ -2198,7 +2200,7 @@ export class ArrMcpServer {
 		}
 
 		const record = this.pendingConfirmations.get(token);
-		if (!record || record.scope !== "downloader") {
+		if (record?.scope !== "downloader") {
 			throw new McpError(
 				ErrorCode.InvalidParams,
 				"Invalid or unknown confirmation token. Run a dry run first.",

@@ -7,6 +7,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import * as approval from "../dist/approval/index.js";
+
 const testSecret = randomBytes(32).toString("hex");
 process.env.FLIX_BRIDGE_APPROVAL_SECRET = testSecret;
 process.env.FLIX_BRIDGE_APPROVAL_ACTORS = "human:test";

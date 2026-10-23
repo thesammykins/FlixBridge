@@ -435,11 +435,11 @@ export abstract class BaseArrService {
 	}
 
 	protected parseQueue(response: unknown) {
-		return (
+		const schema: z.ZodType<z.infer<typeof QueueSchema>> =
 			this.apiFamily() === 5
 				? QueueSchema.extend({ records: z.array(V5QueueItemSchema) })
-				: QueueSchema
-		)
+				: QueueSchema;
+		return schema
 			.refine(
 				(queue) =>
 					new Set(queue.records.map((record) => record.id)).size ===
@@ -936,7 +936,7 @@ export abstract class BaseArrService {
 				pct: number;
 			}> = [];
 			let totalLibraryItems = 0;
-			for (const [id, count] of selected.usage) {
+			for (const [_id, count] of selected.usage) {
 				totalLibraryItems += count;
 			}
 			for (const [id, count] of selected.usage) {

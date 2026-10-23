@@ -35,7 +35,7 @@ Software downgrade can restore weaker token-only removal; disable destructive ca
 
 ## Compatibility evidence is bounded
 
-MCP SDK 2.3.1 serves current `2026-07-28` and legacy stdio; a modern per-request guard
+MCP SDK 2.4.0 serves current `2026-07-28` and legacy stdio; a modern per-request guard
 rejects unsupported versions after negotiation. Four tool calls execute with sixteen
 waiting slots; cancellation prevents queued work from starting but cannot revoke
 already-accepted upstream commands. See [transport](api-reference.md#transport-and-validation).

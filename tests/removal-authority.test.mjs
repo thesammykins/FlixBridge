@@ -78,13 +78,13 @@ test("a timed-out removal preflight aborts its evidence reads and never sends th
 	let reads = 0;
 	let writes = 0;
 	let aborted = 0;
-	globalThis.fetch = async (url, options) => {
+	globalThis.fetch = async (_url, options) => {
 		if (options.method === "DELETE") {
 			writes++;
 			return new Response(null, { status: 204 });
 		}
 		reads++;
-		return new Promise((resolve, reject) =>
+		return new Promise((_resolve, reject) =>
 			options.signal.addEventListener(
 				"abort",
 				() => {

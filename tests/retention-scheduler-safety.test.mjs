@@ -8,6 +8,7 @@ import {
 	reviseRule,
 	runDueRules,
 } from "../dist/retention/rules.js";
+
 const rule = {
 	services: ["radarr"],
 	users: [{ server: "jellyfin", userId: "alice" }],

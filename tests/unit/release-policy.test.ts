@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile, readdir } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { describe, test, testRunner } from "../helpers/test-runner.js";
 
 await describe("Release policy", [

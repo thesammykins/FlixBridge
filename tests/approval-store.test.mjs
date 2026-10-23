@@ -4,8 +4,8 @@ import { createHash } from "node:crypto";
 import {
 	chmod,
 	mkdtemp,
-	readFile,
 	readdir,
+	readFile,
 	realpath,
 	rm,
 	stat,
@@ -16,6 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
+
 const exec = promisify(execFile);
 process.env.FLIX_BRIDGE_APPROVAL_ACTORS = "human:test";
 const moduleUrl = new URL("../dist/approval/index.js", import.meta.url).href;
@@ -27,6 +28,7 @@ async function child(script) {
 	]);
 	return JSON.parse(stdout);
 }
+
 import * as approval from "../dist/approval/index.js";
 
 async function fixture(t) {

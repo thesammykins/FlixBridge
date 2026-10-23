@@ -466,7 +466,7 @@ test("tool argument errors are actionable results while envelope/name errors are
 	const w = wire(t);
 	const listing = (await w.modern("tools/list")).result.tools;
 	for (const tool of listing) {
-		for (const field of tool.inputSchema.required) {
+		for (const _field of tool.inputSchema.required) {
 			const response = await w.modern("tools/call", {
 				name: tool.name,
 				arguments: {},
