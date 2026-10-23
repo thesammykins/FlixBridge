@@ -1242,6 +1242,14 @@ export class ArrMcpServer {
 		) {
 			result = await mediaSystemStatus(input.service ?? "");
 		} else if (
+			name === "system_status" &&
+			!serviceRegistry.has(input.service ?? "") &&
+			serviceRegistry.hasDownloader(input.service ?? "")
+		) {
+			result = await serviceRegistry
+				.getDownloader(input.service ?? "")
+				?.serverStats();
+		} else if (
 			name === "update_monitoring" ||
 			(name === "remove_content" &&
 				["season", "files"].includes(input.target ?? ""))
