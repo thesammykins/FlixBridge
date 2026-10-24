@@ -247,7 +247,9 @@ await describe("Release policy", [
 			);
 	}),
 	test("artifact CLI consumes npm 12 keyed pack output and rejects changed bytes", async () => {
-		const { mkdtemp, mkdir, writeFile, rm } = await import("node:fs/promises");
+		const { mkdtemp, mkdir, writeFile, rm, link, symlink } = await import(
+			"node:fs/promises"
+		);
 		const { tmpdir } = await import("node:os");
 		const { join } = await import("node:path");
 		const { execFileSync, spawnSync } = await import("node:child_process");
@@ -311,6 +313,53 @@ await describe("Release policy", [
 			);
 			assert.equal(bad.status, 1);
 			assert.match(bad.stderr, /SHA-256/);
+			const replay = async () => {
+				execFileSync("tar", [
+					"-czf",
+					join(dir, filename),
+					"-C",
+					dir,
+					...files.map((path) => `package/${path}`),
+				]);
+				return spawnSync(
+					process.execPath,
+					["scripts/release-preflight.mjs", "artifact"],
+					{
+						env: {
+							...env,
+							EXPECTED_SHA256: createHash("sha256")
+								.update(await readFile(join(dir, filename)))
+								.digest("hex"),
+						},
+						encoding: "utf8",
+					},
+				);
+			};
+			for (const type of ["symlink", "hardlink"]) {
+				await rm(join(dir, "package/dist/index.js"));
+				if (type === "symlink")
+					await symlink("cli.js", join(dir, "package/dist/index.js"));
+				else
+					await link(
+						join(dir, "package/dist/cli.js"),
+						join(dir, "package/dist/index.js"),
+					);
+				const rejected = await replay();
+				assert.equal(rejected.status, 1);
+				assert.match(rejected.stderr, /only regular tar members allowed/);
+				await rm(join(dir, "package/dist/index.js"));
+				await writeFile(join(dir, "package/dist/index.js"), "fixture");
+			}
+			const sourcePackage = JSON.parse(
+				await readFile(new URL("../../package.json", import.meta.url), "utf8"),
+			);
+			await writeFile(
+				join(dir, "package/package.json"),
+				JSON.stringify({ ...sourcePackage, version: "9.9.9" }),
+			);
+			const mismatch = await replay();
+			assert.equal(mismatch.status, 1);
+			assert.match(mismatch.stderr, /packed package identity differs/);
 		} finally {
 			await rm(dir, { recursive: true, force: true });
 		}
@@ -372,7 +421,7 @@ await describe("Release policy", [
 			"tests/mcp-client.test.mjs",
 			'flixbridge-retention" --help',
 			"id-token: write",
-			"--ignore-scripts --access public --tag latest --provenance",
+			"--ignore-scripts --fetch-retries=0 --access public --tag latest --provenance",
 			// biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression
 			"if: ${{ always() && steps.publish.outcome != 'skipped' }}",
 			"node scripts/release-preflight.mjs readback",

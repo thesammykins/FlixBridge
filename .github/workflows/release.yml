@@ -83,7 +83,7 @@ jobs:
         id: publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish "$ARTIFACT_DIR/thesammykins-flixbridge-$PACKAGE_VERSION.tgz" --ignore-scripts --access public --tag latest --provenance
+        run: npm publish "$ARTIFACT_DIR/thesammykins-flixbridge-$PACKAGE_VERSION.tgz" --ignore-scripts --fetch-retries=0 --access public --tag latest --provenance
       - name: Independently read back even after a failed publish command
         if: ${{ always() && steps.publish.outcome != 'skipped' }}
         run: node scripts/release-preflight.mjs readback
