@@ -1,5 +1,6 @@
 // Test-only fault injection at the product dispatch boundary, never a live service.
 import { ArrMcpServer } from "../../dist/index.js";
+
 const app = new ArrMcpServer();
 app.executeTool = async (name) => {
 	if (name === "system_status") throw new Error("private-marker");

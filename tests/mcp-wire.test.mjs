@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import {
 	cpSync,
 	mkdtempSync,
 	readFileSync,
+	realpathSync,
 	rmSync,
 	symlinkSync,
 	writeFileSync,
@@ -14,6 +16,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
+
+import { ApprovalStore } from "../dist/approval/store.js";
 
 const version = "2026-07-28";
 const meta = (requested = version) => ({
@@ -44,6 +48,18 @@ const expectedNames = [
 	"remediate_reported_issue",
 	"update_quality_profile",
 	"library_statistics",
+	"library_list",
+	"media_detail",
+	"watch_status",
+	"watch_history",
+	"upcoming_media",
+	"request_approval",
+	"approval_status",
+	"cancel_approval",
+	"update_monitoring",
+	"cleanup_candidates",
+	"retention_rules",
+	"retention_evaluate",
 ];
 
 test("EOF interrupts removal verification without replaying the accepted DELETE", async (t) => {
@@ -67,8 +83,14 @@ test("EOF interrupts removal verification without replaying the accepted DELETE"
 	upstreamServer.listen(0, "127.0.0.1");
 	await once(upstreamServer, "listening");
 	t.after(() => upstreamServer.close());
+	const state = realpathSync(
+		mkdtempSync(join(tmpdir(), "flixbridge-eof-approval-")),
+	);
+	t.after(() => rmSync(state, { recursive: true, force: true }));
+	const store = new ApprovalStore(state);
 	const w = wire(t, {
 		SONARR_URL: `http://127.0.0.1:${upstreamServer.address().port}`,
+		FLIX_BRIDGE_STATE_DIR: state,
 	});
 	const args = {
 		service: "sonarr",
@@ -87,17 +109,54 @@ test("EOF interrupts removal verification without replaying the accepted DELETE"
 	assert.equal(preview.result.structuredContent.ok, true);
 	const token = preview.result.structuredContent.data.confirmationToken;
 	assert.equal(typeof token, "string");
+	const requested = await w.modern("tools/call", {
+		name: "request_approval",
+		arguments: { tool: "remove_content", arguments: args },
+	});
+	assert.equal(requested.result.structuredContent.ok, true);
+	const approval = requested.result.structuredContent.data;
+	assert.equal((await store.get(approval.id)).state, "pending");
+	// Only the trusted TEST process represents the authenticated human bridge.
+	// The MCP child receives neither the actor allowlist nor production env.
+	const oldActors = process.env.FLIX_BRIDGE_APPROVAL_ACTORS;
+	process.env.FLIX_BRIDGE_APPROVAL_ACTORS = "eof-fixture-human";
+	try {
+		const decision = {
+			requestId: approval.id,
+			planHash: approval.planHash,
+			actor: "eof-fixture-human",
+			decision: "yes",
+			nonce: randomUUID(),
+		};
+		await assert.rejects(store.decide(decision), (error) =>
+			/authenticated/i.test(error.message),
+		);
+		assert.equal((await store.decide(decision, true)).state, "approved");
+	} finally {
+		if (oldActors === undefined)
+			Reflect.deleteProperty(process.env, "FLIX_BRIDGE_APPROVAL_ACTORS");
+		else process.env.FLIX_BRIDGE_APPROVAL_ACTORS = oldActors;
+	}
 	w.send({
 		id: 900,
 		method: "tools/call",
 		params: {
 			name: "remove_content",
-			arguments: { ...args, dryRun: false, confirmationToken: token },
+			arguments: {
+				...args,
+				dryRun: false,
+				confirmationToken: token,
+				approvalId: approval.id,
+			},
 			_meta: meta(),
 		},
 	});
 	await until(() => verificationReads >= 1);
+	assert.equal((await store.get(approval.id)).state, "claimed");
 	await w.close();
+	await assert.rejects(store.claim(approval.id, approval.plan), (error) =>
+		/not executable/i.test(error.message),
+	);
 	assert.equal(deletions, 1);
 	assert.equal(
 		verificationReads,
@@ -358,12 +417,40 @@ test("catalogue and no-argument calls have matching structured envelopes", async
 		"all_services_diagnostics",
 		"queue_grab",
 		"update_quality_profile",
+		"cancel_approval",
+		"update_monitoring",
 	]) {
 		const hints = listing.find((tool) => tool.name === name).annotations;
 		assert.equal(hints.readOnlyHint, false, name);
 		assert.equal(hints.destructiveHint, true, name);
 		assert.equal(hints.idempotentHint, false, name);
 	}
+	for (const name of ["request_approval", "retention_rules"]) {
+		const hints = listing.find((tool) => tool.name === name).annotations;
+		assert.equal(hints.readOnlyHint, false, name);
+		assert.equal(hints.destructiveHint, false, name);
+		assert.equal(hints.idempotentHint, false, name);
+	}
+	for (const name of [
+		"library_list",
+		"media_detail",
+		"watch_status",
+		"watch_history",
+		"upcoming_media",
+		"cleanup_candidates",
+		"retention_evaluate",
+	]) {
+		const hints = listing.find((tool) => tool.name === name).annotations;
+		assert.equal(hints.readOnlyHint, true, name);
+		assert.notEqual(hints.destructiveHint, true, name);
+		assert.equal(hints.openWorldHint, true, name);
+	}
+	const approvalStatus = listing.find(
+		(tool) => tool.name === "approval_status",
+	).annotations;
+	assert.equal(approvalStatus.readOnlyHint, true);
+	assert.equal(approvalStatus.destructiveHint, false);
+	assert.equal(approvalStatus.openWorldHint, false);
 	const metrics = await w.modern("tools/call", { name: "server_metrics" });
 	assert.equal(metrics.error, undefined);
 	assert.equal(metrics.result.structuredContent.ok, true);
@@ -379,7 +466,7 @@ test("tool argument errors are actionable results while envelope/name errors are
 	const w = wire(t);
 	const listing = (await w.modern("tools/list")).result.tools;
 	for (const tool of listing) {
-		for (const field of tool.inputSchema.required) {
+		for (const _field of tool.inputSchema.required) {
 			const response = await w.modern("tools/call", {
 				name: tool.name,
 				arguments: {},
@@ -567,10 +654,30 @@ test("dispatch failures cannot leak secrets or violate the advertised output env
 			name,
 			arguments: name === "system_status" ? { service: "sonarr" } : {},
 		});
-		assert.equal(response.error.code, -32603);
+		assert.equal(
+			response.error?.code,
+			-32603,
+			`${name}: ${JSON.stringify(response)}`,
+		);
 		assert.ok(!JSON.stringify(response).includes("private-marker"));
 		assert.ok(!JSON.stringify(response).includes("invalid-envelope"));
 	}
+	await w.close();
+});
+
+test("known retention business failures remain actionable tool errors, not unexpected RPC failures", async (t) => {
+	const state = realpathSync(
+		mkdtempSync(join(tmpdir(), "flixbridge-rule-error-")),
+	);
+	t.after(() => rmSync(state, { recursive: true, force: true }));
+	const w = wire(t, { FLIX_BRIDGE_STATE_DIR: state });
+	const response = await w.modern("tools/call", {
+		name: "retention_rules",
+		arguments: { operation: "get", id: "missing" },
+	});
+	assert.equal(response.error, undefined);
+	assert.equal(response.result.isError, true);
+	assert.match(response.result.structuredContent.error.message, /not found/);
 	await w.close();
 });
 
@@ -592,7 +699,11 @@ test("advertised numeric and collection bounds match runtime validation", async 
 			) {
 				assert.equal(field.type, "integer", `${tool.name}.${name}`);
 				assert.equal(field.minimum, name === "queueTimeoutMs" ? 1000 : 1);
-				assert.equal(typeof field.maximum, "number");
+				assert.equal(
+					typeof field.maximum,
+					"number",
+					`${tool.name}.${name} must advertise its maximum`,
+				);
 			}
 			if (name === "ids") {
 				assert.equal(field.minItems, 1);

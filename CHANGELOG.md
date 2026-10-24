@@ -1,5 +1,42 @@
 # Changelog
 
+## [1.1.0] - Unreleased
+
+### Added
+
+- Read-only library/user browsing, exact ARR media detail with source/scale/vote-preserving ratings and optional untrusted TMDB reviews, explicit per-user Plex/Jellyfin watch summaries, Plex playback events, and ARR calendars. Jellyfin event history is explicitly unsupported.
+- Deterministic bounded cleanup recommendations, versioned durable retention rules (created disabled), explicit evaluation times, and the opt-in `flixbridge-retention` CLI: `bridge`, `evaluate`, `run-due`, and `execute`. No schedule is installed and no evaluation grants deletion authority.
+- Durable hash-bound human approval requests/status/cancellation, authenticated allowlisted actors, optional signed webhook notifications with signed approve/reject references, and a separately launched loopback callback bridge. A trusted adapter authenticates button presses or exact-request yes/no replies; there is no MCP self-approval tool.
+- Exact monitoring changes and season/file cleanup through reviewed ARR v3 workflows; cleanup verifies unmonitoring before file deletion. Season cleanup currently requires ended-series and exact episode/file evidence.
+- Explicit `watchState` rules (default watched; unwatched means current flag, not never-watched history) and `allowUnsupportedFavourites` (default false). The latter acknowledges unsupported capability only; it does not excuse unavailable evidence or a known favourite.
+
+### Changed
+
+- Refresh all seven direct dependencies to current stable releases: MCP server/client 2.4.0, Zod 4.6.7, Biome 2.6.2, TypeScript 7.0.2, tsx 4.23.15 and Node declarations 26.6.5. Re-resolve compatible transitive dependencies without forced major overrides. Migrate explicit record keys, compiler settings and the existing code-only lint scope; retain Node 20 runtime compatibility checks.
+- Update checkout/setup-node CI actions to current v7.0.1/v7.1.0 releases, pinned to resolved commit identities. Verification remains read-only; a separate manual main-only npm release workflow requires a reviewed commit and exact tarball hash, repeats the gates, and independently reads back the published bytes.
+- Reject oversized monitoring scopes before collecting element-level validation issues, covering the Zod resource-exhaustion regression.
+- All explicit removal scopes, including existing queue/downloader/title removal and Plex `remove_and_regrab`, now require authenticated human `approvalId` execution authority. Preview confirmation tokens alone are insufficient; fresh evidence and a durable one-use claim precede removal. Existing tool names remain; this is an incompatible removal-authority change. `manual_import` retains its existing confirmation flow. Other writes still require operator authority.
+- Explicit private state stores rule revisions, scheduler attempts and approvals/execution outcomes, not credentials or a second source configuration. Media-only read configurations are supported; removal still requires ARR/downloader targets.
+- Partial, pending and uncertain results remain distinct from verified success. Monitoring and deletion are separate nontransactional writes; failures do not imply rollback, and uncertain execution is not automatically retryable.
+
+### Fixed
+
+- Preserve Radarr's Trakt ratings on their native 0..10 scale, including vote counts; unknown providers and out-of-range values still fail closed.
+- Read Plex playback events from the paginated `/status/sessions/history/all` route, preserving explicit account filtering and URL base paths.
+- Route `system_status` for exact configured downloader names to SABnzbd's existing read-only queue-status contract; retain ARR/Plex precedence and explicit authentication failures.
+
+### Scope and evidence limits
+
+- New library workflows do not support Sonarr v5; new mutations reject `auto`/strict v5 rather than downgrading. Plex requires explicit per-user token bindings and cannot supply favourites/watchlist protection. Logical file bytes are estimates, not guaranteed recovered disk space.
+- This section describes candidate source behavior only. It does not attest to final test counts, live validation, tags, release assets or publication. See the provider, approval, rule and migration contracts linked from the README.
+
+## [1.0.1] - Unreleased
+
+### Fixed
+
+- Return failed Plex report metadata reads as normalized tool failures with matching text/structured output and `isError:true`, instead of a generic JSON-RPC internal error. Transport/body failures cannot masquerade as deleted media or a clean/empty report feed; HTTP 401/403 remain explicit. This does not repair operating-system network permissions or certify live Plex compatibility.
+- Clarify that source tags, GitHub assets and npm registry publication are separate. Installation examples no longer assume that a source tag guarantees a downloadable release package.
+
 ## [1.0.0] - 2026-10-15
 
 ### Added

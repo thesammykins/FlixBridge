@@ -1,11 +1,12 @@
 {
 	"name": "@thesammykins/flixbridge",
-	"version": "1.0.0",
-	"description": "Media Management MCP Server - environment-only configuration for Sonarr/Radarr/SABnzbd",
+	"version": "1.1.0",
+	"description": "Media intelligence and human-approved retention MCP for ARR, Plex and Jellyfin",
 	"type": "module",
 	"main": "dist/index.js",
 	"bin": {
-		"flixbridge": "dist/index.js"
+		"flixbridge": "dist/index.js",
+		"flixbridge-retention": "dist/cli.js"
 	},
 	"repository": {
 		"type": "git",
@@ -18,7 +19,11 @@
 	"publishConfig": {
 		"access": "public"
 	},
-	"files": ["dist/**/*", "README.md", "LICENSE"],
+	"files": [
+		"dist/**/*",
+		"README.md",
+		"LICENSE"
+	],
 	"scripts": {
 		"build": "node --input-type=module -e \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true });\" && tsc",
 		"prepack": "npm run build",
@@ -29,7 +34,8 @@
 		"lint:fix": "biome lint --write .",
 		"format": "biome format .",
 		"format:fix": "biome format --write .",
-		"test": "tsx tests/run-all.ts && npm run test:mcp",
+		"test": "npm run test:unit && npm run test:integration",
+		"test:integration": "npm run build && node --test tests/*.test.mjs",
 		"test:unit": "tsx tests/run-all.ts",
 		"smoke": "tsx scripts/smoke.ts",
 		"test:phase2": "tsx scripts/test-phase2.ts",
@@ -52,15 +58,15 @@
 	"author": "",
 	"license": "MIT",
 	"dependencies": {
-		"@modelcontextprotocol/server": "2.3.1",
-		"zod": "^3.22.4"
+		"@modelcontextprotocol/server": "2.4.0",
+		"zod": "4.6.7"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "^1.9.4",
-		"@modelcontextprotocol/client": "2.3.1",
-		"@types/node": "^20.10.0",
-		"tsx": "^4.6.0",
-		"typescript": "^5.3.0"
+		"@biomejs/biome": "2.6.2",
+		"@modelcontextprotocol/client": "2.4.0",
+		"@types/node": "26.6.5",
+		"tsx": "4.23.15",
+		"typescript": "7.0.2"
 	},
 	"engines": {
 		"node": ">=20.0.0"

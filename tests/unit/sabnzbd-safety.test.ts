@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { ArrMcpServer } from "../../src/index.js";
 import { SabnzbdService } from "../../src/services/downloaders/sabnzbd.js";
 import { serviceRegistry } from "../../src/services/registry.js";
+import { withFixtureRemovalAuthority } from "../helpers/removal-authority.js";
 import { describe, test, testRunner } from "../helpers/test-runner.js";
 
 type Request = { url: URL; method: string };
@@ -170,7 +171,11 @@ await describe("SAB response safety", [
 				(
 					await withResponses(
 						[body],
-						() => service.removeQueueItems([slot.nzo_id]),
+						() =>
+							withFixtureRemovalAuthority(
+								[{ url: "http://sab.invalid/api", ids: [slot.nzo_id] }],
+								() => service.removeQueueItems([slot.nzo_id]),
+							),
 						requests,
 					)
 				).ok,
@@ -188,7 +193,11 @@ await describe("SAB response safety", [
 		const requests: Request[] = [];
 		const result = await withResponses(
 			[queue(), { status: true }, partial],
-			() => service.removeQueueItems([slot.nzo_id]),
+			() =>
+				withFixtureRemovalAuthority(
+					[{ url: "http://sab.invalid/api", ids: [slot.nzo_id] }],
+					() => service.removeQueueItems([slot.nzo_id]),
+				),
 			requests,
 		);
 		assert.equal(result.data?.removed, 0);
@@ -372,7 +381,11 @@ await describe("SAB response safety", [
 			const requests: Request[] = [];
 			const result = await withResponses(
 				[queue(), response],
-				() => service.removeQueueItems([slot.nzo_id]),
+				() =>
+					withFixtureRemovalAuthority(
+						[{ url: "http://sab.invalid/api", ids: [slot.nzo_id] }],
+						() => service.removeQueueItems([slot.nzo_id]),
+					),
 				requests,
 			);
 			assert.equal(result.data?.removed, 0);
@@ -388,7 +401,11 @@ await describe("SAB response safety", [
 	test("reads queue back before claiming removal", async () => {
 		const result = await withResponses(
 			[queue(), { status: true }, queue()],
-			() => service.removeQueueItems([slot.nzo_id]),
+			() =>
+				withFixtureRemovalAuthority(
+					[{ url: "http://sab.invalid/api", ids: [slot.nzo_id] }],
+					() => service.removeQueueItems([slot.nzo_id]),
+				),
 		);
 		assert.equal(result.data?.removed, 0);
 		assert.equal(result.data?.failed, 1);
@@ -396,13 +413,20 @@ await describe("SAB response safety", [
 	test("reports verified deletion", async () => {
 		const result = await withResponses(
 			[queue(), { status: true }, queue([])],
-			() => service.removeQueueItems([slot.nzo_id]),
+			() =>
+				withFixtureRemovalAuthority(
+					[{ url: "http://sab.invalid/api", ids: [slot.nzo_id] }],
+					() => service.removeQueueItems([slot.nzo_id]),
+				),
 		);
 		assert.equal(result.data?.removed, 1);
 	}),
 	test("malformed readback fails closed", async () => {
 		const result = await withResponses([queue(), { status: true }, {}], () =>
-			service.removeQueueItems([slot.nzo_id]),
+			withFixtureRemovalAuthority(
+				[{ url: "http://sab.invalid/api", ids: [slot.nzo_id] }],
+				() => service.removeQueueItems([slot.nzo_id]),
+			),
 		);
 		assert.equal(result.data?.removed, 0);
 	}),
