@@ -10,7 +10,7 @@ Target release: **1.1.0**, as directed by the maintainer. Preserve PR #10 (`fix/
 
 ## Invariants and acceptance criteria
 
-- All removal paths (ARR queue/library, downloader, remediation, new season/file cleanup and internal diagnostics) require authenticated human approval of an exact immutable canonical SHA-256 plan. A preview token is not consent. No MCP tool may approve itself.
+- Library, standalone downloader, destructive remediation and season/file removal require authenticated human approval of an exact immutable canonical SHA-256 plan. Later scope amendment: an explicitly installed [queue-only operator policy](queue-discard-policy.md) may authorize bounded ARR queue/source discard with original evidence and separate durable per-job claims; it cannot grant library authority. A preview token is not consent. No MCP tool may approve itself.
 - Human decisions bind request, plan hash, authenticated actor, expiry and a single execution. Reject forged/expired/replayed/cross-plan decisions; persist claims before writes and do not automatically retry uncertain outcomes.
 - Re-read exact targets before execution; plan/identity/material evidence drift invalidates approval. Retain truthful partial/uncertain outcomes; verify readback and never claim rollback.
 - Selected users/servers are explicit. Default retention requires all selected users watched; unavailable/partial/ambiguous evidence blocks eligibility. No history is not never watched. In-progress seasons, specials, active playback, favourites, protected tags and multi-episode files are handled conservatively.

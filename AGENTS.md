@@ -36,9 +36,13 @@
 
 - Diagnostics stay read-only by default. Single-use expiring tokens bind scope/options/
   plans; they are not consent, locks or durable replay prevention.
-- Every removal path requires a durable authenticated human decision outside MCP.
-  Pass the exact claimed preparation into execution; do not substitute a newly
-  prepared plan after claiming. State and callback credentials are opt-in; no
+- Removal defaults to a durable authenticated human decision outside MCP. The only
+  standing-policy exception is opt-in ARR queue/source discard; see
+  `docs/queue-discard-policy.md`. Keep library/standalone-downloader gates unchanged.
+  Pass the exact original preparation into execution; do not substitute a newly
+  prepared plan after claiming. Reserve each physical job durably before its first
+  DELETE, never replay uncertainty, and leave unattempted independent jobs unreserved.
+  State and callback credentials are opt-in; no
   background scheduler or listener starts with stdio MCP.
 - Refresh imports before submission and prove media/path/download identity. Retain
   downloads when commands or end-state verification are pending or incomplete.

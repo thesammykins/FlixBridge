@@ -1,6 +1,7 @@
 import { debugHttp } from "./debug.js";
 import {
 	isRemovalRequest,
+	recordQueueDiscardFailure,
 	removalRequestAllowed,
 	revalidateRemovalRequest,
 } from "./removal-authority.js";
@@ -144,6 +145,7 @@ export async function fetchJson<T>(
 			throw createInternalError("Failed to parse JSON response");
 		}
 	} catch (error) {
+		recordQueueDiscardFailure(serializeError(error));
 		const elapsed = Date.now() - startTime;
 		debugHttp(method, url, undefined, elapsed);
 

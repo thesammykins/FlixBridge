@@ -5,7 +5,7 @@ import { hashPlan } from "./approval/hash.js";
 import { type ApprovalRecord, ApprovalStore } from "./approval/store.js";
 import { immutablePreview, instanceBindings } from "./approval-plans.js";
 import { loadConfigFromEnvOnly } from "./config.js";
-import { createInternalError } from "./core.js";
+import { createInternalError, isTrustedError, serializeError } from "./core.js";
 import { arrList, arrReader } from "./library/arr.js";
 import { withQueueDiscardAuthority } from "./removal-authority.js";
 import type {
@@ -38,6 +38,7 @@ const policySchema = z
 			.min(1)
 			.max(100),
 		maxItems: z.number().int().min(1).max(1000),
+		allowDirectExecution: z.boolean().optional(),
 	})
 	.strict()
 	.refine(
@@ -66,6 +67,7 @@ export function queueDiscardInputAllowed(
 	const policy = parseQueueDiscardPolicy();
 	return (
 		!!policy &&
+		(input.bypassApproval !== true || policy.allowDirectExecution === true) &&
 		typeof input.service === "string" &&
 		policy.services.includes(input.service) &&
 		input.target === "queue" &&
@@ -92,7 +94,18 @@ export function queueDiscardInputAllowed(
 		new Set(input.ids.map(String)).size === input.ids.length
 	);
 }
-function fail(message: string): never {
+export function directQueueDiscardInputAllowed(
+	input: Record<string, unknown>,
+): boolean {
+	return (
+		input.bypassApproval === true &&
+		input.confirmationToken === undefined &&
+		parseQueueDiscardPolicy()?.allowDirectExecution === true &&
+		queueDiscardInputAllowed({ ...input, dryRun: false })
+	);
+}
+function fail(message: string, cause?: unknown): never {
+	if (isTrustedError(cause)) throw cause;
 	throw createInternalError(`Queue discard policy: ${message}`);
 }
 function snapshot<T>(value: T): T {
@@ -171,7 +184,7 @@ export async function prepareQueueDiscard(
 		!fresh.data ||
 		hashPlan(snapshot(fresh.data)) !== hashPlan(snapshot(original))
 	)
-		fail("original preparation changed");
+		fail("original preparation changed", fresh.error);
 	const queue = await service.queueList({
 		page: 1,
 		pageSize: 1000,
@@ -185,7 +198,7 @@ export async function prepareQueueDiscard(
 		new Set(queue.data.items.map((row) => row.id)).size !==
 			queue.data.items.length
 	)
-		fail("complete unambiguous queue required");
+		fail("complete unambiguous queue required", queue.error);
 	const rows = queue.data.items.filter((row) => ids.includes(row.id));
 	if (rows.length !== ids.length) fail("selected queue IDs missing");
 	const protectedLibraryPaths: string[] = [];
@@ -198,7 +211,7 @@ export async function prepareQueueDiscard(
 			roots.data.total !== roots.data.folders.length ||
 			roots.data.folders.some((root) => !absolutePath(root.path))
 		)
-			fail("authoritative library roots required");
+			fail("authoritative library roots required", roots.error);
 		protectedLibraryPaths.push(...roots.data.folders.map((root) => root.path));
 		const config = configs[configured.serviceName];
 		if (!config) fail("configured library instance binding missing");
@@ -225,7 +238,7 @@ export async function prepareQueueDiscard(
 				new Set(other.data.items.map((row) => row.id)).size !==
 					other.data.items.length
 			)
-				fail("other configured queue coverage unknown");
+				fail("other configured queue coverage unknown", other.error);
 			if (
 				rows.some((row) =>
 					other.data?.items.some((sibling) => sharesDownload(row, sibling)),
@@ -281,7 +294,10 @@ export async function prepareQueueDiscard(
 			(item) => !ids.includes(item.id) || item.safeToImport,
 		)
 	)
-		fail("manual import inspection unknown or safe import available");
+		fail(
+			"manual import inspection unknown or safe import available",
+			imports.error,
+		);
 	return snapshot({
 		policy,
 		instances: await instanceBindings(),
@@ -330,6 +346,10 @@ export async function executeQueueDiscard(
 		{ record: ApprovalRecord; rows: QueueItem[]; finished: boolean }
 	>();
 	const attempted = new Set<string>();
+	const failures: unknown[] = [];
+	let claimAttempted = false;
+	const claimState = () =>
+		claims.size ? "consumed" : claimAttempted ? "unknown" : "none";
 	try {
 		const allowed = original.targets.map((target) => {
 			const url = new URL(
@@ -343,6 +363,9 @@ export async function executeQueueDiscard(
 				executionId,
 				planHash: hashPlan(manifest),
 				allowed,
+				onFailure: (error) => {
+					failures.push(error);
+				},
 				beforeRemoval: async (url) => {
 					const row = evidence.rows.find(
 						(item) => String(item.id) === url.pathname.split("/").at(-1),
@@ -383,6 +406,7 @@ export async function executeQueueDiscard(
 						fail("original job evidence changed before DELETE");
 					// Reserve only this physical job immediately before its first write.
 					// Unattempted independent jobs must not inherit another job's uncertainty.
+					claimAttempted = true;
 					const record = await store.claimPolicy(
 						snapshot({
 							manifest,
@@ -448,6 +472,8 @@ export async function executeQueueDiscard(
 			authority: "queue-discard-policy",
 			executionId,
 			policyClaimIds: [...claims.values()].map(({ record }) => record.id),
+			policyClaimState: claimState(),
+			failureCauses: failures.map(serializeError),
 			executionState: state,
 			result: execution.data,
 			queueRemovalRequested: true,
@@ -480,12 +506,21 @@ export async function executeQueueDiscard(
 			ok: verified,
 			data,
 			...(!verified && {
-				error: createInternalError(
-					"Queue discard incomplete or uncertain; claim consumed, reconcile without replay",
+				error: serializeError(
+					execution.error ??
+						failures[0] ??
+						readback.error ??
+						createInternalError(
+							claimState() === "consumed"
+								? "Queue discard incomplete; policy claims consumed, reconcile without replay"
+								: claimState() === "unknown"
+									? "Queue discard incomplete; claim persistence unknown, reconcile without replay"
+									: "Queue discard not executed; no policy claim established",
+						),
 				),
 			}),
 		};
-	} catch {
+	} catch (error) {
 		let finalizationVerified = true;
 		for (const claim of claims.values()) {
 			if (claim.finished) continue;
@@ -502,6 +537,8 @@ export async function executeQueueDiscard(
 				authority: "queue-discard-policy",
 				executionId,
 				policyClaimIds: [...claims.values()].map(({ record }) => record.id),
+				policyClaimState: claimState(),
+				failureCauses: failures.map(serializeError),
 				policyResultFinalizationVerified: finalizationVerified,
 				executionState: "uncertain",
 				queueRemovalRequested: true,
@@ -511,9 +548,7 @@ export async function executeQueueDiscard(
 				filesDeletionRequested: false,
 				filesDeletionVerified: false,
 			},
-			error: createInternalError(
-				"Queue discard may have changed state; claim consumed, reconcile without replay",
-			),
+			error: serializeError(error),
 		};
 	}
 }

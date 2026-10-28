@@ -17,8 +17,12 @@ export interface QueueDiscardAuthority {
 	planHash: string;
 	allowed: Array<{ origin: string; path: string }>;
 	beforeRemoval: (url: URL, method: string) => Promise<void>;
+	onFailure?: (error: unknown) => void;
 }
 const queuePolicy = new AsyncLocalStorage<QueueDiscardAuthority>();
+export function recordQueueDiscardFailure(error: unknown): void {
+	queuePolicy.getStore()?.onFailure?.(error);
+}
 export function withQueueDiscardAuthority<T>(
 	permit: QueueDiscardAuthority,
 	operation: () => Promise<T>,

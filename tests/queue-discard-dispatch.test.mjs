@@ -501,6 +501,8 @@ test("executor exceptions before any DELETE leave untouched jobs unreserved with
 	assert.equal(result.data.executionState, "uncertain");
 	assert.equal(f.state.deletes.length, 0);
 	assert.deepEqual(result.data.policyClaimIds, []);
+	assert.equal(result.data.policyClaimState, "none");
+	assert.equal(result.error.message.includes("claim consumed"), false);
 	await assert.rejects(
 		readFile(join(f.directory, "queue-discard.json"), "utf8"),
 		{ code: "ENOENT" },

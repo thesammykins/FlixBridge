@@ -100,7 +100,7 @@ may precede the read for opted-in Sonarr policies; statistics is not playback pr
 
 Required `service:string`; optional `page:number`, `pageSize:number`. Omitted pagination is delegated to ARR; FlixBridge does not apply a universal 25-item default.
 
-Output `{service,mediaKind,total,items,truncated}`. Items contain `id,title,status,mediaKind` and optional `progressPct,protocol,estimatedCompletionTime,downloadId,outputPath,downloadClient,trackedDownloadState,trackedDownloadStatus,statusMessages,errorMessage`. Status messages retain upstream title/message/messages fields. `total` uses upstream `totalRecords` when supplied. `truncated:true` includes missing totals, a returned-record count different from total, or a page other than 1. Paginate and deduplicate for complete coverage; a page cannot prove absence elsewhere.
+Output `{service,mediaKind,total,items,truncated,includesUnknownItems?}`. Reviewed legacy v3 reads request unknown-title entries and report `includesUnknownItems:true`; an absent scope flag on another family is not proof of whole physical-download coverage. Items contain `id,title,status,mediaKind` and optional `progressPct,protocol,estimatedCompletionTime,downloadId,outputPath,downloadClient,trackedDownloadState,trackedDownloadStatus,statusMessages,errorMessage`. Status messages retain upstream title/message/messages fields. `total` uses upstream `totalRecords` when supplied. `truncated:true` includes missing totals, a returned-record count different from total, or a page other than 1. Paginate and deduplicate for complete coverage; a page cannot prove absence elsewhere.
 
 ```json
 {"service":"sonarr-main","page":1,"pageSize":100}
@@ -121,8 +121,9 @@ Advertised required field: `ids:(number|string)[]`. Runtime scope requires `serv
 | `target:string` | `queue`; inferred `downloader_queue` when downloader supplied without service; enum `queue`, `library`, `downloader_queue`, `season`, `files` |
 | `ids:(number|string)[]` | Required; ARR positive integers, SABnzbd exact string IDs |
 | `dryRun:boolean` | `true` |
-| `confirmationToken:string` | Legacy preview mechanic; regenerated internally during approved removal, not human authority |
-| `approvalId:string` | UUID required for every `dryRun:false` removal, including queue/downloader scopes |
+| `confirmationToken:string` | Regenerated internally for human-approved removal; default policy execution requires the original returned token; omit for enabled direct mode; never authority by itself |
+| `approvalId:string` | Required for removal except exact queue/source discard under an installed operator policy; never replaced by a model assertion |
+| `bypassApproval:boolean` | Default false. Token-free queue-only execution requires installed policy `allowDirectExecution:true`, exact policy options and `dryRun:false`; omit both token and approval ID. It grants no other tools/removal scopes authority. |
 | `itemId:number` | Exact ARR title required for `files`; `ids` are then file IDs |
 | `seasonNumbers:number[]` | Nonnegative exact seasons for `season`; `ids:[seriesId]` identifies one series |
 | `users:{server,userId}[]` | Explicit unique viewers for season/file cleanup and whole-title removal with `deleteFiles:true` |
@@ -136,7 +137,7 @@ Advertised required field: `ids:(number|string)[]`. Runtime scope requires `serv
 | `removeFromDownloader:boolean` | `false`; linked SABnzbd cleanup for ARR queue |
 | `allowManualRemoval:boolean` | `false`; explicit manual-review override |
 | `manualImport:boolean` | `true`; attempt safe import before queue removal |
-| `queueTimeoutMs:number` | Omitted uses 5000 ms for queue DELETE; valid range 1000–60000 |
+| `queueTimeoutMs:number` | Valid range 1000–60000; omitted uses 5000 ms for ordinary queue DELETE, 60000 ms for policy discard preflight/verification |
 
 ARR preview output includes `mode:"dry_run",service,target,options,preview,confirmationToken,nextAction` and optional `notes,downloader,downloadIds,downloaderPreview`; `removeFromDownloader` is explicit. `preview` contains `service,mediaKind,kind,requestedIds,missingIds,targets,notes?`. Targets include identity, title, source, status/path/download association and manual-review evidence as applicable. Returned `options.attemptManualImport` corresponds to input `manualImport`; it is not an additional input field.
 
@@ -152,9 +153,11 @@ Failed/unverified default import retains the download rather than falling throug
 {"service":"sonarr-main","target":"queue","ids":[123],"dryRun":true,"removeFromClient":false,"blocklist":false,"manualImport":false,"deleteFiles":false,"addImportExclusion":false,"removeFromDownloader":false,"allowManualRemoval":false}
 ```
 
-For any removal, call `request_approval` with `{tool:"remove_content",arguments:{...exactScopeAndOptions}}`. After a trusted human decision, repeat the unchanged scope/options with `dryRun:false,approvalId:<requestId>`. The server regenerates preview tokens internally, re-reads material evidence and claims the matching durable plan once. A preview token alone fails; do not copy placeholder credentials/tokens.
+For human-authority removal, call `request_approval` with `{tool:"remove_content",arguments:{...exactScopeAndOptions}}`. After a trusted human decision, repeat the unchanged scope/options with `dryRun:false,approvalId:<requestId>`. The server regenerates preview tokens internally, re-reads material evidence and claims the matching durable plan once. A preview token alone fails; do not copy placeholder credentials/tokens.
 
 New `season`/`files` cleanup unmonitors the selected scope, verifies monitoring, deletes exact files and verifies absence; it does not remove the ARR title. `season` requires `deleteFiles:true`, ended-series status and exact selected-episode watched coverage. Use `files` with explicit `deleteFiles:true` to delete files; false/omitted only changes monitoring. Shared files containing out-of-scope episodes are rejected. These operations and `update_monitoring` require reviewed v3; `auto`/strict v5 mutations are blocked, not downgraded. Failure after unmonitoring can leave it changed. Logical removed bytes are not guaranteed recovered disk space. See [migration](retention-migration.md).
+
+The sole unattended exception is [operator-owned queue/source discard](queue-discard-policy.md). Discover policy configuration in `list_services.data.queueDiscardPolicy` (`enabled,version,services,allowDirectExecution`). Execution output adds `authority:"queue-discard-policy"`, `executionId`, `policyClaimIds`, `policyClaimState`, `failureCauses`, `executionState`, `queueRemovalVerified` and separate requested/verified source-cleanup fields. Direct mode also returns `approvalMode:"operator-policy-direct"`; without caller `bypassApproval:true`, policy execution retains the original-token requirement. Policy previews expose `queueDiscardPolicy.eligible` and normalized eligibility `error` where applicable. No path supplies a human actor or synthetic `approvalId`; source physical cleanup remains explicitly unverified by ARR queue absence.
 
 ### manual_import
 

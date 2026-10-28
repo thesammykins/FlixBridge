@@ -49,6 +49,7 @@ async function fixture(t, options = {}) {
 		manualCandidates: [],
 		deleteStatus: 204,
 		libraryRoot: "/library",
+		rootStatus: 200,
 		libraryPaths: [{ id: 11, path: "/library/synthetic-title" }],
 		totalOverride: undefined,
 	};
@@ -101,6 +102,14 @@ async function fixture(t, options = {}) {
 					}),
 				);
 			} else if (url.pathname === "/base/api/v3/rootfolder") {
+				if (state.rootStatus !== 200) {
+					res
+						.writeHead(state.rootStatus)
+						.end(
+							JSON.stringify({ message: "synthetic-private-provider-detail" }),
+						);
+					return;
+				}
 				res.end(
 					JSON.stringify([{ id: 1, path: state.libraryRoot, freeSpace: 1000 }]),
 				);
@@ -214,6 +223,244 @@ test("operator policy permits exact rejected queue discard through real MCP with
 	assert.equal(remaining.ok, true);
 	assert.equal(remaining.data.total, 0);
 	assert.equal(remaining.data.truncated, false);
+});
+
+test("operator-enabled bypassApproval runs exact queue maintenance without approval or confirmation tokens", async (t) => {
+	const f = await fixture(t, {
+		policy: {
+			version: 1,
+			services: ["sonarr"],
+			downloadRoots: ["/downloads"],
+			maxItems: 50,
+			allowDirectExecution: true,
+		},
+	});
+	const result = await f.call("remove_content", {
+		...f.args,
+		dryRun: false,
+		bypassApproval: true,
+	});
+	assert.equal(result.ok, true, JSON.stringify(result));
+	assert.equal(result.data.approvalMode, "operator-policy-direct");
+	assert.equal(result.data.queueRemovalVerified, true);
+	assert.equal(result.data.sourceCleanupVerified, false);
+	assert.equal(result.data.policyClaimIds.length, 1);
+	assert.equal(f.state.deletions.length, 1);
+});
+
+test("direct eligibility retains normalized provider authentication failures without leaking bodies", async (t) => {
+	const f = await fixture(t, {
+		policy: {
+			version: 1,
+			services: ["sonarr"],
+			downloadRoots: ["/downloads"],
+			maxItems: 50,
+			allowDirectExecution: true,
+		},
+	});
+	f.state.rootStatus = 401;
+	const result = await f.call("remove_content", {
+		...f.args,
+		dryRun: false,
+		bypassApproval: true,
+	});
+	assert.equal(result.ok, false);
+	assert.equal(result.error.status, 401);
+	assert.equal(
+		JSON.stringify(result).includes("synthetic-private-provider-detail"),
+		false,
+	);
+	assert.equal(f.state.deletions.length, 0);
+});
+
+test("policy previews expose authentication failure instead of presenting it only as human-approval need", async (t) => {
+	const f = await fixture(t, {
+		policy: {
+			version: 1,
+			services: ["sonarr"],
+			downloadRoots: ["/downloads"],
+			maxItems: 50,
+			allowDirectExecution: true,
+		},
+	});
+	f.state.rootStatus = 401;
+	const result = await f.call("remove_content", { ...f.args, dryRun: true });
+	assert.equal(result.ok, true);
+	assert.equal(result.data.queueDiscardPolicy?.eligible, false);
+	assert.equal(result.data.queueDiscardPolicy?.error?.status, 401);
+	assert.equal(f.state.deletions.length, 0);
+});
+
+test("direct execution keeps normalized DELETE failures and truthful consumed-claim status", async (t) => {
+	const f = await fixture(t, {
+		policy: {
+			version: 1,
+			services: ["sonarr"],
+			downloadRoots: ["/downloads"],
+			maxItems: 50,
+			allowDirectExecution: true,
+		},
+	});
+	f.state.deleteStatus = 403;
+	const result = await f.call("remove_content", {
+		...f.args,
+		dryRun: false,
+		bypassApproval: true,
+	});
+	assert.equal(result.ok, false);
+	assert.equal(result.error.status, 403);
+	assert.equal(result.data.policyClaimState, "consumed");
+	assert.equal(result.data.policyClaimIds.length, 1);
+	assert.equal(f.state.deletions.length, 1);
+});
+
+test("direct bypass is disabled without operator opt-in and cannot broaden to library removal", async (t) => {
+	const disabled = await fixture(t);
+	const denied = await disabled.call("remove_content", {
+		...disabled.args,
+		dryRun: false,
+		bypassApproval: true,
+	});
+	assert.equal(denied.ok, false);
+	assert.equal(disabled.state.requests.length, 0);
+	const enabled = await fixture(t, {
+		policy: {
+			version: 1,
+			services: ["sonarr"],
+			downloadRoots: ["/downloads"],
+			maxItems: 50,
+			allowDirectExecution: true,
+		},
+	});
+	const library = await enabled.call("remove_content", {
+		...enabled.args,
+		target: "library",
+		dryRun: false,
+		bypassApproval: true,
+	});
+	assert.equal(library.ok, false);
+	assert.equal(enabled.state.requests.length, 0);
+});
+
+test("direct bypass retains read-only preview and the default token-required execution mode", async (t) => {
+	const f = await fixture(t, {
+		policy: {
+			version: 1,
+			services: ["sonarr"],
+			downloadRoots: ["/downloads"],
+			maxItems: 50,
+			allowDirectExecution: true,
+		},
+	});
+	const discovery = await f.call("list_services", {});
+	assert.equal(discovery.data.queueDiscardPolicy.allowDirectExecution, true);
+	const preview = await f.call("remove_content", {
+		...f.args,
+		dryRun: true,
+		bypassApproval: true,
+	});
+	assert.equal(preview.ok, true);
+	assert.equal(preview.data.mode, "dry_run");
+	assert.equal(f.state.deletions.length, 0);
+	const missing = await f.call("remove_content", { ...f.args, dryRun: false });
+	assert.equal(missing.ok, false);
+	assert.match(missing.error.message, /confirmationToken/);
+	assert.equal(f.state.deletions.length, 0);
+});
+
+test("direct bypass rejects mixed tokens, human IDs and destructive option escalation before HTTP", async (t) => {
+	const f = await fixture(t, {
+		policy: {
+			version: 1,
+			services: ["sonarr"],
+			downloadRoots: ["/downloads"],
+			maxItems: 50,
+			allowDirectExecution: true,
+		},
+	});
+	for (const override of [
+		{ confirmationToken: "not-consent" },
+		{ approvalId: "00000000-0000-4000-8000-000000000001" },
+		{ deleteFiles: true },
+		{ blocklist: true },
+		{ removeFromDownloader: true },
+		{ manualImport: true },
+	]) {
+		const result = await f.call("remove_content", {
+			...f.args,
+			...override,
+			dryRun: false,
+			bypassApproval: true,
+		});
+		assert.equal(result.ok, false, JSON.stringify(override));
+	}
+	assert.equal(f.state.requests.length, 0);
+});
+
+test("direct Radarr execution is token-free while healthy downloads remain protected", async (t) => {
+	const f = await fixture(t, {
+		service: "radarr",
+		policy: {
+			version: 1,
+			services: ["radarr"],
+			downloadRoots: ["/downloads"],
+			maxItems: 50,
+			allowDirectExecution: true,
+		},
+	});
+	const result = await f.call("remove_content", {
+		...f.args,
+		dryRun: false,
+		bypassApproval: true,
+	});
+	assert.equal(result.ok, true, JSON.stringify(result));
+	assert.equal(f.state.deletions.length, 1);
+	const healthy = await fixture(t, {
+		policy: {
+			version: 1,
+			services: ["sonarr"],
+			downloadRoots: ["/downloads"],
+			maxItems: 50,
+			allowDirectExecution: true,
+		},
+	});
+	healthy.state.rows[0].status = "downloading";
+	healthy.state.rows[0].sizeleft = 75;
+	const denied = await healthy.call("remove_content", {
+		...healthy.args,
+		dryRun: false,
+		bypassApproval: true,
+	});
+	assert.equal(denied.ok, false);
+	assert.equal(healthy.state.deletions.length, 0);
+});
+
+test("direct mode does not retry an uncertain write after a fresh process without tokens", async (t) => {
+	const f = await fixture(t, {
+		policy: {
+			version: 1,
+			services: ["sonarr"],
+			downloadRoots: ["/downloads"],
+			maxItems: 50,
+			allowDirectExecution: true,
+		},
+	});
+	f.state.deleteStatus = 503;
+	const first = await f.call("remove_content", {
+		...f.args,
+		dryRun: false,
+		bypassApproval: true,
+	});
+	assert.equal(first.ok, false);
+	assert.equal(f.state.deletions.length, 1);
+	await f.restart();
+	const replay = await f.call("remove_content", {
+		...f.args,
+		dryRun: false,
+		bypassApproval: true,
+	});
+	assert.equal(replay.ok, false);
+	assert.equal(f.state.deletions.length, 1);
 });
 
 test("Radarr operator policy uses the same explicit query-bound queue contract", async (t) => {

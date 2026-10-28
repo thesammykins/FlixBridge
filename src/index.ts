@@ -48,7 +48,9 @@ import {
 import { VersionCheckedServer } from "./mcp-version.js";
 import { metricsCollector } from "./metrics.js";
 import {
+	directQueueDiscardInputAllowed,
 	executeQueueDiscard,
+	parseQueueDiscardPolicy,
 	prepareQueueDiscard,
 	type QueueDiscardEvidence,
 	queueDiscardInputAllowed,
@@ -169,6 +171,11 @@ const tools: Tool[] = [
 				confirmationToken: { type: "string" },
 				queueTimeoutMs: { type: "number" },
 				approvalId: { type: "string" },
+				bypassApproval: {
+					type: "boolean",
+					description:
+						"Skip approval/token round-trip only under an operator-enabled queue-discard policy; does not bypass target safety or readback.",
+				},
 				allowUnsupportedFavourites: { type: "boolean" },
 				watchedPolicy: {
 					type: "string",
@@ -596,6 +603,7 @@ export const InputSchema = z.object({
 		.max(100)
 		.optional(),
 	approvalId: z.string().uuid().optional(),
+	bypassApproval: z.boolean().optional(),
 	allowUnsupportedFavourites: z.boolean().optional(),
 	watchedPolicy: z.enum(["all-selected", "any-selected"]).optional(),
 	retentionRuleId: z
@@ -1195,6 +1203,13 @@ export class ArrMcpServer {
 		approved = false,
 	): Promise<unknown> {
 		if (
+			input.bypassApproval === true &&
+			(name !== "remove_content" || !directQueueDiscardInputAllowed(input))
+		)
+			throw createInternalError(
+				"bypassApproval requires an operator-enabled direct queue-discard policy and exact queue-only options; approvalId/confirmationToken cannot be combined with it",
+			);
+		if (
 			(name === "remove_content" && input.dryRun === false) ||
 			(name === "remediate_reported_issue" &&
 				input.action === "remove_and_regrab" &&
@@ -1217,6 +1232,7 @@ export class ArrMcpServer {
 			result = await debugToolTiming(name, "info", async () => {
 				const services = serviceRegistry.getAllNames();
 				const downloaders = serviceRegistry.getAllDownloaderNames();
+				const queuePolicy = parseQueueDiscardPolicy();
 				return {
 					ok: true,
 					data: {
@@ -1232,6 +1248,12 @@ export class ArrMcpServer {
 							type: "sabnzbd",
 						})),
 						mediaServers: mediaServers(),
+						queueDiscardPolicy: {
+							enabled: !!queuePolicy,
+							version: queuePolicy?.version,
+							services: queuePolicy?.services ?? [],
+							allowDirectExecution: queuePolicy?.allowDirectExecution === true,
+						},
 						summary: {
 							totalServices: services.length,
 							totalDownloaders: downloaders.length,
@@ -1276,7 +1298,10 @@ export class ArrMcpServer {
 				getWatchEvidence,
 			});
 		} else if (name === "remove_content") {
-			result = await this.handleRemoveContent(input);
+			result =
+				input.bypassApproval === true && input.dryRun === false
+					? await this.handleDirectQueueDiscard(input)
+					: await this.handleRemoveContent(input);
 		} else if (name === "reported_issues") {
 			try {
 				result = await this.handleReportedIssues(input.limit, input.after);
@@ -1733,6 +1758,37 @@ export class ArrMcpServer {
 		};
 	}
 
+	private async handleDirectQueueDiscard(
+		input: z.infer<typeof InputSchema>,
+	): Promise<OperationResult<unknown>> {
+		// Direct execution skips the client token dance, not preparation or authority.
+		if (!directQueueDiscardInputAllowed(input))
+			throw createInternalError(
+				"Direct queue discard is not enabled for this request",
+			);
+		const service = serviceRegistry.get(input.service ?? "");
+		if (!service) throw createInternalError("Unknown queue-discard service");
+		if (!input.ids) throw createInternalError("Queue IDs are required");
+		const ids = this.normalizeNumericIds(this.normalizeIdStrings(input.ids));
+		const preparation = await service.prepareRemoval("queue", ids);
+		if (!preparation.ok || !preparation.data) return preparation;
+		const evidence = await prepareQueueDiscard(
+			service,
+			input,
+			preparation.data,
+		);
+		const result = await executeQueueDiscard(
+			service,
+			input,
+			preparation.data,
+			evidence,
+		);
+		return {
+			...result,
+			data: { ...result.data, approvalMode: "operator-policy-direct" },
+		};
+	}
+
 	private async handleRemoveContent(
 		input: z.infer<typeof InputSchema>,
 	): Promise<OperationResult<unknown>> {
@@ -1911,6 +1967,7 @@ export class ArrMcpServer {
 			this.cleanupExpiredConfirmations();
 			const token = randomUUID();
 			let queueDiscardEvidence: QueueDiscardEvidence | undefined;
+			let queueDiscardError: ReturnType<typeof serializeError> | undefined;
 			if (
 				target === "queue" &&
 				queueDiscardInputAllowed({ ...input, dryRun: false })
@@ -1921,7 +1978,8 @@ export class ArrMcpServer {
 						input,
 						preparation.data,
 					);
-				} catch {
+				} catch (error) {
+					queueDiscardError = serializeError(error);
 					notes.add(
 						"Standing queue-discard policy cannot authorize this preview; human authority required.",
 					);
@@ -1962,6 +2020,13 @@ export class ArrMcpServer {
 					downloadIds,
 					preview: preparation.data,
 					downloaderPreview,
+					queueDiscardPolicy:
+						queueDiscardEvidence || queueDiscardError
+							? {
+									eligible: !!queueDiscardEvidence,
+									...(queueDiscardError && { error: queueDiscardError }),
+								}
+							: undefined,
 					confirmationToken: token,
 					nextAction:
 						"Call remove_content with dryRun:false and the provided confirmationToken to execute the removal.",
