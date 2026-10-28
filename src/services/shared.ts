@@ -552,11 +552,25 @@ export abstract class BaseArrService {
 			if (options.pageSize) params.pageSize = options.pageSize;
 			if (options.sortKey) params.sortKey = options.sortKey;
 			if (options.sortDirection) params.sortDirection = options.sortDirection;
+			const includeUnknown = options.includeUnknown ?? this.apiFamily() === 3;
+			if (includeUnknown) {
+				if (this.apiFamily() !== 3)
+					throw createInternalError(
+						"Unknown-item safety snapshot is not reviewed for this API family",
+					);
+				params[
+					this.id === "sonarr"
+						? "includeUnknownSeriesItems"
+						: "includeUnknownMovieItems"
+				] = "true";
+			}
 
 			const response = await this.fetchJson(this.buildApiUrl("/queue", params));
 			const data = this.parseQueue(response);
 
 			const items = data.records.map((item) => ({
+				size: item.size,
+				sizeleft: item.sizeleft,
 				id: item.id,
 				title: item.title,
 				status: item.status,
@@ -594,6 +608,8 @@ export abstract class BaseArrService {
 					service: this.serviceName,
 					mediaKind: this.mediaKind,
 					total: data.totalRecords ?? data.records.length,
+					includesUnknownItems:
+						this.apiFamily() === 3 ? includeUnknown : undefined,
 					items,
 					truncated:
 						data.totalRecords === undefined ||
@@ -1327,7 +1343,12 @@ export abstract class BaseArrService {
 
 			if (kind === "queue") {
 				const response = await this.fetchJson(
-					this.buildApiUrl("/queue", { pageSize: 250 }),
+					this.buildApiUrl("/queue", {
+						pageSize: 250,
+						[this.id === "sonarr"
+							? "includeUnknownSeriesItems"
+							: "includeUnknownMovieItems"]: "true",
+					}),
 				);
 				const data = this.parseQueue(response);
 				if (

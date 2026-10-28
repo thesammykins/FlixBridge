@@ -21,6 +21,8 @@ export type ApprovalState =
 	| "uncertain"
 	| "failed";
 export interface ApprovalRecord {
+	authority?: "queue-discard-policy";
+	reservations?: string[];
 	id: string;
 	planHash: string;
 	plan: unknown;
@@ -63,6 +65,12 @@ export const approvalDecisionSchema = z
 const time = z.number().int().safe().nonnegative();
 const recordSchema = z
 	.object({
+		authority: z.literal("queue-discard-policy").optional(),
+		reservations: z
+			.array(z.string().regex(/^[0-9a-f]{64}$/))
+			.min(1)
+			.max(1000)
+			.optional(),
 		id: z.string().regex(UUID),
 		planHash: z.string().regex(/^[0-9a-f]{64}$/),
 		plan: z.unknown(),
@@ -106,7 +114,15 @@ const recordSchema = z
 				"partial",
 				"failed",
 			].includes(record.state) ||
-				(!!record.actor && record.decidedAt !== undefined)) &&
+				(!!record.actor && record.decidedAt !== undefined) ||
+				record.authority === "queue-discard-policy") &&
+			(record.authority !== "queue-discard-policy" ||
+				(!!record.reservations &&
+					!record.actor &&
+					record.decidedAt === undefined &&
+					["claimed", "completed", "partial", "uncertain", "failed"].includes(
+						record.state,
+					))) &&
 			(record.state !== "claimed" || !!record.owner),
 	);
 const ledgerSchema = z
@@ -129,7 +145,14 @@ function code(error: unknown): string | undefined {
 export class ApprovalStore {
 	readonly #directory: string;
 	readonly #instance = randomUUID();
-	constructor(directory = process.env.FLIX_BRIDGE_STATE_DIR) {
+	readonly #namespace: "approvals" | "queue-discard";
+	constructor(
+		directory = process.env.FLIX_BRIDGE_STATE_DIR,
+		namespace: "approvals" | "queue-discard" = "approvals",
+	) {
+		if (!["approvals", "queue-discard"].includes(namespace))
+			fail("Invalid ledger namespace");
+		this.#namespace = namespace;
 		if (!directory || !isAbsolute(directory))
 			fail("Explicit absolute approval state directory required");
 		this.#directory = resolve(directory);
@@ -168,7 +191,7 @@ export class ApprovalStore {
 		let file: Awaited<ReturnType<typeof open>>;
 		try {
 			file = await open(
-				join(this.#directory, "approvals.json"),
+				join(this.#directory, `${this.#namespace}.json`),
 				constants.O_RDONLY | constants.O_NOFOLLOW,
 			);
 		} catch (error) {
@@ -190,6 +213,19 @@ export class ApprovalStore {
 				JSON.parse(await file.readFile("utf8")),
 			) as Ledger;
 			if (
+				ledger.records.some(
+					(record) =>
+						(record.authority === "queue-discard-policy") !==
+						(this.#namespace === "queue-discard"),
+				) ||
+				ledger.records.some(
+					(record) =>
+						record.authority === "queue-discard-policy" &&
+						hashPlan(
+							z.object({ reservations: z.array(z.string()) }).parse(record.plan)
+								.reservations,
+						) !== hashPlan(record.reservations),
+				) ||
 				new Set(ledger.records.map((record) => record.id)).size !==
 					ledger.records.length ||
 				new Set(ledger.nonces).size !== ledger.nonces.length ||
@@ -224,7 +260,7 @@ export class ApprovalStore {
 			} finally {
 				await file.close();
 			}
-			await rename(temporary, join(this.#directory, "approvals.json"));
+			await rename(temporary, join(this.#directory, `${this.#namespace}.json`));
 			const directory = await open(this.#directory, constants.O_RDONLY);
 			try {
 				await directory.sync();
@@ -300,6 +336,7 @@ export class ApprovalStore {
 		plan: unknown,
 		opts: { ttlMs?: number } = {},
 	): Promise<ApprovalRecord & { newRequest: boolean }> {
+		if (this.#namespace !== "approvals") fail("Human approval ledger required");
 		const serialized = canonicalPlan(plan);
 		const snapshot: unknown = JSON.parse(serialized);
 		if (canonicalPlan(redact(snapshot)) !== serialized)
@@ -371,6 +408,7 @@ export class ApprovalStore {
 	}
 
 	async claim(id: string, plan: unknown): Promise<ApprovalRecord> {
+		if (this.#namespace !== "approvals") fail("Human approval ledger required");
 		const planHash = hashPlan(plan);
 		return this.#transaction((ledger) => {
 			const record = this.#find(ledger, id);
@@ -387,6 +425,52 @@ export class ApprovalStore {
 			record.state = "claimed";
 			record.owner = { pid: process.pid, instance: this.#instance };
 			record.claimedAt = Date.now();
+			return record;
+		});
+	}
+
+	/** Internal operator-policy executor only; never exposed as an MCP decision. */
+	async claimPolicy(
+		plan: unknown,
+		reservations: string[],
+	): Promise<ApprovalRecord> {
+		if (this.#namespace !== "queue-discard")
+			fail("Distinct policy ledger required");
+		if (
+			!reservations.length ||
+			reservations.length > 1000 ||
+			new Set(reservations).size !== reservations.length ||
+			reservations.some((key) => !/^[0-9a-f]{64}$/.test(key))
+		)
+			fail("Invalid policy reservations");
+		const keys = [...reservations].sort();
+		const serialized = canonicalPlan({ manifest: plan, reservations: keys });
+		const snapshot: unknown = JSON.parse(serialized);
+		if (canonicalPlan(redact(snapshot)) !== serialized)
+			fail("Policy plans must not contain credentials");
+		return this.#transaction((ledger) => {
+			if (
+				ledger.records.some((record) =>
+					record.reservations?.some((key) => keys.includes(key)),
+				)
+			)
+				fail(
+					"Physical download already consumed by policy; reconcile without replay",
+				);
+			const now = Date.now();
+			const record: StoredRecord = {
+				id: randomUUID(),
+				planHash: hashPlan(snapshot),
+				plan: snapshot,
+				authority: "queue-discard-policy",
+				reservations: keys,
+				state: "claimed",
+				createdAt: now,
+				expiresAt: now + 1,
+				claimedAt: now,
+				owner: { pid: process.pid, instance: this.#instance },
+			};
+			ledger.records.push(record);
 			return record;
 		});
 	}

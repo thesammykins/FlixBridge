@@ -72,7 +72,7 @@ export async function fetchJson<T>(
 			if (isRemovalRequest(target, method))
 				await Promise.race([
 					requestSignal.run(controller.signal, () =>
-						revalidateRemovalRequest(target, method),
+						revalidateRemovalRequest(target, method, fetchOptions.body),
 					),
 					aborted,
 				]);

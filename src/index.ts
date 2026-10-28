@@ -47,6 +47,12 @@ import {
 } from "./library/intelligence.js";
 import { VersionCheckedServer } from "./mcp-version.js";
 import { metricsCollector } from "./metrics.js";
+import {
+	executeQueueDiscard,
+	prepareQueueDiscard,
+	type QueueDiscardEvidence,
+	queueDiscardInputAllowed,
+} from "./queue-discard.js";
 import { withRemovalAuthority } from "./removal-authority.js";
 import { ToolAdmission } from "./request-context.js";
 import { getRule } from "./retention/rules.js";
@@ -640,6 +646,7 @@ type ConfirmationRecord =
 			ids: string[];
 			options: ServiceRemovalOptions;
 			preparation: RemovalPreparationData;
+			queueDiscardEvidence?: QueueDiscardEvidence;
 			removeFromDownloader: boolean;
 			downloaderName?: string;
 			downloaderDeleteData: boolean;
@@ -1193,11 +1200,15 @@ export class ArrMcpServer {
 				input.action === "remove_and_regrab" &&
 				input.dryRun !== true)
 		) {
-			if (!input.approvalId)
+			if (
+				!input.approvalId &&
+				!(name === "remove_content" && queueDiscardInputAllowed(input))
+			)
 				throw createInternalError(
 					"Authenticated human approvalId is required; a preview token is not consent",
 				);
-			if (!approved) return this.executeApproved(name, input);
+			if (!approved && input.approvalId)
+				return this.executeApproved(name, input);
 		}
 		let result: unknown;
 
@@ -1899,6 +1910,23 @@ export class ArrMcpServer {
 
 			this.cleanupExpiredConfirmations();
 			const token = randomUUID();
+			let queueDiscardEvidence: QueueDiscardEvidence | undefined;
+			if (
+				target === "queue" &&
+				queueDiscardInputAllowed({ ...input, dryRun: false })
+			) {
+				try {
+					queueDiscardEvidence = await prepareQueueDiscard(
+						service,
+						input,
+						preparation.data,
+					);
+				} catch {
+					notes.add(
+						"Standing queue-discard policy cannot authorize this preview; human authority required.",
+					);
+				}
+			}
 			this.pendingConfirmations.set(token, {
 				scope: "service",
 				serviceName,
@@ -1906,6 +1934,7 @@ export class ArrMcpServer {
 				ids: idStrings,
 				options,
 				preparation: preparation.data,
+				queueDiscardEvidence,
 				removeFromDownloader,
 				downloaderName,
 				downloaderDeleteData,
@@ -2023,6 +2052,14 @@ export class ArrMcpServer {
 			attemptManualImport: record.options.attemptManualImport,
 			queueTimeoutMs: record.options.queueTimeoutMs,
 		};
+		if (!input.approvalId && queueDiscardInputAllowed(input)) {
+			return executeQueueDiscard(
+				service,
+				input,
+				record.preparation,
+				record.queueDiscardEvidence,
+			);
+		}
 
 		const execution = await service.executeRemoval(
 			record.preparation,
