@@ -2008,23 +2008,15 @@ export abstract class BaseArrService {
 			Math.min(options.queueTimeoutMs ?? 5000, 60000),
 		);
 
-		const params: Record<string, string> =
-			this.id === "sonarr"
-				? {
-						removeFromClient: String(removeFromClient),
-						blocklist: String(blocklist),
-						skipRedownload: "false",
-						changeCategory: "false",
-					}
-				: {};
+		// Both ARR controllers bind these safety options from the query, not a DELETE body.
+		const params: Record<string, string> = {
+			removeFromClient: String(removeFromClient),
+			blocklist: String(blocklist),
+			skipRedownload: "false",
+			changeCategory: "false",
+		};
 		await this.fetchJson(this.buildApiUrl(`/queue/${queueId}`, params), {
 			method: "DELETE",
-			...(this.id === "radarr"
-				? {
-						body: JSON.stringify({ removeFromClient, blocklist }),
-						headers: { "Content-Type": "application/json" },
-					}
-				: {}),
 			timeoutMs,
 		});
 	}
