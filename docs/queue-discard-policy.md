@@ -73,7 +73,9 @@ Inspect outer `ok`, per-item counts and `executionState` (`completed`, `partial`
 
 Policy previews expose `queueDiscardPolicy.eligible` and a normalized `queueDiscardPolicy.error` when eligibility inspection fails. Execution retains normalized dependency failures, including HTTP 401/403, and captured HTTP failures in `failureCauses`; upstream response bodies and credentials are withheld. Do not mistake an authentication/coverage failure for a request to fabricate human consent.
 
-`policyClaimIds` lists confirmed reservations for this execution. `policyClaimState` distinguishes `none` (no claim attempted), `consumed` (confirmed reservation) and `unknown` (a claim attempt failed without a confirmed result). A failed result must not claim that a reservation was consumed when none was established. Unknown persistence and confirmed claims both require reconciliation, never blind write replay.
+`policyClaimIds` lists confirmed reservations for this execution. `policyClaimState` distinguishes `none` (no claim attempted), `consumed` (every attempted claim returned a confirmed reservation) and `unknown` (at least one claim attempt lacks a confirmed result, even if other IDs were returned). A failed result must not claim that a reservation was consumed when none was established. Unknown persistence and confirmed claims both require reconciliation, never blind write replay.
+
+`queueReadback` retains the observed `complete` flag and selected `absentIds`; it does not copy unrelated queue paths. A final readback failure remains in `failureCauses` even when an earlier DELETE already failed. If durable outcome finalization fails, the response stays `ok:false`/`executionState:"uncertain"` but preserves collected per-target `result` and readback observations. Storage failure does not erase an observed removal or restore its source payload.
 
 - `queueRemovalVerified` is exact ARR queue evidence.
 - `sourceCleanupRequested:true` records the caller's `removeFromClient:true` intent; failure before admission can mean no request reached ARR. It is not delivery or cleanup proof.

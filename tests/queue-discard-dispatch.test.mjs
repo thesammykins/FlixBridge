@@ -3,6 +3,8 @@ import { mkdtemp, readFile, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { ApprovalStore } from "../dist/approval/store.js";
+import { createInternalError } from "../dist/core.js";
 import { ArrMcpServer } from "../dist/index.js";
 import { serviceRegistry } from "../dist/services/registry.js";
 
@@ -508,6 +510,96 @@ test("executor exceptions before any DELETE leave untouched jobs unreserved with
 		{ code: "ENOENT" },
 	);
 });
+test("a later persisted but unacknowledged claim remains unknown despite an earlier confirmed claim", async (t) => {
+	const f = await fixture(t);
+	f.state.rows.push({
+		...f.state.rows[0],
+		id: 8,
+		downloadId: "job-two",
+		outputPath: "/downloads/job-two",
+	});
+	f.args.ids = [7, 8];
+	const confirmationToken = await f.preview();
+	const claim = ApprovalStore.prototype.claimPolicy;
+	let calls = 0;
+	ApprovalStore.prototype.claimPolicy = async function (...args) {
+		const record = await claim.apply(this, args);
+		if (++calls === 2)
+			throw createInternalError(
+				"Synthetic failure after durable claim publication",
+			);
+		return record;
+	};
+	t.after(() => {
+		ApprovalStore.prototype.claimPolicy = claim;
+	});
+	const result = await f.app.callTool("remove_content", {
+		...f.args,
+		dryRun: false,
+		confirmationToken,
+	});
+	assert.equal(result.ok, false);
+	assert.equal(f.state.deletes.length, 1);
+	assert.equal(result.data.policyClaimIds.length, 1);
+	assert.equal(
+		JSON.parse(await readFile(join(f.directory, "queue-discard.json"), "utf8"))
+			.records.length,
+		2,
+	);
+	assert.equal(result.data.policyClaimState, "unknown");
+});
+
+test("outcome storage failure preserves per-target execution and complete readback observations", async (t) => {
+	const f = await fixture(t);
+	f.state.rows.push({
+		...f.state.rows[0],
+		id: 8,
+		downloadId: "job-two",
+		outputPath: "/downloads/job-two",
+	});
+	f.args.ids = [7, 8];
+	const confirmationToken = await f.preview();
+	const fetch = globalThis.fetch;
+	globalThis.fetch = async (input, options) => {
+		if (options.method === "DELETE" && new URL(input).pathname.endsWith("/8")) {
+			f.state.deletes.push({ url: new URL(input), body: options.body });
+			return new Response(null, { status: 403 });
+		}
+		return fetch(input, options);
+	};
+	const finish = ApprovalStore.prototype.finish;
+	ApprovalStore.prototype.finish = async () => {
+		throw createInternalError("Synthetic outcome storage unavailable");
+	};
+	t.after(() => {
+		ApprovalStore.prototype.finish = finish;
+	});
+	const result = await f.app.callTool("remove_content", {
+		...f.args,
+		dryRun: false,
+		confirmationToken,
+	});
+	assert.equal(result.ok, false);
+	assert.equal(result.data.policyResultFinalizationVerified, false);
+	assert.equal(result.data.executionState, "uncertain");
+	assert.equal(f.state.deletes.length, 2);
+	assert.equal(
+		result.data.result?.details?.find((item) => item.id === 7)?.status,
+		"removed",
+	);
+	assert.equal(
+		result.data.result?.details?.find((item) => item.id === 8)?.status,
+		"failed",
+	);
+	assert.equal(result.data.queueReadback?.complete, true);
+	assert.deepEqual(result.data.queueReadback?.absentIds, [7]);
+	assert.equal(result.error.message, "Synthetic outcome storage unavailable");
+	assert.equal(
+		result.data.failureCauses.some((error) => error.status === 403),
+		true,
+	);
+});
+
 test("another ARR instance sharing a healthy physical job blocks single-service discard", async (t) => {
 	const f = await fixture(t);
 	process.env.RADARR_URL = "http://fixture.invalid/other";

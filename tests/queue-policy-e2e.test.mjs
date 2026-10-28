@@ -50,6 +50,7 @@ async function fixture(t, options = {}) {
 		deleteStatus: 204,
 		libraryRoot: "/library",
 		rootStatus: 200,
+		queueStatusAfterDelete: 200,
 		libraryPaths: [{ id: 11, path: "/library/synthetic-title" }],
 		totalOverride: undefined,
 	};
@@ -85,6 +86,12 @@ async function fixture(t, options = {}) {
 			}
 			res.setHeader("Content-Type", "application/json");
 			if (url.pathname === "/base/api/v3/queue") {
+				if (state.deletions.length && state.queueStatusAfterDelete !== 200) {
+					res
+						.writeHead(state.queueStatusAfterDelete)
+						.end("synthetic readback failure");
+					return;
+				}
 				const includeUnknown =
 					service === "sonarr"
 						? "includeUnknownSeriesItems"
@@ -311,6 +318,37 @@ test("direct execution keeps normalized DELETE failures and truthful consumed-cl
 	assert.equal(result.error.status, 403);
 	assert.equal(result.data.policyClaimState, "consumed");
 	assert.equal(result.data.policyClaimIds.length, 1);
+	assert.equal(f.state.deletions.length, 1);
+});
+
+test("failed final readback remains visible alongside an earlier DELETE failure", async (t) => {
+	const f = await fixture(t, {
+		policy: {
+			version: 1,
+			services: ["sonarr"],
+			downloadRoots: ["/downloads"],
+			maxItems: 50,
+			allowDirectExecution: true,
+		},
+	});
+	f.state.deleteStatus = 403;
+	f.state.queueStatusAfterDelete = 401;
+	const result = await f.call("remove_content", {
+		...f.args,
+		dryRun: false,
+		bypassApproval: true,
+	});
+	assert.equal(result.ok, false);
+	assert.equal(result.error.status, 403);
+	assert.equal(
+		result.data.failureCauses.some((error) => error.status === 403),
+		true,
+	);
+	assert.equal(
+		result.data.failureCauses.some((error) => error.status === 401),
+		true,
+	);
+	assert.equal(result.data.queueRemovalVerified, false);
 	assert.equal(f.state.deletions.length, 1);
 });
 

@@ -12,6 +12,7 @@ import type {
 	ManualImportPreviewData,
 	QueueItem,
 	RemovalPreparationData,
+	RemovalResultData,
 	ServiceImplementation,
 } from "./services/base.js";
 import { serviceRegistry } from "./services/registry.js";
@@ -347,9 +348,16 @@ export async function executeQueueDiscard(
 	>();
 	const attempted = new Set<string>();
 	const failures: unknown[] = [];
-	let claimAttempted = false;
+	let claimAttempts = 0;
 	const claimState = () =>
-		claims.size ? "consumed" : claimAttempted ? "unknown" : "none";
+		claims.size !== claimAttempts
+			? "unknown"
+			: claims.size
+				? "consumed"
+				: "none";
+	let result: RemovalResultData | undefined;
+	let queueReadback: { complete: boolean; absentIds: number[] } | undefined;
+	let queueRemovalVerified = false;
 	try {
 		const allowed = original.targets.map((target) => {
 			const url = new URL(
@@ -406,7 +414,7 @@ export async function executeQueueDiscard(
 						fail("original job evidence changed before DELETE");
 					// Reserve only this physical job immediately before its first write.
 					// Unattempted independent jobs must not inherit another job's uncertainty.
-					claimAttempted = true;
+					claimAttempts++;
 					const record = await store.claimPolicy(
 						snapshot({
 							manifest,
@@ -434,11 +442,19 @@ export async function executeQueueDiscard(
 							: 60000,
 				}),
 		);
+		result = execution.data;
 		const readback = await service.queueList({
 			page: 1,
 			pageSize: 1000,
 			includeUnknown: true,
 		});
+		if (!readback.ok)
+			failures.push(
+				serializeError(
+					readback.error ??
+						createInternalError("Queue discard final readback failed"),
+				),
+			);
 		const complete =
 			readback.ok &&
 			!!readback.data &&
@@ -453,6 +469,7 @@ export async function executeQueueDiscard(
 					(current) => sharesDownload(row, current) || row.id === current.id,
 				),
 		);
+		queueReadback = { complete, absentIds: absent.map((row) => row.id) };
 		const verified =
 			execution.ok &&
 			!!execution.data &&
@@ -460,6 +477,7 @@ export async function executeQueueDiscard(
 			execution.data.skipped === 0 &&
 			execution.data.removed === original.targets.length &&
 			absent.length === original.targets.length;
+		queueRemovalVerified = verified;
 		const state = verified
 			? "completed"
 			: absent.length
@@ -476,6 +494,7 @@ export async function executeQueueDiscard(
 			failureCauses: failures.map(serializeError),
 			executionState: state,
 			result: execution.data,
+			queueReadback,
 			queueRemovalRequested: true,
 			queueRemovalVerified: verified,
 			sourceCleanupRequested: true,
@@ -521,13 +540,15 @@ export async function executeQueueDiscard(
 			}),
 		};
 	} catch (error) {
+		failures.push(serializeError(error));
 		let finalizationVerified = true;
 		for (const claim of claims.values()) {
 			if (claim.finished) continue;
 			try {
 				await store.finish(claim.record.id, "uncertain");
-			} catch {
+			} catch (finishError) {
 				// Never release a consumed reservation when recording its outcome fails.
+				failures.push(serializeError(finishError));
 				finalizationVerified = false;
 			}
 		}
@@ -540,9 +561,11 @@ export async function executeQueueDiscard(
 				policyClaimState: claimState(),
 				failureCauses: failures.map(serializeError),
 				policyResultFinalizationVerified: finalizationVerified,
+				result,
+				queueReadback,
 				executionState: "uncertain",
 				queueRemovalRequested: true,
-				queueRemovalVerified: false,
+				queueRemovalVerified,
 				sourceCleanupRequested: true,
 				sourceCleanupVerified: false,
 				filesDeletionRequested: false,

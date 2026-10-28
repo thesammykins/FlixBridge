@@ -1981,7 +1981,7 @@ export class ArrMcpServer {
 				} catch (error) {
 					queueDiscardError = serializeError(error);
 					notes.add(
-						"Standing queue-discard policy cannot authorize this preview; human authority required.",
+						"Standing queue-discard eligibility was not established; inspect queueDiscardPolicy.error before requesting approval or retrying.",
 					);
 				}
 			}
