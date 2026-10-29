@@ -4,6 +4,7 @@ import {
 	createInternalError,
 	createServiceError,
 	fetchJson,
+	type HttpOptions,
 	serializeError,
 } from "../core.js";
 import { SonarrService } from "../services/arr/sonarr.js";
@@ -38,9 +39,13 @@ export async function readJson(
 	name: string,
 	url: string,
 	headers: Record<string, string>,
+	options: Pick<HttpOptions, "maxResponseBytes"> = {},
 ): Promise<unknown> {
 	try {
-		return await fetchJson<unknown>(url, { headers });
+		return await fetchJson<unknown>(url, {
+			headers,
+			maxResponseBytes: options.maxResponseBytes,
+		});
 	} catch (error) {
 		const normalized = serializeError(error);
 		if ("status" in normalized)
@@ -62,7 +67,11 @@ export async function arrConfigs(): Promise<Record<string, ServiceConfig>> {
 		);
 	}
 }
-export async function arrReader(name: string, config: ServiceConfig) {
+export async function arrReader(
+	name: string,
+	config: ServiceConfig,
+	options: Pick<HttpOptions, "maxResponseBytes"> = {},
+) {
 	// Use the existing adapter's reviewed discovery, pin verification and operation map.
 	// No private routing access, subclass override, family guessing or retry on v3.
 	if (
@@ -81,9 +90,14 @@ export async function arrReader(name: string, config: ServiceConfig) {
 			);
 	}
 	return (path: string, params: Record<string, string | number> = {}) =>
-		readJson(name, endpoint(config.baseUrl, `api/v3/${path}`, params), {
-			"X-Api-Key": config.apiKey,
-		});
+		readJson(
+			name,
+			endpoint(config.baseUrl, `api/v3/${path}`, params),
+			{
+				"X-Api-Key": config.apiKey,
+			},
+			options,
+		);
 }
 
 type Reader = Awaited<ReturnType<typeof arrReader>>;

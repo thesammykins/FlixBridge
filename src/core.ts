@@ -10,13 +10,24 @@ import type { InternalError, ServiceError } from "./services/base.js";
 
 export interface HttpOptions extends globalThis.RequestInit {
 	timeoutMs?: number;
+	maxResponseBytes?: number;
 }
 
 export async function fetchJson<T>(
 	url: string,
 	options: HttpOptions = {},
 ): Promise<T> {
-	const { timeoutMs = 5000, ...fetchOptions } = options;
+	const {
+		timeoutMs = 5000,
+		maxResponseBytes = 8 * 1024 * 1024,
+		...fetchOptions
+	} = options;
+	if (
+		!Number.isSafeInteger(maxResponseBytes) ||
+		maxResponseBytes < 1 ||
+		maxResponseBytes > 64 * 1024 * 1024
+	)
+		throw createInternalError("Invalid HTTP response byte budget");
 	const method = fetchOptions.method || "GET";
 	const startTime = Date.now();
 
@@ -119,7 +130,7 @@ export async function fetchJson<T>(
 					const { done, value } = await Promise.race([reader.read(), aborted]);
 					if (done) break;
 					bytes += value.byteLength;
-					if (bytes > 8 * 1024 * 1024)
+					if (bytes > maxResponseBytes)
 						throw createInternalError("HTTP response exceeds size limit");
 					text += decoder.decode(value, { stream: true });
 				}

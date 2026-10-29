@@ -321,6 +321,29 @@ test("direct execution keeps normalized DELETE failures and truthful consumed-cl
 	assert.equal(f.state.deletions.length, 1);
 });
 
+test("direct execution accepts reversed sibling IDs without widening the physical job", async (t) => {
+	const f = await fixture(t, {
+		policy: {
+			version: 1,
+			services: ["sonarr"],
+			downloadRoots: ["/downloads"],
+			maxItems: 50,
+			allowDirectExecution: true,
+		},
+	});
+	f.state.rows.push({ ...f.state.rows[0], id: 8, episodeId: 112 });
+	const result = await f.call("remove_content", {
+		...f.args,
+		ids: [8, 7],
+		dryRun: false,
+		bypassApproval: true,
+	});
+	assert.equal(result.ok, true, JSON.stringify(result));
+	assert.equal(f.state.deletions.length, 1);
+	assert.equal(result.data.policyClaimIds.length, 1);
+	assert.equal(f.state.rows.length, 0);
+});
+
 test("failed final readback remains visible alongside an earlier DELETE failure", async (t) => {
 	const f = await fixture(t, {
 		policy: {

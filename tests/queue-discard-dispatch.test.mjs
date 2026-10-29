@@ -205,6 +205,126 @@ test("unselected same-job sibling is never silently widened", async (t) => {
 	f.state.rows.push({ ...f.state.rows[0], id: 8, episodeId: 112 });
 	await denied(f);
 });
+test("complete library path inventory above ordinary HTTP budget remains usable only for policy safety reads", async (t) => {
+	const f = await fixture(t);
+	f.state.libraryPaths = [
+		{
+			id: 11,
+			path: "/library/synthetic-title",
+			providerMetadata: "x".repeat(9 * 1024 * 1024),
+		},
+	];
+	const preview = await f.app.callTool("remove_content", {
+		...f.args,
+		dryRun: true,
+	});
+	assert.equal(
+		preview.data.queueDiscardPolicy?.eligible,
+		true,
+		JSON.stringify(preview.data.queueDiscardPolicy),
+	);
+	const result = await f.app.callTool("remove_content", {
+		...f.args,
+		dryRun: false,
+		confirmationToken: preview.data.confirmationToken,
+	});
+	assert.equal(result.ok, true, JSON.stringify(result));
+	assert.equal(f.state.deletes.length, 1);
+	const { arrReader } = await import("../dist/library/arr.js");
+	const read = await arrReader("sonarr", {
+		baseUrl: "http://fixture.invalid/base",
+		apiKey: "synthetic-key",
+	});
+	await assert.rejects(
+		read("series"),
+		(error) => error.message === "HTTP response exceeds size limit",
+	);
+});
+
+for (const invalidInventory of [
+	[{ id: 11, path: "relative/path" }],
+	[
+		{ id: 11, path: "/library/one" },
+		{ id: 11, path: "/library/two" },
+	],
+])
+	test("larger inventory budget does not waive path or identity validation", async (t) => {
+		const f = await fixture(t);
+		f.state.libraryPaths = invalidInventory.map((item, index) => ({
+			...item,
+			providerMetadata: index === 0 ? "x".repeat(9 * 1024 * 1024) : "",
+		}));
+		const preview = await f.app.callTool("remove_content", {
+			...f.args,
+			dryRun: true,
+		});
+		assert.equal(preview.data.queueDiscardPolicy?.eligible, false);
+		assert.equal(f.state.deletes.length, 0);
+	});
+
+for (const failure of [401, "oversized"])
+	test(`inventory failure after preview blocks execution before a claim: ${failure}`, async (t) => {
+		const f = await fixture(t);
+		f.state.libraryPaths = [
+			{
+				id: 11,
+				path: "/library/synthetic-title",
+				providerMetadata: "x".repeat(9 * 1024 * 1024),
+			},
+		];
+		const confirmationToken = await f.preview();
+		const fetch = globalThis.fetch;
+		globalThis.fetch = async (input, options) => {
+			if (new URL(input).pathname.endsWith("/series")) {
+				if (failure === 401) return new Response(null, { status: 401 });
+				return new Response(
+					new ReadableStream({
+						start(controller) {
+							controller.enqueue(new Uint8Array(64 * 1024 * 1024 + 1));
+							controller.close();
+						},
+					}),
+				);
+			}
+			return fetch(input, options);
+		};
+		await assert.rejects(
+			f.app.callTool("remove_content", {
+				...f.args,
+				dryRun: false,
+				confirmationToken,
+			}),
+			(error) =>
+				failure === 401
+					? error.status === 401
+					: error.message === "HTTP response exceeds size limit",
+		);
+		assert.equal(f.state.deletes.length, 0);
+		await assert.rejects(
+			readFile(join(f.directory, "queue-discard.json"), "utf8"),
+			{ code: "ENOENT" },
+		);
+	});
+
+test("reversed sibling IDs retain exact policy eligibility and execute one physical removal", async (t) => {
+	const f = await fixture(t);
+	f.state.rows.push({ ...f.state.rows[0], id: 8, episodeId: 112 });
+	const args = { ...f.args, ids: [8, 7] };
+	const preview = await f.app.callTool("remove_content", {
+		...args,
+		dryRun: true,
+	});
+	assert.equal(preview.data.queueDiscardPolicy?.eligible, true);
+	const result = await f.app.callTool("remove_content", {
+		...args,
+		dryRun: false,
+		confirmationToken: preview.data.confirmationToken,
+	});
+	assert.equal(result.ok, true, JSON.stringify(result));
+	assert.equal(f.state.deletes.length, 1);
+	assert.equal(f.state.rows.length, 0);
+});
+
 test("one physical shared download is deleted once and uncertain attempt cannot retry a sibling or fresh preview", async (t) => {
 	const f = await fixture(t);
 	f.state.rows.push({ ...f.state.rows[0], id: 8, episodeId: 112 });

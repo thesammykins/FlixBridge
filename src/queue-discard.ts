@@ -179,6 +179,7 @@ export async function prepareQueueDiscard(
 		!ids.every((id) => original.requestedIds.includes(id))
 	)
 		fail("exact selected IDs required");
+	ids.sort((a, b) => a - b);
 	const fresh = await service.prepareRemoval("queue", ids);
 	if (
 		!fresh.ok ||
@@ -217,7 +218,10 @@ export async function prepareQueueDiscard(
 		const config = configs[configured.serviceName];
 		if (!config) fail("configured library instance binding missing");
 		const titles = await arrList(
-			await arrReader(configured.serviceName, config),
+			// v3 list routes return full resources, not paginated path projections.
+			await arrReader(configured.serviceName, config, {
+				maxResponseBytes: 64 * 1024 * 1024,
+			}),
 			configured.id === "sonarr" ? "series" : "movie",
 			z.object({
 				id: z.number().int().positive().safe(),

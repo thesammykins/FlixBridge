@@ -85,6 +85,10 @@ Policy previews expose `queueDiscardPolicy.eligible` and a normalized `queueDisc
 
 The default policy DELETE preflight/verification timeout is bounded at 60 seconds; an explicit unchanged `queueTimeoutMs` may select 1000–60000 ms. Evidence reads remain cancellable. No timeout triggers an automatic write retry.
 
+Queue ID order is not identity: the receiver sorts validated unique numeric IDs before comparing original/fresh preparation, while preserving all material drift checks. Registered-library `/series` and `/movie` v3 routes return full resources rather than a paginated path projection. Only these policy safety-inventory reads use a finite 64 MiB streamed-response budget; ordinary HTTP reads retain 8 MiB. Invalid budgets, inventory overflow, malformed/duplicate identities and invalid paths fail closed. No inventory is truncated or replaced by roots-only coverage.
+
+Diagnostic `requiresManual`/`autoFixable:false` labels do not override this installed authority. An unattended caller submits completed-blocked/failed groups to the receiver's policy checks, rather than inventing importability from names or sizes or excluding groups solely by a diagnostic category. A positive safe-import candidate or another actual receiver refusal still prevents discard.
+
 Library/title/season/file deletion, Plex destructive remediation, monitoring and standalone downloader purges remain on their existing human-authority paths. No blocklisting, exclusions, independent downloader purge, search or replacement grab is granted by this policy.
 
 ## Scheduled callers
