@@ -2095,6 +2095,7 @@ export abstract class BaseArrService {
 
 	async previewManualImport(
 		ids: number[],
+		timeoutMs?: number,
 	): Promise<OperationResult<ManualImportPreviewData>> {
 		const operation = withMetrics(
 			this.serviceName,
@@ -2107,7 +2108,10 @@ export abstract class BaseArrService {
 
 				const items: BoundImportPreviewItem[] = [];
 				for (const target of preparation.data.targets) {
-					const candidates = await this.getManualImportCandidates(target);
+					const candidates = await this.getManualImportCandidates(
+						target,
+						timeoutMs,
+					);
 					const previews = candidates.map((candidate) =>
 						this.buildManualImportCandidatePreview(candidate, target),
 					);
@@ -2373,6 +2377,7 @@ export abstract class BaseArrService {
 
 	private async getManualImportCandidates(
 		target: RemovalTargetDetails,
+		timeoutMs?: number,
 	): Promise<ManualImportResource[]> {
 		if (!target.downloadId) return [];
 		const params: Record<string, string> = { filterExistingFiles: "false" };
@@ -2381,6 +2386,7 @@ export abstract class BaseArrService {
 		if (target.path) params.folder = target.path;
 		const candidates = await this.fetchJson(
 			this.buildApiUrl("/manualimport", params),
+			{ timeoutMs },
 		);
 		const parsed = ManualImportSchema.safeParse(candidates);
 		if (!parsed.success)

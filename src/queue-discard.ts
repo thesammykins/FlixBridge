@@ -288,7 +288,14 @@ export async function prepareQueueDiscard(
 				"all physical download siblings must be explicitly eligible and selected",
 			);
 	}
-	const imports = await service.previewManualImport(ids);
+	const candidateTimeoutMs = z
+		.number()
+		.int()
+		.min(1000)
+		.max(60000)
+		.default(60000)
+		.parse(input.queueTimeoutMs);
+	const imports = await service.previewManualImport(ids, candidateTimeoutMs);
 	if (
 		!imports.ok ||
 		!imports.data ||

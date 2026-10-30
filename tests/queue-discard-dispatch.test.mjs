@@ -205,6 +205,50 @@ test("unselected same-job sibling is never silently widened", async (t) => {
 	f.state.rows.push({ ...f.state.rows[0], id: 8, episodeId: 112 });
 	await denied(f);
 });
+test("policy manual import inspection may exceed the ordinary five second timeout", async (t) => {
+	const f = await fixture(t);
+	const fetch = globalThis.fetch;
+	globalThis.fetch = async (input, options) => {
+		if (new URL(input).pathname.endsWith("/manualimport"))
+			await new Promise((resolve) => setTimeout(resolve, 5100));
+		return fetch(input, options);
+	};
+	const result = await f.app.callTool("remove_content", {
+		...f.args,
+		dryRun: true,
+	});
+	assert.equal(
+		result.data.queueDiscardPolicy?.eligible,
+		true,
+		JSON.stringify(result.data.queueDiscardPolicy),
+	);
+	assert.equal(f.state.deletes.length, 0);
+});
+
+test("policy candidate inspection retains its finite configured timeout", async (t) => {
+	const f = await fixture(t);
+	const fetch = globalThis.fetch;
+	globalThis.fetch = async (input, options) => {
+		if (new URL(input).pathname.endsWith("/manualimport"))
+			await new Promise((resolve) => setTimeout(resolve, 1200));
+		return fetch(input, options);
+	};
+	const result = await f.app.callTool("remove_content", {
+		...f.args,
+		queueTimeoutMs: 1000,
+		dryRun: true,
+	});
+	assert.equal(result.data.queueDiscardPolicy?.eligible, false);
+	assert.match(
+		result.data.queueDiscardPolicy.error.message,
+		/timeout after 1000ms/,
+	);
+	assert.equal(f.state.deletes.length, 0);
+	await assert.rejects(readFile(join(f.directory, "queue-discard.json")), {
+		code: "ENOENT",
+	});
+});
+
 test("complete library path inventory above ordinary HTTP budget remains usable only for policy safety reads", async (t) => {
 	const f = await fixture(t);
 	f.state.libraryPaths = [

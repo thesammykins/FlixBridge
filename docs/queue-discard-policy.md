@@ -83,7 +83,7 @@ Policy previews expose `queueDiscardPolicy.eligible` and a normalized `queueDisc
 - `filesDeletionRequested:false` / `filesDeletionVerified:false` reflect the library `deleteFiles:false` setting in this queue-only result; they do **not** mean that source payload deletion was not requested.
 - A failed result may follow a real partial mutation. Cancellation and software rollback do not restore removed payloads.
 
-The default policy DELETE preflight/verification timeout is bounded at 60 seconds; an explicit unchanged `queueTimeoutMs` may select 1000–60000 ms. Evidence reads remain cancellable. No timeout triggers an automatic write retry.
+The default policy DELETE preflight/verification timeout is bounded at 60 seconds; an explicit unchanged `queueTimeoutMs` may select 1000–60000 ms. The same bounded timeout applies to the policy's manual-import candidate inspection, so a legitimate slow provider scan is not cut off by the ordinary five-second HTTP default. Standalone manual-import previews retain that ordinary default. Evidence reads remain cancellable. No timeout triggers an automatic write retry.
 
 Queue ID order is not identity: the receiver sorts validated unique numeric IDs before comparing original/fresh preparation, while preserving all material drift checks. Registered-library `/series` and `/movie` v3 routes return full resources rather than a paginated path projection. Only these policy safety-inventory reads use a finite 64 MiB streamed-response budget; ordinary HTTP reads retain 8 MiB. Invalid budgets, inventory overflow, malformed/duplicate identities and invalid paths fail closed. No inventory is truncated or replaced by roots-only coverage.
 

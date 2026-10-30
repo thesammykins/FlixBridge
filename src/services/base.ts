@@ -536,6 +536,7 @@ export interface ServiceImplementation {
 	): Promise<OperationResult<QueueDiagnosticsData>>;
 	previewManualImport(
 		ids: number[],
+		timeoutMs?: number,
 	): Promise<OperationResult<ManualImportPreviewData>>;
 	executeManualImport(
 		preview: ManualImportPreviewData,
