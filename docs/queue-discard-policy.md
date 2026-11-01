@@ -21,6 +21,8 @@ Also configure an explicit private `FLIX_BRIDGE_STATE_DIR`. Configuration remain
 
 Installing a package does not install this policy or a cron job. A policy/config change takes effect through the subprocess lifecycle; it is not an instantaneous distributed revocation service.
 
+Configure each ARR instance's canonical base URL, including its configured URL-base prefix (for example, `/sonarr`). A successful GET can hide a same-origin redirect into that prefix; mutation redirects are deliberately never followed. Correct a missing prefix before execution, rather than weakening redirect protection. If an attempt already consumed a reservation before receiving a redirect, correcting the URL does not release that reservation or permit a retry.
+
 ## Exact permitted request
 
 Preview using fresh discovered numeric queue IDs and **all** these explicit options:
@@ -79,7 +81,7 @@ Policy previews expose `queueDiscardPolicy.eligible` and a normalized `queueDisc
 
 - `queueRemovalVerified` is exact ARR queue evidence.
 - `sourceCleanupRequested:true` records the caller's `removeFromClient:true` intent; failure before admission can mean no request reached ARR. It is not delivery or cleanup proof.
-- `sourceCleanupVerified:false` explicitly withholds independent downloader/filesystem proof. It must not be translated into reclaimed bytes or physical file absence.
+- `sourceCleanupVerified:false` explicitly withholds independent downloader/filesystem proof. It must not be translated into reclaimed bytes, physical file absence, or proof that the source payload was retained. An empty active downloader queue alone does not prove removal of a particular completed/history job.
 - `filesDeletionRequested:false` / `filesDeletionVerified:false` reflect the library `deleteFiles:false` setting in this queue-only result; they do **not** mean that source payload deletion was not requested.
 - A failed result may follow a real partial mutation. Cancellation and software rollback do not restore removed payloads.
 
