@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { bindAccess } from "../access.js";
-import { createInternalError } from "../core.js";
+import { createInternalError, serializeError } from "../core.js";
 import { count, endpoint, parse, readJson } from "./arr.js";
 import type { ProviderIds } from "./model.js";
 
@@ -494,15 +494,32 @@ export async function mediaUsers(server: MediaServerConfig) {
 		name: user.name,
 	}));
 }
+export interface MediaBrowseItem {
+	service: string;
+	id: string;
+	title: string;
+	mediaKind: "series" | "movie";
+	providerIds: ProviderIds;
+	source: "jellyfin" | "plex";
+}
 export async function browseMedia(server: MediaServerConfig) {
-	if (server.type === "jellyfin")
-		return (await jellyItems(server, { IncludeItemTypes: "Movie,Series" })).map(
-			(item) => {
+	const items: MediaBrowseItem[] = [];
+	const rejected = new Map<string, number>();
+	const reject = (error: unknown) => {
+		const message = serializeError(error).message;
+		rejected.set(message, (rejected.get(message) ?? 0) + 1);
+	};
+	// Only browse mapping is partial: shared identity, page and watch readers stay strict.
+	if (server.type === "jellyfin") {
+		for (const item of await jellyItems(server, {
+			IncludeItemTypes: "Movie,Series",
+		})) {
+			try {
 				if (!["Movie", "Series"].includes(item.Type))
 					throw createInternalError(
 						"Jellyfin /Items returned an unexpected media kind",
 					);
-				return {
+				items.push({
 					service: server.name,
 					id: item.Id,
 					title: item.Name,
@@ -512,18 +529,41 @@ export async function browseMedia(server: MediaServerConfig) {
 						tmdb: item.ProviderIds?.Tmdb,
 						imdb: item.ProviderIds?.Imdb,
 					},
-					source: "jellyfin" as const,
-				};
-			},
-		);
-	return (await plexLibrary(server)).map((item) => ({
-		service: server.name,
-		id: item.ratingKey,
-		title: item.title,
-		mediaKind: item.type === "show" ? "series" : "movie",
-		providerIds: plexIds(item),
-		source: "plex" as const,
-	}));
+					source: "jellyfin",
+				});
+			} catch (error) {
+				reject(error);
+			}
+		}
+	} else {
+		for (const item of await plexLibrary(server)) {
+			try {
+				if (!["movie", "show"].includes(item.type))
+					throw createInternalError(
+						"Plex library returned an unexpected media kind",
+					);
+				items.push({
+					service: server.name,
+					id: item.ratingKey,
+					title: item.title,
+					mediaKind: item.type === "show" ? "series" : "movie",
+					providerIds: plexIds(item),
+					source: "plex",
+				});
+			} catch (error) {
+				reject(error);
+			}
+		}
+	}
+	return {
+		items,
+		complete: rejected.size === 0,
+		errors: [...rejected].map(([message, count]) => ({
+			service: server.name,
+			message,
+			count,
+		})),
+	};
 }
 export function mediaServers() {
 	return serverConfigs().map(({ name, type }) => ({

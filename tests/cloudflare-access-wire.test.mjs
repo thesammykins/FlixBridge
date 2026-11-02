@@ -68,6 +68,7 @@ test("stdio MCP authenticates ARR and modern Jellyfin HTTPS reads independently 
 		},
 	};
 	const requests = [];
+	let partialJellyfin = false;
 	const titles = Array.from({ length: 1500 }, (_, index) => ({
 		id: index + 1,
 		title: `Fixture ${index + 1}`,
@@ -118,7 +119,23 @@ test("stdio MCP authenticates ARR and modern Jellyfin HTTPS reads independently 
 					);
 				else if (url.pathname.endsWith("Items"))
 					res.end(
-						JSON.stringify({ Items: [], TotalRecordCount: 0, StartIndex: 0 }),
+						JSON.stringify(
+							partialJellyfin
+								? {
+										Items: [
+											{ Id: "fixture-box", Name: "Excluded", Type: "BoxSet" },
+											{
+												Id: "fixture-movie",
+												Name: "Available",
+												Type: "Movie",
+												ProviderIds: { Tmdb: "7" },
+											},
+										],
+										TotalRecordCount: 2,
+										StartIndex: 0,
+									}
+								: { Items: [], TotalRecordCount: 0, StartIndex: 0 },
+						),
 					);
 				else res.writeHead(404).end("{}");
 				return;
@@ -271,6 +288,27 @@ test("stdio MCP authenticates ARR and modern Jellyfin HTTPS reads independently 
 		],
 	);
 	const beforeDeniedMutation = requests.length;
+	partialJellyfin = true;
+	const partial = await client.callTool({
+		name: "library_list",
+		arguments: { services: ["jellyfin"], page: 1, pageSize: 1 },
+	});
+	assert.equal(partial.structuredContent.ok, true);
+	assert.deepEqual(
+		JSON.parse(partial.content[0].text),
+		partial.structuredContent,
+	);
+	assert.deepEqual(
+		partial.structuredContent.data.items.map(({ id }) => id),
+		["fixture-movie"],
+	);
+	assert.equal(partial.structuredContent.data.total, 1);
+	assert.equal(partial.structuredContent.data.complete, false);
+	assert.equal(partial.structuredContent.data.pageComplete, false);
+	assert.equal(partial.structuredContent.data.coverage.indexComplete, false);
+	assert.equal(partial.structuredContent.data.errors[0].count, 1);
+	assert.equal(requests.length, beforeDeniedMutation + 1);
+	const beforeFinalDeniedMutation = requests.length;
 	for (const request of requests.filter((request) =>
 		request.url.pathname.endsWith("queue"),
 	)) {
@@ -296,7 +334,7 @@ test("stdio MCP authenticates ARR and modern Jellyfin HTTPS reads independently 
 		denied.structuredContent.error.message,
 		/Authenticated human approval/,
 	);
-	assert.equal(requests.length, beforeDeniedMutation);
+	assert.equal(requests.length, beforeFinalDeniedMutation);
 	assert.match(
 		stderr,
 		/Registered service/,

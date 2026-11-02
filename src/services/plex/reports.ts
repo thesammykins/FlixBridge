@@ -47,13 +47,45 @@ function gqlHeaders(
 const GraphqlEnvelopeSchema = z
 	.object({
 		data: z.unknown().optional(),
-		errors: z.array(z.object({ message: z.string().optional() })).optional(),
+		errors: z
+			.array(
+				z.object({
+					message: z.string().optional(),
+					extensions: z.unknown().optional(),
+				}),
+			)
+			.optional(),
 	})
 	.refine((v) => v.data !== undefined || (v.errors?.length ?? 0) > 0, {
 		message: "envelope must contain data or errors",
 	});
 
-function parseGraphql<T>(payload: unknown, schema: z.ZodType<T>): T {
+function graphqlCategory(extensions: unknown): string {
+	const parsed = z.object({ code: z.string() }).safeParse(extensions);
+	switch (parsed.success ? parsed.data.code : undefined) {
+		case "GRAPHQL_VALIDATION_FAILED":
+			return "query-validation";
+		case "GRAPHQL_PARSE_FAILED":
+			return "query-parse";
+		case "UNAUTHENTICATED":
+			return "authentication";
+		case "FORBIDDEN":
+			return "authorization";
+		case "INTERNAL_SERVER_ERROR":
+			return "resolver";
+		default:
+			return "unknown";
+	}
+}
+type GraphqlOperation =
+	| "getReportedIssues"
+	| "reportComments"
+	| "createReportComment";
+function parseGraphql<T>(
+	payload: unknown,
+	schema: z.ZodType<T>,
+	operation: GraphqlOperation,
+): T {
 	const envelope = GraphqlEnvelopeSchema.safeParse(payload);
 	if (!envelope.success) {
 		throw createInternalError(
@@ -61,8 +93,18 @@ function parseGraphql<T>(payload: unknown, schema: z.ZodType<T>): T {
 		);
 	}
 	if (envelope.data.errors && envelope.data.errors.length > 0) {
+		// Emit only local operation names and fixed categories, never provider text/paths/codes.
+		const categories = [
+			...new Set(
+				envelope.data.errors
+					.slice(0, 8)
+					.map((error) => graphqlCategory(error.extensions)),
+			),
+		]
+			.sort()
+			.join(",");
 		throw createInternalError(
-			"Plex GraphQL request failed; check account permissions and provider compatibility. Upstream details withheld.",
+			`Plex GraphQL request failed; operation=${operation}; category=${categories}. Check account permissions and provider compatibility. Upstream details withheld.`,
 		);
 	}
 	const parsed = schema.safeParse(envelope.data.data);
@@ -225,6 +267,7 @@ export class PlexReportsClient {
 						}),
 					}),
 				}),
+				"getReportedIssues",
 			);
 			const { nodes, pageInfo } = data.reports;
 			if (
@@ -312,6 +355,7 @@ export class PlexReportsClient {
 						),
 				}),
 			}),
+			"reportComments",
 		);
 		return data.reportComments.nodes;
 	}
@@ -337,6 +381,7 @@ export class PlexReportsClient {
 			const data = parseGraphql(
 				payload,
 				z.object({ createReportComment: z.unknown() }),
+				"createReportComment",
 			);
 			const node = CommentNodeSchema.parse(data.createReportComment);
 			return {

@@ -25,6 +25,9 @@ type Scenario =
 	| "feed-403"
 	| "comments-401"
 	| "comments-403"
+	| "feed-graphql"
+	| "feed-graphql-unknown"
+	| "comments-graphql"
 	| "empty"
 	| "deleted"
 	| "success";
@@ -65,6 +68,27 @@ function installProvider(scenario: Scenario) {
 			const feed = query.includes("query getReportedIssues");
 			if (!feed) assert.match(query, /query reportComments/);
 			const stage = feed ? "feed" : "comments";
+			if (
+				scenario === `${stage}-graphql` ||
+				(feed && scenario === "feed-graphql-unknown")
+			)
+				return Response.json({
+					errors: [
+						{
+							message: `${privateHost} ${privateToken} ${privateReport}`,
+							path: [privateReport, 999, privateToken],
+							extensions: {
+								code:
+									scenario === "feed-graphql-unknown"
+										? privateToken
+										: feed
+											? "GRAPHQL_VALIDATION_FAILED"
+											: "FORBIDDEN",
+								account: privateToken,
+							},
+						},
+					],
+				});
 			if (scenario === `${stage}-transport`) throw transportError();
 			if (scenario === `${stage}-401` || scenario === `${stage}-403`)
 				return new Response(privateReport, {
@@ -303,6 +327,49 @@ if (process.argv[2] === "--stdio-provider") {
 				const status = Number(scenario.slice(-3));
 				assert.equal(result.structuredContent.error?.status, status);
 				assert.equal(result.structuredContent.error?.message, `HTTP ${status}`);
+			}),
+		),
+		...(
+			["feed-graphql", "feed-graphql-unknown", "comments-graphql"] as const
+		).map((scenario) =>
+			test(`${scenario} distinguishes the cloud operation with private diagnostics`, async () => {
+				const { result, requests } = await dispatch(scenario);
+				assertFailure(result);
+				const operation = scenario.startsWith("feed")
+					? "getReportedIssues"
+					: "reportComments";
+				const category =
+					scenario === "feed-graphql-unknown"
+						? "unknown"
+						: scenario === "feed-graphql"
+							? "query-validation"
+							: "authorization";
+				assert.match(
+					result.structuredContent.error?.message ?? "",
+					new RegExp(`operation=${operation}; category=${category}`),
+				);
+				assert.equal(requests.length, scenario.startsWith("feed") ? 1 : 2);
+				assert.ok(
+					requests.every(
+						(request) => request === "POST https://community.plex.tv/api",
+					),
+				);
+			}),
+		),
+		...(
+			["feed-graphql", "feed-graphql-unknown", "comments-graphql"] as const
+		).map((scenario) =>
+			test(`${scenario} operation category survives actual stdio without provider details`, async () => {
+				const result = await wire(scenario);
+				assertFailure(result);
+				assert.match(
+					result.structuredContent.error?.message ?? "",
+					scenario === "feed-graphql-unknown"
+						? /operation=getReportedIssues; category=unknown/
+						: scenario === "feed-graphql"
+							? /operation=getReportedIssues; category=query-validation/
+							: /operation=reportComments; category=authorization/,
+				);
 			}),
 		),
 		test("legitimate empty feed is successful and performs no metadata reads", async () => {

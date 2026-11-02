@@ -294,6 +294,20 @@ Index coverage alone is never whole-library detail, retention or removal evidenc
 those safety paths still load their independent full snapshots. Cancellation fails
 the operation rather than returning a successful partial aggregate.
 
+Media-server browse mapping preserves valid hits from the same server when a
+Jellyfin item has an unexpected type (for example, BoxSet despite a Movie/Series
+filter) or a Plex item has conflicting provider GUIDs. Those items remain excluded;
+identical repeated GUID values remain acceptable, but conflicting values are never
+selected arbitrarily. Diagnostics are grouped by normalized message with an
+`errors[].count`, without echoing rejected item IDs, GUID values or provider text.
+Any rejected item keeps `complete`, `pageComplete` and `coverage.indexComplete`
+false; pagination and `total` describe only observed valid matches, not a complete
+library or absence proof. HTTP/auth failures, malformed page envelopes and duplicate
+provider identities still fail at the strict server-reader boundary. Watch/cleanup
+identity readers and full safety snapshots are not relaxed. Media-server indexing
+still traverses its libraries before output pagination; this is not server-side
+media paging or a guaranteed latency bound.
+
 `watch_status` uses explicit unique server/user pairs, exact shared provider IDs and episode coordinates, not title matching. Missing access, ambiguous copies and partial/unknown evidence block cleanup. Plex summaries require explicitly bound per-user tokens; an owner token is not household evidence. Plex favourites/watchlist are unsupported and stay null. `allowUnsupportedFavourites:true` is an explicit rule/removal policy opt-in, not a `watch_status` input or a fabricated false favourite. Jellyfin provides summaries; `watch_history` returns `supported:false,summaryOnly:true,events:[]`, not a successful empty historical audit. Plex events are actual bounded account-scoped records; a viewed timestamp is not completion or lifetime coverage.
 
 `upcoming_media` defaults to now through 30 days later; end must be later than start and within 366 days. It uses ARR calendars and preserves actual event dates, not inferred release forecasts.

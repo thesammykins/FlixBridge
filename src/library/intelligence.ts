@@ -308,7 +308,7 @@ async function browse(args: z.infer<typeof list>) {
 				mediaKind: "series" | "movie";
 				read: Awaited<ReturnType<typeof arrReader>>;
 		  })
-		| Awaited<ReturnType<typeof browseMedia>>[number]
+		| Awaited<ReturnType<typeof browseMedia>>["items"][number]
 	> = [];
 	let indexComplete = true;
 	for (const service of selected) {
@@ -324,7 +324,9 @@ async function browse(args: z.infer<typeof list>) {
 			} else if (server) {
 				const records = await browseMedia(server);
 				signal?.throwIfAborted();
-				items.push(...records);
+				items.push(...records.items);
+				errors.push(...records.errors);
+				indexComplete &&= records.complete;
 			} else {
 				const config = configs[service];
 				if (!config) throw createInternalError("Unknown ARR service");
@@ -379,7 +381,7 @@ async function browse(args: z.infer<typeof list>) {
 	);
 	const result = paged(filtered, args.page, args.pageSize);
 	const hydrated: Array<
-		LibraryItem | Awaited<ReturnType<typeof browseMedia>>[number]
+		LibraryItem | Awaited<ReturnType<typeof browseMedia>>["items"][number]
 	> = [];
 	const tags = new Map<string, z.infer<typeof tagSchema>[] | null>();
 	let hydratedArrCount = 0;

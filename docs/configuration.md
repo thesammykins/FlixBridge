@@ -116,6 +116,17 @@ export PLEX_TOKEN="replace-with-plex-account-token"
 
 The token must authorize both the reported-issue account feed at `https://community.plex.tv/api` and the configured Plex Media Server's metadata. The same token is used for both. Network access to the cloud feed and PMS is required. This is the user Report Issue feed, not PMS server error logs. Keep the token secret and do not put it in example URLs.
 
+GraphQL failures include a locally selected `operation` (`getReportedIssues`,
+`reportComments` or `createReportComment`) and fixed categories derived from at
+most the first eight provider error codes: query-validation, query-parse,
+authentication, authorization, resolver or unknown. Unrecognized codes, raw messages,
+paths, variables and account details are not echoed. These labels describe provider
+codes, not a proven root cause or permission to retry/fallback. A failed comments
+request after a successful feed can occur before PMS metadata resolution; that is
+not proof the feed query itself failed. HTTP failures retain their normalized status.
+For diagnosis, report only the operation/category and any observed HTTP status;
+never post credentials or raw provider output.
+
 ## Library, watch and review providers
 
 | Provider | Fallback configuration | Multiple instances |
