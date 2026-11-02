@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { fetchJson } from "../../core.js";
+import { createServiceError, fetchJson, serializeError } from "../../core.js";
 import type { InternalError, OperationResult, ServiceError } from "../base.js";
 
 export interface SabnzbdConfig {
@@ -633,20 +633,14 @@ export class SabnzbdService {
 	}
 
 	private mapError(error: unknown): ServiceError | InternalError {
-		if (error && typeof error === "object" && "status" in error) {
-			const errObj = error as { status?: number; message?: string };
-			return {
-				service: this.serviceName,
-				status: errObj.status ?? 500,
-				message: errObj.message ?? "SABnzbd API error",
-				raw: error,
-			};
-		}
-
-		return {
-			kind: "internal",
-			message: `SABnzbd service error: ${String(error)}`,
-			cause: error,
-		};
+		const normalized = serializeError(error);
+		return "status" in normalized
+			? createServiceError(
+					this.serviceName,
+					normalized.status,
+					normalized.message,
+					normalized.code,
+				)
+			: normalized;
 	}
 }

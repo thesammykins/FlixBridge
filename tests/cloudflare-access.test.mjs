@@ -203,6 +203,61 @@ test("unscoped caller headers cannot send Access credentials to arbitrary destin
 	assert.equal(calls.length, 0);
 });
 
+for (const [label, status, body, contentType] of [
+	["401", 401, "sab-error-private-id sab-error-private-secret", "text/plain"],
+	["403", 403, "sab-error-private-id sab-error-private-secret", "text/plain"],
+	[
+		"HTML login",
+		200,
+		"<html>Cloudflare login sab-error-private-secret</html>",
+		"text/html",
+	],
+])
+	test(`SAB ${label} keeps actionable Access guidance in both public MCP forms`, async () => {
+		env({
+			RADARR_URL: "https://radarr.invalid",
+			RADARR_API_KEY: "provider",
+			SABNZBD_URL: "https://sab.invalid",
+			SABNZBD_API_KEY: "sab-provider",
+			SABNZBD_CF_ACCESS_CLIENT_ID: "sab-error-private-id",
+			SABNZBD_CF_ACCESS_CLIENT_SECRET: "sab-error-private-secret",
+		});
+		fixture(
+			() =>
+				new Response(body, {
+					status,
+					headers: { "Content-Type": contentType },
+				}),
+		);
+		const app = new ArrMcpServer();
+		app.initialize(await loadConfigFromEnvOnly());
+		const output = app.toolResult(
+			await app.callTool("system_status", { service: "sabnzbd" }),
+		);
+		assert.equal(output.isError, true);
+		assert.match(
+			output.structuredContent.error.message,
+			/Cloudflare Access.*Service Auth/,
+		);
+		assert.equal(
+			output.structuredContent.error.status,
+			status === 200 ? 403 : status,
+		);
+		assert.deepEqual(
+			JSON.parse(output.content[0].text),
+			output.structuredContent,
+		);
+		assert.equal(
+			JSON.stringify(output).includes("sab-error-private-id"),
+			false,
+		);
+		assert.equal(
+			JSON.stringify(output).includes("sab-error-private-secret"),
+			false,
+		);
+		assert.equal(calls.length, 1);
+	});
+
 test("cached Plex client refreshes Access rotation without replacing replay ownership", async () => {
 	env({
 		PLEX_URL: "https://plex.invalid",
@@ -627,6 +682,98 @@ test("Access credentials never grant destructive authority", async () => {
 		{ message: /Authenticated human approval/ },
 	);
 	assert.equal(calls.length, 0);
+});
+
+test("approved synthetic file deletion and absence readback keep instance Access context", async () => {
+	env({ ...baseEnv, ...globalPair });
+	let deleted = false,
+		monitored = true;
+	const file = {
+		id: 70,
+		path: "/library/synthetic/file.mkv",
+		sizeBytes: 10,
+		episodeIds: [],
+	};
+	const item = {
+		service: "radarr",
+		id: 7,
+		mediaKind: "movie",
+		title: "Synthetic",
+		path: "/library/synthetic",
+		status: "released",
+		providerIds: { tmdb: "7" },
+		complete: true,
+		apiFamily: 3,
+		files: [file],
+		episodes: [],
+		seasons: [],
+		tags: [],
+		ratings: {},
+		monitored: true,
+	};
+	fixture(({ url, method, body }) => {
+		if (method === "DELETE") {
+			deleted = true;
+			return new Response(null, { status: 204 });
+		}
+		if (url.pathname.endsWith("/movie"))
+			return json({ files: deleted ? [] : [file] });
+		if (method === "PUT") monitored = JSON.parse(body).monitored;
+		return json({ id: 7, title: item.title, path: item.path, monitored });
+	});
+	const read = await arrReader(
+		"radarr",
+		(await loadConfigFromEnvOnly()).services.radarr,
+	);
+	// Fixed library/watch evidence; real arrReader/core HTTP handles every readback.
+	const deps = {
+		loadLibrarySnapshot: async () => ({
+			complete: true,
+			items: [{ ...item, files: (await read("movie")).files }],
+		}),
+		getWatchEvidence: async () => ({
+			complete: true,
+			activePlayback: false,
+			favourite: false,
+			viewers: [{ server: "plex", userId: "fixture-user" }],
+		}),
+	};
+	const input = {
+		service: "radarr",
+		itemId: 7,
+		target: "files",
+		ids: [70],
+		monitored: false,
+		deleteFiles: true,
+		users: [{ server: "plex", userId: "fixture-user" }],
+	};
+	const prepared = await prepareLibraryAction(input, deps);
+	const result = await withRemovalAuthority(
+		{
+			approvalId: "synthetic-only",
+			planHash: "0".repeat(64),
+			allowed: [
+				{
+					origin: "https://origin.invalid",
+					path: "/radarr/api/v3/moviefile/70",
+				},
+			],
+		},
+		() => executeLibraryAction(input, prepared, deps),
+	);
+	assert.equal(result.ok, true, JSON.stringify(result));
+	assert.equal(result.data.verified, true);
+	assert.equal(deleted, true);
+	assert.equal(calls.filter((call) => call.method === "DELETE").length, 1);
+	assert.equal(calls.at(-1).url.pathname, "/radarr/api/v3/movie");
+	for (const call of calls) {
+		assertAccess(
+			call,
+			globalPair.FLIX_BRIDGE_CF_ACCESS_CLIENT_ID,
+			globalPair.FLIX_BRIDGE_CF_ACCESS_CLIENT_SECRET,
+		);
+		assert.equal(call.headers.get("X-Api-Key"), "provider-key");
+	}
 });
 
 test("monitoring prerequisites, mutation and readback retain Access and provider auth", async () => {

@@ -192,6 +192,11 @@ test("stdio MCP authenticates two HTTPS upstreams independently and redacts both
 		/Authenticated human approval/,
 	);
 	assert.equal(requests.length, 4);
+	assert.match(
+		stderr,
+		/Registered service/,
+		"Startup/debug stderr must actually be captured",
+	);
 	for (const pair of Object.values(expected))
 		for (const value of [pair.id, pair.secret])
 			assert.equal(
