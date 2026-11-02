@@ -2139,6 +2139,7 @@ export abstract class BaseArrService {
 							.digest("hex"),
 						selectedCandidate,
 						safeToImport: Boolean(selectedCandidate),
+						viableCandidateCount: viable.length,
 						reason,
 					});
 				}

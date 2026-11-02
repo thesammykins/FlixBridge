@@ -303,7 +303,10 @@ export async function prepareQueueDiscard(
 		imports.data.items.length !== ids.length ||
 		new Set(imports.data.items.map((item) => item.id)).size !== ids.length ||
 		imports.data.items.some(
-			(item) => !ids.includes(item.id) || item.safeToImport,
+			(item) =>
+				!ids.includes(item.id) ||
+				item.safeToImport ||
+				item.viableCandidateCount !== 0,
 		)
 	)
 		fail(

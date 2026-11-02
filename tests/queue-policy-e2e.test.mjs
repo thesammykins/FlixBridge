@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -191,6 +191,7 @@ async function fixture(t, options = {}) {
 		return result.data.confirmationToken;
 	};
 	return {
+		directory,
 		state,
 		args,
 		call,
@@ -706,10 +707,58 @@ test("a source path overlapping an authoritative library root is not queue-disca
 	assert.equal(f.state.deletions.length, 0);
 });
 
+for (const service of ["sonarr", "radarr"])
+	test(`ambiguous viable imports protect ${service} source through real MCP`, async (t) => {
+		const f = await fixture(t, {
+			service,
+			policy: {
+				version: 1,
+				services: [service],
+				downloadRoots: ["/downloads"],
+				maxItems: 50,
+				allowDirectExecution: true,
+			},
+		});
+		f.state.rows[0].statusMessages = [];
+		f.state.manualCandidates = [10, 11].map((id) => ({
+			id,
+			path: `/downloads/synthetic-job/file-${id}.mkv`,
+			series: { id: 11 },
+			movie: { id: 11 },
+			episodes: [{ id: 111 }],
+			seasonNumber: 1,
+			downloadId: "synthetic-job",
+			rejections: [],
+			quality: { quality: { id: 1 } },
+		}));
+		const result = await f.call("remove_content", {
+			...f.args,
+			dryRun: false,
+			bypassApproval: true,
+		});
+		assert.equal(result.ok, false, JSON.stringify(result));
+		assert.match(
+			result.error.message,
+			/manual import inspection unknown or safe import available/,
+		);
+		assert.equal(f.state.deletions.length, 0);
+		const preview = await f.call("remove_content", { ...f.args, dryRun: true });
+		assert.equal(preview.data.queueDiscardPolicy.eligible, false);
+		const tokenResult = await f.call("remove_content", {
+			...f.args,
+			dryRun: false,
+			confirmationToken: preview.data.confirmationToken,
+		});
+		assert.equal(tokenResult.ok, false);
+		assert.equal(f.state.deletions.length, 0);
+		await assert.rejects(readFile(join(f.directory, "queue-discard.json")), {
+			code: "ENOENT",
+		});
+	});
+
 test("a valid safe manual import prevents unattended discard", async (t) => {
 	const f = await fixture(t);
 	f.state.rows[0].trackedDownloadState = "importPending";
-	f.state.rows[0].trackedDownloadStatus = "ok";
 	f.state.rows[0].statusMessages = [];
 	f.state.manualCandidates = [
 		{

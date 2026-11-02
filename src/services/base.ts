@@ -349,6 +349,7 @@ export interface ManualImportPreviewItem {
 	candidates: ManualImportCandidatePreview[];
 	selectedCandidate?: ManualImportCandidatePreview;
 	safeToImport: boolean;
+	viableCandidateCount: number;
 	reason: string;
 }
 

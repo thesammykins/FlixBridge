@@ -200,6 +200,67 @@ test("safe uniquely mapped manual imports retain their source", async (t) => {
 	);
 	await denied(f);
 });
+for (const service of ["sonarr", "radarr"])
+	test(`ambiguous viable ${service} import candidates cannot authorize source discard`, async (t) => {
+		const f = await fixture(t, service);
+		process.env.FLIX_BRIDGE_QUEUE_DISCARD_POLICY = JSON.stringify({
+			...JSON.parse(process.env.FLIX_BRIDGE_QUEUE_DISCARD_POLICY),
+			allowDirectExecution: true,
+		});
+		f.state.candidates = [1, 2].map((id) => ({
+			id,
+			path: `/downloads/job/file-${id}.mkv`,
+			downloadId: "job",
+			series: { id: 11 },
+			movie: { id: 11 },
+			seasonNumber: 1,
+			episodes: [{ id: 111 }],
+			rejections: [],
+			quality: { quality: { id: 1 } },
+		}));
+		const imports = await serviceRegistry.get(service).previewManualImport([7]);
+		assert.equal(imports.ok, true);
+		assert.equal(imports.data.items[0].safeToImport, false);
+		assert.equal(imports.data.items[0].viableCandidateCount, 2);
+		assert.match(imports.data.items[0].reason, /Multiple viable candidates/);
+		await assert.rejects(
+			f.app.callTool("remove_content", {
+				...f.args,
+				dryRun: false,
+				bypassApproval: true,
+			}),
+			{ message: /manual import inspection unknown or safe import available/ },
+		);
+		assert.equal(f.state.deletes.length, 0);
+		await assert.rejects(readFile(join(f.directory, "queue-discard.json")), {
+			code: "ENOENT",
+		});
+	});
+
+test("missing viable import count fails closed before a source claim", async (t) => {
+	const f = await fixture(t);
+	const service = serviceRegistry.get("sonarr");
+	const inspect = service.previewManualImport.bind(service);
+	service.previewManualImport = async (...args) => {
+		const result = await inspect(...args);
+		delete result.data.items[0].viableCandidateCount;
+		return result;
+	};
+	const preview = await f.app.callTool("remove_content", {
+		...f.args,
+		dryRun: true,
+	});
+	assert.equal(preview.data.queueDiscardPolicy.eligible, false);
+	assert.match(
+		preview.data.queueDiscardPolicy.error.message,
+		/manual import inspection/,
+	);
+	assert.equal(f.state.deletes.length, 0);
+	await assert.rejects(readFile(join(f.directory, "queue-discard.json")), {
+		code: "ENOENT",
+	});
+});
+
 test("unselected same-job sibling is never silently widened", async (t) => {
 	const f = await fixture(t);
 	f.state.rows.push({ ...f.state.rows[0], id: 8, episodeId: 112 });
@@ -413,6 +474,84 @@ test("two independent physical jobs execute without binding volatile ETA", async
 	assert.equal(result.ok, true, JSON.stringify(result));
 	assert.equal(f.state.deletes.length, 2);
 });
+test("candidate ambiguity after an eligible preview blocks before any source claim", async (t) => {
+	const f = await fixture(t);
+	const confirmationToken = await f.preview();
+	f.state.candidates = [1, 2].map((id) => ({
+		id,
+		path: `/downloads/job/file-${id}.mkv`,
+		downloadId: "job",
+		series: { id: 11 },
+		seasonNumber: 1,
+		episodes: [{ id: 111 }],
+		rejections: [],
+		quality: { quality: { id: 1 } },
+	}));
+	await assert.rejects(
+		f.app.callTool("remove_content", {
+			...f.args,
+			dryRun: false,
+			confirmationToken,
+		}),
+		{ message: /manual import inspection|original evidence changed/ },
+	);
+	assert.equal(f.state.deletes.length, 0);
+	await assert.rejects(readFile(join(f.directory, "queue-discard.json")), {
+		code: "ENOENT",
+	});
+});
+
+test("candidate ambiguity between batch DELETEs protects the untouched job", async (t) => {
+	const f = await fixture(t);
+	f.state.rows.push({
+		...f.state.rows[0],
+		id: 8,
+		downloadId: "job2",
+		outputPath: "/downloads/job2",
+	});
+	const confirmationToken = await f.preview({ ids: [7, 8] });
+	const fetch = globalThis.fetch;
+	globalThis.fetch = async (input, options) => {
+		const response = await fetch(input, options);
+		if (options.method === "DELETE")
+			f.state.candidates = [1, 2].map((id) => ({
+				id,
+				path: `/downloads/job2/file-${id}.mkv`,
+				downloadId: "job2",
+				series: { id: 11 },
+				seasonNumber: 1,
+				episodes: [{ id: 111 }],
+				rejections: [],
+				quality: { quality: { id: 1 } },
+			}));
+		return response;
+	};
+	const result = await f.app.callTool("remove_content", {
+		...f.args,
+		ids: [7, 8],
+		dryRun: false,
+		confirmationToken,
+	});
+	assert.equal(result.ok, false);
+	assert.equal(result.data.executionState, "partial");
+	assert.equal(f.state.deletes.length, 1);
+	assert.deepEqual(
+		f.state.rows.map((row) => row.id),
+		[8],
+	);
+	globalThis.fetch = fetch;
+	f.state.candidates = [];
+	const fresh = await f.preview({ ids: [8] });
+	const repaired = await f.app.callTool("remove_content", {
+		...f.args,
+		ids: [8],
+		dryRun: false,
+		confirmationToken: fresh,
+	});
+	assert.equal(repaired.ok, true, JSON.stringify(repaired));
+	assert.equal(f.state.deletes.length, 2);
+});
+
 test("original preview binds policy, instance configuration and literal source path", async (t) => {
 	const f = await fixture(t);
 	for (const drift of [
