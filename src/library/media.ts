@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { bindAccess } from "../access.js";
 import { createInternalError } from "../core.js";
 import { count, endpoint, parse, readJson } from "./arr.js";
 import type { ProviderIds } from "./model.js";
@@ -171,14 +172,17 @@ export function serverConfigs(): MediaServerConfig[] {
 				`${type.toLowerCase()}${slug ? `-${slug}` : ""}`;
 			if (!z.string().min(1).max(200).safeParse(name).success)
 				throw createInternalError("Invalid media server name");
-			const config: MediaServerConfig = {
-				name,
-				type: type === "PLEX" ? "plex" : "jellyfin",
-				baseUrl: parsed.toString().replace(/\/+$/, ""),
-				token,
+			const config = bindAccess<MediaServerConfig>(
+				{
+					name,
+					type: type === "PLEX" ? "plex" : "jellyfin",
+					baseUrl: parsed.toString().replace(/\/+$/, ""),
+					token,
+					prefix,
+					pathMappings: pathMappings(prefix),
+				},
 				prefix,
-				pathMappings: pathMappings(prefix),
-			};
+			);
 			const prior = bySlug.get(slug);
 			if (
 				prior &&
@@ -207,6 +211,7 @@ export function mediaReader(server: MediaServerConfig, token = server.token) {
 			server.type === "plex"
 				? { "X-Plex-Token": token, Accept: "application/json" }
 				: { "X-Emby-Token": token },
+			{ upstream: server },
 		);
 }
 export function findServer(name: string): MediaServerConfig {

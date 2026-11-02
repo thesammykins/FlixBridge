@@ -39,12 +39,13 @@ export async function readJson(
 	name: string,
 	url: string,
 	headers: Record<string, string>,
-	options: Pick<HttpOptions, "maxResponseBytes"> = {},
+	options: Pick<HttpOptions, "maxResponseBytes" | "upstream"> = {},
 ): Promise<unknown> {
 	try {
 		return await fetchJson<unknown>(url, {
 			headers,
 			maxResponseBytes: options.maxResponseBytes,
+			upstream: options.upstream,
 		});
 	} catch (error) {
 		const normalized = serializeError(error);
@@ -96,7 +97,7 @@ export async function arrReader(
 			{
 				"X-Api-Key": config.apiKey,
 			},
-			options,
+			{ ...options, upstream: config },
 		);
 }
 

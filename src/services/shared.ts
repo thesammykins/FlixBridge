@@ -424,11 +424,13 @@ export abstract class BaseArrService {
 
 	readonly serviceName: string;
 	private readonly baseUrl: string;
+	private readonly upstream: ServiceConfig;
 	// ponytail: process-local replay guard; durable command ledger for multi-process/restart recovery.
 	private readonly submittedImports = new Map<string, ImportSubmission>();
 	private readonly apiKey: string;
 
 	constructor(serviceName: string, config: ServiceConfig) {
+		this.upstream = config;
 		this.serviceName = serviceName;
 		this.baseUrl = config.baseUrl;
 		this.apiKey = config.apiKey;
@@ -495,6 +497,7 @@ export abstract class BaseArrService {
 		headers.set("X-Api-Key", this.apiKey);
 		return fetchJson<T>(url, {
 			...options,
+			upstream: this.upstream,
 			headers: Object.fromEntries(headers),
 		});
 	}

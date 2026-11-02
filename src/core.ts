@@ -1,3 +1,4 @@
+import { accessHeaders, redactAccess } from "./access.js";
 import { debugHttp } from "./debug.js";
 import {
 	isRemovalRequest,
@@ -9,6 +10,7 @@ import { requestSignal } from "./request-context.js";
 import type { InternalError, ServiceError } from "./services/base.js";
 
 export interface HttpOptions extends globalThis.RequestInit {
+	upstream?: object;
 	timeoutMs?: number;
 	maxResponseBytes?: number;
 }
@@ -19,6 +21,7 @@ export async function fetchJson<T>(
 ): Promise<T> {
 	const {
 		timeoutMs = 5000,
+		upstream,
 		maxResponseBytes = 8 * 1024 * 1024,
 		...fetchOptions
 	} = options;
@@ -73,6 +76,15 @@ export async function fetchJson<T>(
 			throw createInternalError("Invalid HTTP URL");
 		const origin = target.origin;
 		const headers = new Headers(fetchOptions.headers);
+		if (
+			headers.has("CF-Access-Client-Id") ||
+			headers.has("CF-Access-Client-Secret")
+		)
+			throw createInternalError(
+				"Cloudflare Access headers require an instance-bound configuration",
+			);
+		for (const [key, value] of Object.entries(accessHeaders(upstream, url)))
+			headers.set(key, value);
 		if (!headers.has("Accept")) headers.set("Accept", "application/json");
 		let response: Response;
 		for (let hop = 0; ; hop++) {
@@ -140,18 +152,34 @@ export async function fetchJson<T>(
 				reader.releaseLock();
 			}
 		}
+		if (
+			headers.has("CF-Access-Client-Id") &&
+			(response.headers
+				.get("content-type")
+				?.toLowerCase()
+				.includes("text/html") ||
+				/^\s*(?:<!doctype\s+html\b|<html\b)/i.test(text))
+		)
+			throw createServiceError(
+				"unknown",
+				response.ok ? 403 : response.status,
+				"Cloudflare Access returned a login page; check Service Auth policy and service-token credentials",
+			);
 		if (!response.ok)
 			throw createServiceError(
 				"unknown",
 				response.status,
-				`HTTP ${response.status}`,
+				headers.has("CF-Access-Client-Id") &&
+					[401, 403].includes(response.status)
+					? `HTTP ${response.status}; check Cloudflare Access Service Auth policy, service token and upstream API credentials`
+					: `HTTP ${response.status}`,
 			);
 		if (!text) {
 			return undefined as T;
 		}
 
 		try {
-			return JSON.parse(text) as T;
+			return redactAccess(JSON.parse(text), upstream) as T;
 		} catch {
 			throw createInternalError("Failed to parse JSON response");
 		}
@@ -223,7 +251,7 @@ export function createServiceError(
 	message: string,
 	code?: string,
 ): ServiceError {
-	const error = { service, status, message, code };
+	const error = { service, status, message: redactAccess(message), code };
 	trustedErrors.add(error);
 	return error;
 }
@@ -233,7 +261,10 @@ export function createInternalError(
 	cause?: unknown,
 ): InternalError {
 	void cause;
-	const error: InternalError = { kind: "internal", message };
+	const error: InternalError = {
+		kind: "internal",
+		message: redactAccess(message),
+	};
 	trustedErrors.add(error);
 	return error;
 }

@@ -6,6 +6,7 @@
 // what title/type the user complained about, then match to arr services.
 
 import { z } from "zod";
+import { bindAccess, inheritAccess } from "../../access.js";
 import { createInternalError, fetchJson, handleError } from "../../core.js";
 import type { OperationResult } from "../base.js";
 
@@ -164,9 +165,13 @@ export class PlexReportsClient {
 	private readonly baseUrl: string;
 	private readonly token: string;
 
-	constructor(config: PlexConfig) {
+	constructor(private readonly config: PlexConfig) {
 		this.baseUrl = config.baseUrl.replace(/\/+$/, "");
 		this.token = config.token;
+	}
+
+	refreshAccess(config: PlexConfig): void {
+		inheritAccess(config, this.config);
 	}
 
 	async listReports(limit = 25): Promise<OperationResult<PlexReport[]>> {
@@ -362,6 +367,7 @@ export class PlexReportsClient {
 				`${this.baseUrl}/library/metadata/${key}`,
 				{
 					timeoutMs: 10000,
+					upstream: this.config,
 					headers: {
 						Accept: "application/json",
 						"X-Plex-Token": this.token,
@@ -397,10 +403,14 @@ export class PlexReportsClient {
 }
 
 export function plexConfigFromEnv(): PlexConfig | null {
-	const baseUrl = process.env.PLEX_BASE_URL ?? process.env.PLEX_URL;
-	const token = process.env.PLEX_TOKEN;
+	const baseUrl =
+		process.env.PLEX_BASE_URL ??
+		process.env.PLEX_URL ??
+		process.env.FLIX_BRIDGE_PLEX_BASE_URL ??
+		process.env.FLIX_BRIDGE_PLEX_URL;
+	const token = process.env.PLEX_TOKEN ?? process.env.FLIX_BRIDGE_PLEX_TOKEN;
 	if (!baseUrl || !token) {
 		return null;
 	}
-	return { baseUrl, token };
+	return bindAccess({ baseUrl, token }, "PLEX");
 }

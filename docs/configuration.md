@@ -29,6 +29,18 @@ Names default to lowercase `<kind>-<slug>`, with underscores converted to hyphen
 
 Fallback and slug entries are merged; slug entries overwrite matching fallback names. Duplicate names within the ARR slug map and wrong-kind/ambiguous ARR names fail configuration. Fallback-name collisions still merge by overwrite, and SABnzbd names can overwrite: assign unique names. URL/key slug alias conflicts depend on environment iteration order, not a guaranteed alias priority. Incomplete pairs are ignored. See [multi-instance setup](multi-instance.md).
 
+## Cloudflare Access
+
+Optional `<INSTANCE_PREFIX>_CF_ACCESS_CLIENT_ID` and
+`<INSTANCE_PREFIX>_CF_ACCESS_CLIENT_SECRET` supplement, not replace, the provider
+API key/token for ARR, SABnzbd, Plex and Jellyfin. A complete local pair overrides
+the explicit shared `FLIX_BRIDGE_CF_ACCESS_CLIENT_ID` / `_SECRET` global pair.
+Only two absent local fields permit fallback; empty, partial or conflicting
+Access aliases fail startup instead of being ignored like old URL/key discovery.
+Receiving upstreams require HTTPS and a Cloudflare **Service Auth** policy.
+Credentials remain origin- and instance-bound and do not grant mutation approval.
+See [configuration, global identity sharing, exclusions and rotation](cloudflare-access.md).
+
 ## Sonarr API policy
 
 For the pinned upstream contract comparison and follow-on feature proposals, see

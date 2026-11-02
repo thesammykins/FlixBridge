@@ -1,9 +1,12 @@
+import { validateAccessEnv } from "./access.js";
 import { loadConfigFromEnvOnly } from "./config.js";
 import { mediaServers } from "./library/intelligence.js";
 
 export async function loadRuntimeConfig(
 	allowEmpty = false,
 ): Promise<Awaited<ReturnType<typeof loadConfigFromEnvOnly>>> {
+	// Access settings must fail before serving even when ARR would mask media config.
+	if (validateAccessEnv()) mediaServers();
 	try {
 		return await loadConfigFromEnvOnly();
 	} catch (error) {

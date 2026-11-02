@@ -1,8 +1,11 @@
+import { redactAccess } from "../access.js";
+
 const CREDENTIAL_KEY =
 	/(?:apikey|password|passwd|secret|token|authorization|cookie|credential|privatekey)/i;
 
 /** Defense in depth, not a general DLP system. Plans must contain references, not credentials. */
 export function redact(value: unknown): unknown {
+	value = redactAccess(value);
 	const secrets = Object.entries(process.env)
 		.filter(
 			([key, entry]) =>

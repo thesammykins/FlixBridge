@@ -22,6 +22,11 @@
   separates ARR instances from SABnzbd. Do not add file configuration implicitly.
 - Shared ARR behavior lives in `src/services/shared.ts`; adapters own reviewed
   differences. HTTP goes through `src/core.ts` for limits, cancellation and errors.
+- Cloudflare Access pairs live outside enumerable config. Carry the selected
+  instance as `HttpOptions.upstream` through every provider read/write/readback;
+  never inject ambient global headers or pass context to cloud/review/webhook URLs.
+  Preserve explicit context with `inheritAccess` if a configuration is copied.
+  Local TLS/stdio auth tests require OpenSSL and use ephemeral fixture certificates.
 - Sonarr policy is per instance: omission stays legacy-v3, explicit pins verify,
   and `auto` follows reviewed maps in `src/services/arr/sonarr.ts`. Freeze workflow
   family, preserve URL prefixes, and never replay writes across families after failure.

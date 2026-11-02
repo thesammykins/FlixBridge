@@ -36,6 +36,11 @@ Optional configuration: `RADARR_URL` / `RADARR_API_KEY`, `SABNZBD_URL` / `SABNZB
 
 ## Documentation
 
+Upstreams behind Cloudflare Access can use dedicated per-instance service-token
+pairs or an explicit shared global fallback, alongside their provider API keys.
+HTTPS and a Cloudflare **Service Auth** policy are required. See
+[Cloudflare Access configuration and rotation](docs/cloudflare-access.md).
+
 - [Installation](https://github.com/thesammykins/FlixBridge/blob/main/docs/installation.md) · [Configuration](https://github.com/thesammykins/FlixBridge/blob/main/docs/configuration.md) · [Multi-instance setup](https://github.com/thesammykins/FlixBridge/blob/main/docs/multi-instance.md)
 - [Usage and safe workflows](https://github.com/thesammykins/FlixBridge/blob/main/docs/usage.md) · [Tool reference](https://github.com/thesammykins/FlixBridge/blob/main/docs/api-reference.md) · [Agent rules](https://github.com/thesammykins/FlixBridge/blob/main/RULE.md)
 - [Deployable operations and Plex reports skills](https://github.com/thesammykins/FlixBridge/blob/main/skills/README.md)

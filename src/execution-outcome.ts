@@ -50,7 +50,7 @@ export async function verifyRemediationAbsence(
 	try {
 		await fetchJson(
 			`${service.baseUrl.replace(/\/$/, "")}/api/v3/${value.episodeFileId ? "episodefile" : "moviefile"}/${fileId}`,
-			{ headers: { "X-Api-Key": service.apiKey } },
+			{ headers: { "X-Api-Key": service.apiKey }, upstream: service },
 		);
 		return false;
 	} catch (error) {

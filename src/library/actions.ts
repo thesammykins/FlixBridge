@@ -359,7 +359,7 @@ export async function executeLibraryAction(
 				.optional(),
 		})
 		.passthrough()
-		.parse(await fetchJson(endpoint, { headers }));
+		.parse(await fetchJson(endpoint, { headers, upstream: service }));
 	const changes: Array<{ step: string; id: number }> = [];
 	const itemMonitoringChange =
 		!plan.seasons.length &&
@@ -384,6 +384,7 @@ export async function executeLibraryAction(
 	await fetchJson(endpoint, {
 		method: "PUT",
 		headers,
+		upstream: service,
 		body: JSON.stringify(object),
 	});
 	const readback = z
@@ -394,7 +395,7 @@ export async function executeLibraryAction(
 				.array(z.object({ seasonNumber: z.number(), monitored: z.boolean() }))
 				.optional(),
 		})
-		.parse(await fetchJson(endpoint, { headers }));
+		.parse(await fetchJson(endpoint, { headers, upstream: service }));
 	if (
 		plan.seasons.length
 			? plan.seasons.some(
@@ -419,6 +420,7 @@ export async function executeLibraryAction(
 		await fetchJson(`${base}/episode/monitor`, {
 			method: "PUT",
 			headers,
+			upstream: service,
 			body: JSON.stringify({
 				episodeIds: plan.episodeIds,
 				monitored: plan.monitored,
@@ -429,6 +431,7 @@ export async function executeLibraryAction(
 			.parse(
 				await fetchJson(`${base}/episode?seriesId=${plan.item.id}`, {
 					headers,
+					upstream: service,
 				}),
 			);
 		if (
@@ -473,7 +476,11 @@ export async function executeLibraryAction(
 			if (!current || JSON.stringify(current) !== JSON.stringify(file))
 				throw createInternalError("File identity changed during cleanup");
 			const fileEndpoint = `${base}/${plan.item.mediaKind === "series" ? "episodefile" : "moviefile"}/${file.id}`;
-			await fetchJson(fileEndpoint, { method: "DELETE", headers });
+			await fetchJson(fileEndpoint, {
+				method: "DELETE",
+				headers,
+				upstream: service,
+			});
 			const after = await deps.loadLibrarySnapshot([plan.item.service]);
 			const exact = after.items.find(
 				(i) => i.id === plan.item.id && i.service === plan.item.service,

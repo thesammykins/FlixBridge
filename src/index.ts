@@ -11,6 +11,7 @@ import {
 } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { z } from "zod";
+import { redactAccess } from "./access.js";
 import { sendApprovalRequest } from "./approval/bridge.js";
 import { hashPlan } from "./approval/hash.js";
 import { ApprovalStore } from "./approval/store.js";
@@ -1170,19 +1171,23 @@ export class ArrMcpServer {
 	}
 
 	private toolResult(result: unknown) {
-		const structuredContent = OutputEnvelope.parse(
-			JSON.parse(
-				JSON.stringify(result, (key, value: unknown) => {
-					if (
-						["raw", "cause", "apiKey", "password", "accessToken"].includes(key)
-					)
-						return undefined;
-					if (key === "error" && value !== undefined && value !== null)
-						return typeof value === "string"
-							? "Operation failed"
-							: serializeError(value);
-					return value;
-				}),
+		const structuredContent = redactAccess(
+			OutputEnvelope.parse(
+				JSON.parse(
+					JSON.stringify(result, (key, value: unknown) => {
+						if (
+							["raw", "cause", "apiKey", "password", "accessToken"].includes(
+								key,
+							)
+						)
+							return undefined;
+						if (key === "error" && value !== undefined && value !== null)
+							return typeof value === "string"
+								? "Operation failed"
+								: serializeError(value);
+						return value;
+					}),
+				),
 			),
 		) as Record<string, unknown>;
 		return {
@@ -2532,6 +2537,7 @@ export class ArrMcpServer {
 			client = new PlexReportsClient(plex);
 			this.#plexClients.set(identity, client);
 		}
+		client.refreshAccess(plex);
 		return client;
 	}
 
