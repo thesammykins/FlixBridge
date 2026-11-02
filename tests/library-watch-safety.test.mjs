@@ -264,9 +264,9 @@ for (const type of ["jellyfin", "plex"]) {
 		assert.equal(globalReads.length, 1);
 		assert.equal(
 			globalReads[0].headers.get(
-				type === "plex" ? "x-plex-token" : "x-emby-token",
+				type === "plex" ? "x-plex-token" : "authorization",
 			),
-			"admin-test",
+			type === "plex" ? "admin-test" : 'MediaBrowser Token="admin-test"',
 		);
 	});
 }

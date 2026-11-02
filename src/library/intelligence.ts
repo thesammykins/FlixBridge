@@ -1,15 +1,18 @@
 import type { Tool } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { createInternalError, serializeError } from "../core.js";
+import { requestSignal } from "../request-context.js";
 import type { OperationResult } from "../services/base.js";
 import {
 	arrConfigs,
+	arrDetail,
 	arrList,
 	arrReader,
 	count,
 	id,
 	loadDetail,
-	loadLibrarySnapshot,
+	tagSchema,
+	titleIndexSchema,
 } from "./arr.js";
 import {
 	browseMedia,
@@ -282,8 +285,11 @@ async function calendar(args: z.infer<typeof upcoming>) {
 	};
 }
 async function browse(args: z.infer<typeof list>) {
+	const signal = requestSignal.getStore();
+	signal?.throwIfAborted();
 	const servers = serverConfigs();
 	const configs = args.scope === "users" ? {} : await arrConfigs();
+	signal?.throwIfAborted();
 	if (servers.some((server) => configs[server.name]))
 		throw createInternalError("ARR and media server names collide");
 	const selected =
@@ -297,24 +303,53 @@ async function browse(args: z.infer<typeof list>) {
 	const errors: Array<{ service: string; message: string }> = [];
 	const users: Awaited<ReturnType<typeof mediaUsers>> = [];
 	const items: Array<
-		LibraryItem | Awaited<ReturnType<typeof browseMedia>>[number]
+		| (z.infer<typeof titleIndexSchema> & {
+				service: string;
+				mediaKind: "series" | "movie";
+				read: Awaited<ReturnType<typeof arrReader>>;
+		  })
+		| Awaited<ReturnType<typeof browseMedia>>[number]
 	> = [];
-	let complete = true;
+	let indexComplete = true;
 	for (const service of selected) {
+		signal?.throwIfAborted();
 		try {
 			const server = servers.find((server) => server.name === service);
 			if (args.scope === "users") {
 				if (!server)
 					throw createInternalError("User discovery requires a media server");
-				users.push(...(await mediaUsers(server)));
-			} else if (server) items.push(...(await browseMedia(server)));
-			else {
-				const snapshot = await loadLibrarySnapshot([service]);
-				items.push(...snapshot.items);
-				errors.push(...snapshot.errors);
-				complete &&= snapshot.complete;
+				const records = await mediaUsers(server);
+				signal?.throwIfAborted();
+				users.push(...records);
+			} else if (server) {
+				const records = await browseMedia(server);
+				signal?.throwIfAborted();
+				items.push(...records);
+			} else {
+				const config = configs[service];
+				if (!config) throw createInternalError("Unknown ARR service");
+				const read = await arrReader(service, config);
+				signal?.throwIfAborted();
+				const mediaKind = service.toLowerCase().includes("sonarr")
+					? "series"
+					: "movie";
+				// Title indexes must be complete without pagination hints or follow-up reads.
+				const records = await arrList(
+					read,
+					mediaKind,
+					titleIndexSchema,
+					{},
+					true,
+				);
+				signal?.throwIfAborted();
+				for (const item of records) {
+					signal?.throwIfAborted();
+					items.push({ ...item, service, mediaKind, read });
+				}
 			}
 		} catch (error) {
+			signal?.throwIfAborted();
+			indexComplete = false;
 			errors.push({ service, message: serializeError(error).message });
 		}
 	}
@@ -334,20 +369,70 @@ async function browse(args: z.infer<typeof list>) {
 			complete: errors.length === 0,
 			errors,
 		};
+	const filtered = items.filter(
+		(item) =>
+			(!args.query ||
+				item.title.toLowerCase().includes(args.query.toLowerCase())) &&
+			(!args.mediaKind || item.mediaKind === args.mediaKind) &&
+			(args.monitored === undefined ||
+				("monitored" in item && item.monitored === args.monitored)),
+	);
+	const result = paged(filtered, args.page, args.pageSize);
+	const hydrated: Array<
+		LibraryItem | Awaited<ReturnType<typeof browseMedia>>[number]
+	> = [];
+	const tags = new Map<string, z.infer<typeof tagSchema>[] | null>();
+	let hydratedArrCount = 0;
+	for (const item of result.items) {
+		signal?.throwIfAborted();
+		if (!("read" in item)) {
+			hydrated.push(item);
+			continue;
+		}
+		try {
+			if (!tags.has(item.service)) {
+				// A failed tag read is not retried for other titles on this page.
+				tags.set(item.service, null);
+				const records = await arrList(item.read, "tag", tagSchema, {}, true);
+				signal?.throwIfAborted();
+				tags.set(item.service, records);
+			}
+			const serviceTags = tags.get(item.service);
+			if (!serviceTags) continue;
+			const detail = await arrDetail(
+				item.service,
+				item.read,
+				item.id,
+				serviceTags,
+			);
+			signal?.throwIfAborted();
+			if (detail.title !== item.title || detail.monitored !== item.monitored)
+				throw createInternalError(
+					"Library title selectors changed during browsing; retry",
+				);
+			hydrated.push(detail);
+			hydratedArrCount++;
+		} catch (error) {
+			signal?.throwIfAborted();
+			errors.push({
+				service: item.service,
+				message: serializeError(error).message,
+			});
+		}
+	}
+	const pageComplete =
+		indexComplete &&
+		errors.length === 0 &&
+		hydrated.length === result.items.length &&
+		hydrated.every((item) => !("complete" in item) || item.complete);
 	return {
-		...paged(
-			items.filter(
-				(item) =>
-					(!args.query ||
-						item.title.toLowerCase().includes(args.query.toLowerCase())) &&
-					(!args.mediaKind || item.mediaKind === args.mediaKind) &&
-					(args.monitored === undefined ||
-						("monitored" in item && item.monitored === args.monitored)),
-			),
-			args.page,
-			args.pageSize,
-		),
-		complete: complete && errors.length === 0,
+		...result,
+		items: hydrated,
+		complete:
+			pageComplete &&
+			hydratedArrCount === filtered.filter((item) => "read" in item).length,
+		pageComplete,
+		coverage: { scope: "page", indexComplete },
 		errors,
 	};
 }

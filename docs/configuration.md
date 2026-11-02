@@ -135,6 +135,8 @@ PLEX_HOME_USER_ALICE_TOKEN=<that account's securely injected token>
 
 Alternatively `PLEX_HOME_USER_ID` binds the main `PLEX_HOME_TOKEN` to that one account. User discovery is `library_list` with `scope:"users"`. Bindings are operator assertions plus membership checks, not cryptographic proof of token ownership. Unbound users and conflicting tokens fail; the owner token is not a fallback. Global account/session/history reads use the main server token and require appropriate visibility. PMS playback history is bounded events, not proof of playback completion or lifetime coverage. Plex favourites/watchlist are unsupported; ratings are not favourites. Cleanup blocks by default unless explicit `allowUnsupportedFavourites:true` acknowledges this missing capability. Permission/transport/schema failures cannot be waived by that flag.
 
+Jellyfin reads send `Authorization: MediaBrowser Token="…"`, with the token percent-encoded as in the upstream SDK. Legacy token headers/query parameters are not used, so disabling Jellyfin's `EnableLegacyAuthorization` does not break these reads. A rejected request is not retried with weaker authentication. This provider token remains separate from any Cloudflare Access pair.
+
 Use a Jellyfin administrative API key with visibility of selected users and all sessions; the reviewed elevated `/Auth/Providers` probe must succeed before session coverage is trusted. `Played`, position and last-played data are summaries. Jellyfin core playback-event history is unsupported here; an empty history array is not evidence of never watched.
 
 ### Exact file copies and mount mappings

@@ -210,7 +210,9 @@ export function mediaReader(server: MediaServerConfig, token = server.token) {
 			endpoint(server.baseUrl, path, params),
 			server.type === "plex"
 				? { "X-Plex-Token": token, Accept: "application/json" }
-				: { "X-Emby-Token": token },
+				: {
+						Authorization: `MediaBrowser Token="${encodeURIComponent(token)}"`,
+					},
 			{ upstream: server },
 		);
 }

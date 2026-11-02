@@ -173,7 +173,10 @@ test("Jellyfin isolates viewer summaries, exact joins, favourites and active ses
 	let sessions = [];
 	route = (url, req) => {
 		if (url.pathname.includes("/api/v3/")) return arrRoute(url);
-		assert.equal(req.headers["x-emby-token"], "private-jelly-key");
+		assert.equal(
+			req.headers.authorization,
+			'MediaBrowser Token="private-jelly-key"',
+		);
 		if (url.pathname === "/prefix/Auth/Providers") return [200, []];
 		if (url.pathname === "/prefix/System/Info")
 			return [

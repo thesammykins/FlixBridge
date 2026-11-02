@@ -604,6 +604,71 @@ test("admission bounds active work and queue; queued cancellation never mutates"
 	await w.close();
 });
 
+test("library listing cancellation closes the detail socket without starting other title graphs", async (t) => {
+	const u = await upstream(t),
+		w = wire(t, { SONARR_URL: u.url });
+	await w.modern("tools/list");
+	w.send({
+		id: 310,
+		method: "tools/call",
+		params: {
+			name: "library_list",
+			arguments: { services: ["sonarr"], page: 1, pageSize: 1 },
+			_meta: meta(),
+		},
+	});
+	const rows = Array.from({ length: 1500 }, (_, index) => ({
+		id: index + 1,
+		title: `Fixture ${index + 1}`,
+		path: `/tv/fixture-${index + 1}`,
+		monitored: true,
+		status: "continuing",
+		tvdbId: index + 1,
+		tags: [],
+		seasons: [],
+		statistics: { totalEpisodeCount: 0, episodeFileCount: 0 },
+	}));
+	let responded = 0,
+		pending;
+	await until(() => {
+		for (; responded < u.responses.length; responded++) {
+			const entry = u.responses[responded],
+				path = new URL(entry.req.url, u.url).pathname;
+			if (path === "/api/v3/series/1") {
+				pending = entry;
+				continue;
+			}
+			assert.ok(
+				path === "/api/v3/tag" || path === "/api/v3/series",
+				`Unexpected pre-cancellation read: ${path}`,
+			);
+			entry.res.setHeader("Content-Type", "application/json");
+			entry.res.end(JSON.stringify(path.endsWith("tag") ? [] : rows));
+		}
+		return pending !== undefined;
+	});
+	pending.res.writeHead(200, { "Content-Type": "application/json" });
+	pending.res.write("{");
+	w.send({ method: "notifications/cancelled", params: { requestId: 310 } });
+	await until(() => pending.res.destroyed);
+	await w.modern("tools/list");
+	await delay(40);
+	assert.equal(
+		u.responses.filter(({ req }) => /\/series\/\d+/.test(req.url)).length,
+		1,
+	);
+	assert.equal(
+		u.responses.some(({ req }) => /\/episode(?:file)?\b/.test(req.url)),
+		false,
+	);
+	assert.ok(u.responses.every(({ req }) => req.method === "GET"));
+	assert.ok(
+		!w.frames.some((frame) => frame.id === 310),
+		"Cancelled listing must not emit a late result",
+	);
+	await w.close();
+});
+
 test("active cancellation aborts body reads without cancelling sibling requests or late replies", async (t) => {
 	const u = await upstream(t);
 	const w = wire(t, { SONARR_URL: u.url });

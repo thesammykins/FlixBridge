@@ -270,6 +270,30 @@ All five new read tools reject unknown fields. `page` is 1..100000 (default 1), 
 
 `library_list` browses ARR and media-server copies, but only exact ARR IDs/files are removal targets. `scope:"users"` discovers media-server users. `media_detail` returns files, episodes, monitoring, tags and ratings preserving source/scale/votes. Optional TMDB reviews require an exact TMDB ID and configured credentials; review text is untrusted display data, never a rule or instruction. A failed review fetch can preserve ARR detail with review capability `unavailable`.
 
+For library browsing, each selected ARR instance supplies one complete unpaginated
+title index, validated for positive safe IDs, nonempty titles, boolean monitoring
+and unique identities before filtering. Index reads retain the ordinary 8 MiB HTTP
+response limit and 25,000-title count ceiling; oversized, malformed or incomplete
+indexes produce explicit service errors, not silent truncation. Filters apply before
+one global page, preserving selected-service order (default: sorted ARR names, then
+media-server names) and each provider's title order. Only ARR titles on that page
+are hydrated into full detail DTOs, with tags read at most once per hydrated
+instance. Failed titles are omitted without pulling replacement titles into the
+page; selector drift between index and detail is an explicit error, not a
+nonmatching or replacement result. `total` and `hasMore` still describe the filtered index, not successful detail
+reads. Media-server browsing and user discovery retain their existing read paths.
+
+Library results add `pageComplete` and `coverage:{scope:"page",indexComplete}`.
+`pageComplete:true` requires known global page boundaries, no read errors and healthy
+detail for every selected ARR title. `complete:true` additionally requires healthy
+hydration of **all matching ARR candidates**, not just this page. An empty filtered
+result can be complete when all indexes are known. After an index failure, `total`
+is only the observed filtered count from successful services, `hasMore` refers only
+to that observed set, and both completeness flags and `indexComplete` are false.
+Index coverage alone is never whole-library detail, retention or removal evidence;
+those safety paths still load their independent full snapshots. Cancellation fails
+the operation rather than returning a successful partial aggregate.
+
 `watch_status` uses explicit unique server/user pairs, exact shared provider IDs and episode coordinates, not title matching. Missing access, ambiguous copies and partial/unknown evidence block cleanup. Plex summaries require explicitly bound per-user tokens; an owner token is not household evidence. Plex favourites/watchlist are unsupported and stay null. `allowUnsupportedFavourites:true` is an explicit rule/removal policy opt-in, not a `watch_status` input or a fabricated false favourite. Jellyfin provides summaries; `watch_history` returns `supported:false,summaryOnly:true,events:[]`, not a successful empty historical audit. Plex events are actual bounded account-scoped records; a viewed timestamp is not completion or lifetime coverage.
 
 `upcoming_media` defaults to now through 30 days later; end must be later than start and within 366 days. It uses ARR calendars and preserves actual event dates, not inferred release forecasts.

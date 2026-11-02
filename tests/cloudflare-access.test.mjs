@@ -359,7 +359,10 @@ test("global Access pair reaches every configured upstream graph, retaining prov
 		if (call.url.hostname === "plex.invalid")
 			assert.equal(call.headers.get("X-Plex-Token"), "plex-key");
 		if (call.url.hostname === "jelly.invalid")
-			assert.equal(call.headers.get("X-Emby-Token"), "jelly-key");
+			assert.equal(
+				call.headers.get("Authorization"),
+				'MediaBrowser Token="jelly-key"',
+			);
 	}
 });
 

@@ -21,7 +21,7 @@ function isolatedEnv() {
 	);
 }
 
-test("stdio MCP authenticates two HTTPS upstreams independently and redacts both response forms", async (t) => {
+test("stdio MCP authenticates ARR and modern Jellyfin HTTPS reads independently and redacts both response forms", async (t) => {
 	const directory = await mkdtemp(
 		join(process.env.TMPDIR ?? tmpdir(), "cloudflare-wire-"),
 	);
@@ -61,38 +61,91 @@ test("stdio MCP authenticates two HTTPS upstreams independently and redacts both
 			secret: "cfast_wire-radarr-secret",
 			api: "wire-radarr-provider",
 		},
+		jellyfin: {
+			id: "wire-jellyfin-id.access",
+			secret: "cfast_wire-jellyfin-secret",
+			api: "wire-jellyfin-provider",
+		},
 	};
 	const requests = [];
+	const titles = Array.from({ length: 1500 }, (_, index) => ({
+		id: index + 1,
+		title: `Fixture ${index + 1}`,
+		path: `/tv/fixture-${index + 1}`,
+		monitored: true,
+		status: "continuing",
+		tvdbId: index + 1,
+		tags: [],
+		seasons: [],
+		statistics: { totalEpisodeCount: 0, episodeFileCount: 0 },
+	}));
 	const upstream = createServer(
 		{ key: await readFile(key), cert: await readFile(cert) },
 		(req, res) => {
-			const url = new URL(req.url, "https://127.0.0.1");
-			const service = url.pathname.split("/")[1];
-			const credentials = expected[service];
+			const url = new URL(req.url, "https://127.0.0.1"),
+				service = url.pathname.split("/")[1],
+				credentials = expected[service];
 			requests.push({ url, headers: req.headers });
 			res.setHeader("Content-Type", "application/json");
 			if (
 				!credentials ||
 				req.headers["cf-access-client-id"] !== credentials.id ||
 				req.headers["cf-access-client-secret"] !== credentials.secret ||
-				req.headers["x-api-key"] !== credentials.api
+				(service === "jellyfin"
+					? req.headers.authorization !==
+						`MediaBrowser Token="${encodeURIComponent(credentials.api)}"`
+					: req.headers["x-api-key"] !== credentials.api)
 			) {
-				res.statusCode = 403;
-				res.end(
+				res.writeHead(403).end(
 					JSON.stringify({
 						message: "Fixture requires both independent auth layers",
 					}),
 				);
 				return;
 			}
-			if (url.pathname.endsWith("system/status"))
+			if (service === "jellyfin") {
+				if (url.pathname.endsWith("System/Info"))
+					res.end(
+						JSON.stringify({
+							Id: "fixture-server",
+							ServerName: "Fixture",
+							Version: credentials.secret,
+						}),
+					);
+				else if (url.pathname.endsWith("Users"))
+					res.end(
+						JSON.stringify([{ Id: "fixture-user", Name: "Fixture User" }]),
+					);
+				else if (url.pathname.endsWith("Items"))
+					res.end(
+						JSON.stringify({ Items: [], TotalRecordCount: 0, StartIndex: 0 }),
+					);
+				else res.writeHead(404).end("{}");
+				return;
+			}
+			if (url.pathname === "/sonarr/api/v3/series")
+				res.end(JSON.stringify(titles));
+			else if (url.pathname === "/sonarr/api/v3/series/1")
+				res.end(JSON.stringify(titles[0]));
+			else if (
+				[
+					"/sonarr/api/v3/tag",
+					"/sonarr/api/v3/episodefile",
+					"/sonarr/api/v3/episode",
+				].includes(url.pathname)
+			)
+				res.end("[]");
+			else if (url.pathname.endsWith("system/status"))
 				res.end(
 					JSON.stringify({
 						appName: service === "sonarr" ? "Sonarr" : "Radarr",
 						version: credentials.secret,
 					}),
 				);
-			else
+			else if (
+				url.pathname.endsWith("queue") ||
+				url.pathname === "/radarr/api/v3/wanted/missing"
+			)
 				res.end(
 					JSON.stringify({
 						page: 1,
@@ -101,6 +154,7 @@ test("stdio MCP authenticates two HTTPS upstreams independently and redacts both
 						records: [],
 					}),
 				);
+			else res.writeHead(404).end("{}");
 		},
 	);
 	upstream.listen(0, "127.0.0.1");
@@ -143,14 +197,26 @@ test("stdio MCP authenticates two HTTPS upstreams independently and redacts both
 	});
 	t.after(() => client.close());
 	await client.connect(transport);
+	let expectedReadCalls = 0;
 	for (const service of Object.keys(expected)) {
-		for (const [name, args] of [
-			["system_status", { service }],
-			["queue_list", { service, page: 1, pageSize: 1 }],
-		]) {
+		const reads = [["system_status", { service }]];
+		if (service === "jellyfin")
+			reads.push(
+				[
+					"library_list",
+					{ scope: "users", services: [service], page: 1, pageSize: 1 },
+				],
+				["library_list", { services: [service], page: 1, pageSize: 1 }],
+			);
+		else reads.push(["queue_list", { service, page: 1, pageSize: 1 }]);
+		if (service === "radarr") reads.push(["import_issues", { service }]);
+		for (const [name, args] of reads) {
+			expectedReadCalls++;
 			const result = await client.callTool({ name, arguments: args });
 			assert.notEqual(result.isError, true, JSON.stringify(result));
 			assert.equal(result.structuredContent.ok, true);
+			if (name === "library_list")
+				assert.deepEqual(result.structuredContent.data.errors, []);
 			assert.deepEqual(
 				JSON.parse(result.content[0].text),
 				result.structuredContent,
@@ -165,7 +231,46 @@ test("stdio MCP authenticates two HTTPS upstreams independently and redacts both
 					);
 		}
 	}
-	assert.equal(requests.length, 4);
+	assert.equal(requests.length, expectedReadCalls);
+	const jellyfinRequests = requests.filter((request) =>
+		request.url.pathname.startsWith("/jellyfin/"),
+	);
+	assert.equal(jellyfinRequests.length, 3);
+	for (const request of jellyfinRequests) {
+		assert.equal(request.headers["x-emby-token"], undefined);
+		assert.equal(request.headers["x-mediabrowser-token"], undefined);
+		assert.equal(request.url.searchParams.has("ApiKey"), false);
+		assert.equal(request.url.searchParams.has("api_key"), false);
+	}
+	assert.ok(
+		requests.some(
+			(request) => request.url.pathname === "/radarr/api/v3/wanted/missing",
+		),
+	);
+	const beforeBrowse = requests.length;
+	const page = await client.callTool({
+		name: "library_list",
+		arguments: { services: ["sonarr"], page: 1, pageSize: 1 },
+	});
+	assert.equal(page.structuredContent.ok, true, JSON.stringify(page));
+	assert.deepEqual(JSON.parse(page.content[0].text), page.structuredContent);
+	assert.equal(page.structuredContent.data.total, 1500);
+	assert.equal(page.structuredContent.data.items.length, 1);
+	assert.equal(page.structuredContent.data.items[0].complete, true);
+	assert.equal(page.structuredContent.data.complete, false);
+	assert.equal(page.structuredContent.data.pageComplete, true);
+	assert.equal(page.structuredContent.data.coverage.indexComplete, true);
+	assert.deepEqual(
+		requests.slice(beforeBrowse).map(({ url }) => url.pathname),
+		[
+			"/sonarr/api/v3/series",
+			"/sonarr/api/v3/tag",
+			"/sonarr/api/v3/series/1",
+			"/sonarr/api/v3/episodefile",
+			"/sonarr/api/v3/episode",
+		],
+	);
+	const beforeDeniedMutation = requests.length;
 	for (const request of requests.filter((request) =>
 		request.url.pathname.endsWith("queue"),
 	)) {
@@ -191,7 +296,7 @@ test("stdio MCP authenticates two HTTPS upstreams independently and redacts both
 		denied.structuredContent.error.message,
 		/Authenticated human approval/,
 	);
-	assert.equal(requests.length, 4);
+	assert.equal(requests.length, beforeDeniedMutation);
 	assert.match(
 		stderr,
 		/Registered service/,

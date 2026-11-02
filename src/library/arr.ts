@@ -7,6 +7,7 @@ import {
 	type HttpOptions,
 	serializeError,
 } from "../core.js";
+import { requestSignal } from "../request-context.js";
 import { SonarrService } from "../services/arr/sonarr.js";
 import type { ServiceConfig } from "../services/base.js";
 import type { LibraryItem, LibrarySnapshot } from "./model.js";
@@ -107,11 +108,17 @@ export async function arrList<T extends { id: number }>(
 	path: string,
 	schema: z.ZodType<T>,
 	params: Record<string, string | number> = {},
+	unpaginated = false,
 ): Promise<T[]> {
 	const out: T[] = [];
 	let total: number | undefined;
 	for (let page = 1; page <= 100; page++) {
-		const raw = await read(path, { ...params, page, pageSize: 250 });
+		requestSignal.getStore()?.throwIfAborted();
+		const raw = await read(
+			path,
+			unpaginated ? params : { ...params, page, pageSize: 250 },
+		);
+		requestSignal.getStore()?.throwIfAborted();
 		if (Array.isArray(raw)) {
 			if (page !== 1)
 				throw createInternalError("Library pagination changed shape");
@@ -120,8 +127,8 @@ export async function arrList<T extends { id: number }>(
 		}
 		const envelope = parse(
 			z.object({
-				records: z.array(schema),
-				totalRecords: count,
+				records: z.array(schema).max(25000),
+				totalRecords: count.max(25000),
 				page: id.optional(),
 			}),
 			raw,
@@ -133,8 +140,15 @@ export async function arrList<T extends { id: number }>(
 			throw createInternalError("Library pagination total changed");
 		total = envelope.totalRecords;
 		out.push(...envelope.records);
+		if (out.length > 25000)
+			throw createInternalError("Library list exceeds count limit");
 		if (out.length === total) break;
-		if (!envelope.records.length || out.length > total || page === 100)
+		if (
+			unpaginated ||
+			!envelope.records.length ||
+			out.length > total ||
+			page === 100
+		)
 			throw createInternalError("Library pagination is incomplete");
 	}
 	if (new Set(out.map((value) => value.id)).size !== out.length)
@@ -171,6 +185,11 @@ const titleSchema = z.object({
 		})
 		.optional(),
 });
+export const titleIndexSchema = titleSchema.pick({
+	id: true,
+	title: true,
+	monitored: true,
+});
 const episodeSchema = z.object({
 	id,
 	seriesId: id,
@@ -190,7 +209,7 @@ const fileSchema = z.object({
 	seriesId: id.optional(),
 	movieId: id.optional(),
 });
-const tagSchema = z.object({ id, label: z.string().min(1) });
+export const tagSchema = z.object({ id, label: z.string().min(1) });
 function ratings(
 	value: z.infer<typeof titleSchema>["ratings"],
 ): LibraryItem["ratings"] {

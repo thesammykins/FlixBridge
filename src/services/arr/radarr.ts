@@ -10,6 +10,6 @@ export class RadarrService
 	readonly endpoints = {
 		lookup: "/movie/lookup",
 		add: "/movie",
-		wanted: "/movie/wanted",
+		wanted: "/wanted/missing",
 	};
 }
