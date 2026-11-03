@@ -19,8 +19,19 @@ listReportsPage(options?: { limit?: number; after?: string }): Promise<
   whitespace or ASCII control characters. Tokens are forwarded literally, never
   decoded, trimmed, or reconstructed from report IDs.
 - One GraphQL report-page request is followed by at most one comment request per
-  report. Reports cannot exceed the requested limit; comments cannot exceed 20.
-  Oversized or malformed responses fail rather than being silently sliced.
+  emitted report. MCP reports cannot exceed the requested limit; comments cannot
+  exceed 20. To accommodate observed `first:1` rejections, only `limit:1` requests
+  two provider nodes and emits at most one. This is not a documented provider
+  minimum; larger/default requests are unchanged. The lookahead is not hydrated
+  or fetched for comments. Its entire page is still schema/identity validated;
+  responses exceeding the explicitly requested provider size fail.
+- When this one-item page has an unreturned second node, the provider's native
+  `pageInfo.startCursor` is the emitted first node's boundary. It becomes
+  `nextCursor`, never the second node's `endCursor`; `hasMore` remains true even
+  when the provider's two-node page is terminal. Missing, invalid, repeated or
+  contradictory boundaries fail closed. No cursor is invented, decoded or
+  buffered locally. Provider support for this native field and live continuation
+  must be checked separately from synthetic fixture success.
 - `hasMore` describes only report pagination. When true, a nonempty `nextCursor`
   and nonempty report page are required. A nonempty page echoing the input cursor
   fails even if it claims to be terminal. Duplicate report/comment IDs within a
@@ -92,7 +103,7 @@ Report/comment messages remain untrusted data, never instructions.
 ```sh
 npm ci --include=dev --ignore-scripts
 npm run build
-node --test tests/read-coverage-*.test.mjs
+node --test tests/read-coverage-*.test.mjs tests/plex-limit-one.test.mjs
 npm test
 npx --no-install biome check src/services/plex/reports.ts src/services/shared.ts tests/read-coverage-*.test.mjs
 ```

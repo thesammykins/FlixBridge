@@ -28,13 +28,20 @@ type Scenario =
 	| "feed-graphql"
 	| "feed-graphql-unknown"
 	| "comments-graphql"
+	| "limit-one"
 	| "empty"
 	| "deleted"
 	| "success";
 type Envelope = {
 	ok: boolean;
 	error?: { kind?: string; message: string; status?: number };
-	data?: { total: number; reports: { item: unknown }[] };
+	data?: {
+		total: number;
+		reports: { item: unknown }[];
+		hasMore?: boolean;
+		nextCursor?: string | null;
+		complete?: boolean;
+	};
 };
 type ToolResult = {
 	isError?: boolean;
@@ -63,11 +70,13 @@ function installProvider(scenario: Scenario) {
 		assert.equal(new Headers(init?.headers).get("X-Plex-Token"), privateToken);
 		if (url === "https://community.plex.tv/api") {
 			assert.equal(method, "POST");
-			const { query } = JSON.parse(String(init?.body));
+			const { query, variables } = JSON.parse(String(init?.body));
 			assert.doesNotMatch(query, /mutation/);
 			const feed = query.includes("query getReportedIssues");
 			if (!feed) assert.match(query, /query reportComments/);
 			const stage = feed ? "feed" : "comments";
+			if (feed && scenario === "limit-one" && variables.first === 1)
+				return Response.json({ errors: [{ message: privateToken }] });
 			if (
 				scenario === `${stage}-graphql` ||
 				(feed && scenario === "feed-graphql-unknown")
@@ -99,7 +108,7 @@ function installProvider(scenario: Scenario) {
 			const keys =
 				scenario === "empty"
 					? []
-					: scenario === "partial-transport"
+					: scenario === "partial-transport" || scenario === "limit-one"
 						? [1, 2]
 						: [1];
 			const nodes = keys.map((key) => ({
@@ -111,9 +120,23 @@ function installProvider(scenario: Scenario) {
 				},
 				url: `https://app.plex.invalid/library/metadata/${key}`,
 				date: "2026-01-01T00:00:00Z",
+				...(scenario === "limit-one" ? { commentCount: 0 } : {}),
 			}));
 			return Response.json({
-				data: { reports: { nodes, pageInfo: { hasNextPage: false } } },
+				data: {
+					reports: {
+						nodes,
+						pageInfo: {
+							hasNextPage: false,
+							...(scenario === "limit-one"
+								? {
+										startCursor: "opaque-first==",
+										endCursor: "opaque-second==",
+									}
+								: {}),
+						},
+					},
+				},
 			});
 		}
 		assert.match(
@@ -137,6 +160,7 @@ function installProvider(scenario: Scenario) {
 			);
 		if (
 			scenario === "success" ||
+			scenario === "limit-one" ||
 			(scenario === "partial-transport" && url.endsWith("/1"))
 		)
 			return Response.json({
@@ -242,7 +266,7 @@ async function wire(scenario: Scenario | "unconfigured") {
 					method: "tools/call",
 					params: {
 						name: "reported_issues",
-						arguments: { limit: 5 },
+						arguments: { limit: scenario === "limit-one" ? 1 : 5 },
 						_meta: {
 							"io.modelcontextprotocol/protocolVersion": "2026-07-28",
 							"io.modelcontextprotocol/clientCapabilities": {},
@@ -431,6 +455,16 @@ if (process.argv[2] === "--stdio-provider") {
 					complete: true,
 				},
 			});
+		}),
+		test("limit-one lookahead crosses real stdio as exactly one report with the first boundary", async () => {
+			const result = await wire("limit-one");
+			assertMatching(result);
+			assert.equal(result.structuredContent.ok, true);
+			assert.equal(result.structuredContent.data?.total, 1);
+			assert.equal(result.structuredContent.data?.reports.length, 1);
+			assert.equal(result.structuredContent.data?.hasMore, true);
+			assert.equal(result.structuredContent.data?.nextCursor, "opaque-first==");
+			assert.equal(result.structuredContent.data?.complete, false);
 		}),
 		test("missing Plex configuration retains its explicit argument guidance", async () => {
 			const result = await wire("unconfigured");

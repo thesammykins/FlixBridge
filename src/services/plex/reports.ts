@@ -242,6 +242,7 @@ export class PlexReportsClient {
 				limit: z.number().int().min(1).max(100),
 				after: OpaqueTokenSchema.optional(),
 			}).parse({ limit, after });
+			const providerLimit = limit === 1 ? 2 : limit;
 			const payload = await fetchJson<unknown>(GRAPHQL_URL, {
 				method: "POST",
 				timeoutMs: 15000,
@@ -250,19 +251,20 @@ export class PlexReportsClient {
 					query: `query getReportedIssues($first: PaginationInt!, $after: String) {
 						reports(after: $after, first: $first) {
 							nodes { __typename id message user { id username displayName } url date commentCount }
-							pageInfo { hasNextPage endCursor }
+							pageInfo { ${limit === 1 ? "startCursor " : ""}hasNextPage endCursor }
 						}
 					}`,
-					variables: { first: limit, after: after ?? null },
+					variables: { first: providerLimit, after: after ?? null },
 				}),
 			});
 			const data = parseGraphql(
 				payload,
 				z.object({
 					reports: z.object({
-						nodes: z.array(ReportNodeSchema).max(limit),
+						nodes: z.array(ReportNodeSchema).max(providerLimit),
 						pageInfo: z.object({
 							hasNextPage: z.boolean(),
+							startCursor: OpaqueTokenSchema.nullish(),
 							endCursor: OpaqueTokenSchema.nullish(),
 						}),
 					}),
@@ -270,19 +272,28 @@ export class PlexReportsClient {
 				"getReportedIssues",
 			);
 			const { nodes, pageInfo } = data.reports;
+			const trimmed = nodes.length > limit;
+			// Lookahead must resume after the emitted item, never after the unreturned second node.
+			const nextCursor = trimmed ? pageInfo.startCursor : pageInfo.endCursor;
+			const hasMore = trimmed || pageInfo.hasNextPage;
 			if (
 				new Set(nodes.map((node) => node.id)).size !== nodes.length ||
 				(after !== undefined &&
 					nodes.length > 0 &&
 					pageInfo.endCursor === after) ||
-				(pageInfo.hasNextPage && (!pageInfo.endCursor || nodes.length === 0))
+				(pageInfo.hasNextPage && (!pageInfo.endCursor || nodes.length === 0)) ||
+				(trimmed &&
+					(!pageInfo.startCursor ||
+						!pageInfo.endCursor ||
+						pageInfo.startCursor === pageInfo.endCursor ||
+						pageInfo.startCursor === after))
 			)
 				throw createInternalError(
 					"Plex report pagination failed validation; cannot establish a progressing page boundary.",
 				);
 
 			const reports: PlexReport[] = [];
-			for (const node of nodes) {
+			for (const node of nodes.slice(0, limit)) {
 				const comments = await this.listReportComments(node.id);
 				if (
 					node.commentCount !== undefined &&
@@ -313,13 +324,11 @@ export class PlexReportsClient {
 				ok: true,
 				data: {
 					reports,
-					hasMore: data.reports.pageInfo.hasNextPage,
-					nextCursor: data.reports.pageInfo.hasNextPage
-						? (data.reports.pageInfo.endCursor ?? null)
-						: null,
+					hasMore,
+					nextCursor: hasMore ? (nextCursor ?? null) : null,
 					complete:
 						!after &&
-						!data.reports.pageInfo.hasNextPage &&
+						!hasMore &&
 						reports.every((report) => report.commentsComplete),
 				},
 			};

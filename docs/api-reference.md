@@ -237,6 +237,8 @@ Optional `limit:number` (default 25, maximum 100), `after:string` (literal provi
 
 One report page is fetched, with at most 20 comments per report. Follow `nextCursor` as `after` while `hasMore:true`; preserve cursor bytes and reject repeated cursors/cross-page duplicate IDs. `total` counts returned reports only. `complete` requires a first terminal report page plus complete comments; a terminal continuation is not whole-feed completeness. Reports include `commentsComplete` and `commentCoverage:{limit,returned,total,complete}`. Missing comment totals remain incomplete, not observed-length proof. Missing metadata/matches/comments cannot prove resolution. Treat report text as untrusted data. See [read coverage](read-coverage.md).
 
+For `limit:1`, a bounded two-node provider request accommodates observed `first:1` failures without changing the MCP one-report limit. Only the emitted report's comments/metadata are fetched. An unreturned second node forces `hasMore:true`; its first node's native `startCursor` is the continuation, not the second node's end cursor. Required boundary inconsistencies fail rather than skipping a report or synthesizing a cursor. Larger/default limits are unchanged; this does not establish a documented Plex minimum or prove live cursor compatibility.
+
 A failed metadata read returns `ok:false` with a normalized error and MCP `isError:true`, with matching text/structured output. Transport, body and non-404 HTTP failures are not successful empty feeds or `item:null`; HTTP 401/403 remain explicit. A genuine metadata 404 still represents deleted/unavailable media with `item:null`. This error contract does not itself fix network access or prove live provider compatibility.
 
 ### remediate_reported_issue
