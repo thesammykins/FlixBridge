@@ -1,20 +1,19 @@
 # Installation
 
-Requires Node.js 20 or later, npm, an MCP client supporting stdio, and a reachable Sonarr or Radarr instance with an API key. SABnzbd and Plex are optional integrations, not standalone startup configurations.
+Requires Node.js 20 or later, npm and an MCP client supporting stdio. Configure a reachable ARR or Plex/Jellyfin media-server integration; media-only reads are supported, but ARR targets and explicit viewers are needed for library cleanup. SABnzbd-only is not a standalone MCP startup configuration. This describes a 1.1.0 source candidate, not publication or live-validation evidence.
 
 ## Tagged GitHub release
 
-GitHub release assets and npm registry publication are separate. To install the exact
-1.0.0 package attached to the `v1.0.0` GitHub release:
+A source tag, a GitHub release asset and an npm registry version are separate
+artifacts. Check the [release listing](https://github.com/thesammykins/FlixBridge/releases)
+for an actual downloadable package; a tag alone does not provide one. If a maintainer
+has attached a reviewed tarball and `SHA256SUMS`, download both, verify the checksum,
+then install the local tarball with npm. Do not assume an unversioned npm install
+selects the source version described by these docs.
 
-```bash
-npm install -g https://github.com/thesammykins/FlixBridge/releases/download/v1.0.0/thesammykins-flixbridge-1.0.0.tgz
-flixbridge
-```
-
-Compare the downloaded file with `SHA256SUMS` from the same release before installation.
-The source tag is `v1.0.0`; to build that revision, check it out explicitly after cloning.
-An unversioned npm-registry install below does not imply that it selects 1.0.0.
+When no package asset exists, use the source-checkout instructions and explicitly
+check out the reviewed tag or commit before building. Keep the previous working
+artifact/configuration until the new installation's read-only baseline succeeds.
 
 ## npm release
 
@@ -47,13 +46,27 @@ npm start
 
 For a client-managed source deployment use `command: "node"` and `args: ["/absolute/path/to/FlixBridge/dist/index.js"]`. Use absolute executable paths too if the client's PATH does not contain Node/npm. Running `npx @thesammykins/flixbridge` still selects the npm package, not this checkout.
 
+## Optional retention CLI and bridge
+
+The candidate defines two bins: `flixbridge` (stdio MCP) and `flixbridge-retention` (opt-in local operations). A source build can run the latter as `node /absolute/path/to/FlixBridge/dist/cli.js --help`; after installing an artifact that actually includes it, use `flixbridge-retention --help`. Do not assume an older npm artifact exposes this bin.
+
+Configure [private state and approval environment](configuration.md#private-state-and-human-approval) before use. Both CLI and MCP share environment-only source configuration and the same explicitly selected state directory. Example invocations only, not installed schedules:
+
+```bash
+flixbridge-retention bridge --port 8787
+flixbridge-retention evaluate --rule reviewed-movies --version 1 --at 2026-10-01T00:00:00Z
+flixbridge-retention run-due --at 2026-10-02T00:00:00Z --request-approval
+```
+
+The bridge is a separate foreground process and needs trusted adapter integration; rules must already exist and be enabled for due evaluation. `--request-approval` creates proposals for human decisions, never approval/deletion. `execute --request <approved-request-uuid>` is an explicitly invoked mutation after authenticated consent, not a scheduler phase that self-approves. See [full CLI/rule contract and opt-in schedule example](retention-rules.md#cli-and-opt-in-scheduling). No command installs cron/launchd jobs or automatically starts a listener.
+
 ## MCP client setup and verification
 
 See the [README configuration example](../README.md#connect-an-mcp-client); client configuration locations and restart procedures are client-specific. Supply credentials to the launched process: GUI clients need not inherit shell exports.
 
 1. Restart/reconnect the configured MCP server and discover its tools.
 2. Call `list_services`; confirm exact instance names.
-3. Call `system_status` and `queue_list` for each intended ARR service. Use `queue_diagnostics` with explicit `autoFix:false` if inspecting import problems. For Plex, call `reported_issues` after configuring its variables.
+3. Call `system_status` for each intended ARR/media server and `queue_list` for each ARR service. For library reads use `library_list`, `media_detail` and explicit-viewer `watch_status`; inspect coverage/capability limits. Use `queue_diagnostics` with explicit `autoFix:false` if inspecting import problems. For Plex, call `reported_issues` after configuring its variables.
 
 The server communicates over stdin/stdout; it is not an HTTP endpoint. Waiting silently for an MCP client is normal. EOF on stdin closes the server. Logs go to stderr; do not redirect them into the protocol stream. Current MCP `2026-07-28` and legacy initialization are served by the SDK; see [transport details](api-reference.md#transport-and-validation). Cancelling a request does not undo work already accepted by ARR/Plex/SABnzbd.
 
@@ -79,8 +92,7 @@ The server communicates over stdin/stdout; it is not an HTTP endpoint. Waiting s
 
 Rollback does not undo media deletion, adds, profile changes, searches or comments.
 Stopping/cancelling the server may leave upstream commands running. Inspect pending
-work in the upstream API/UI first; restart loses tokens and process-local replay
-guards. Any compensating write or backup restore needs its own authority. Do not
+work in the upstream API/UI first; restart loses preview tokens and process-local import/Plex guards, not durable approvals/consumed claims. Stop destructive callers and external schedules before downgrading: older versions may re-enable weaker token-only removal. Preserve and reconcile private state; do not restore old approved records for replay. See [retention migration](retention-migration.md). Any compensating write or backup restore needs its own authority. Do not
 blindly replay a v5 failure against v3 or downgrade just to bypass an unported guard.
 CI is verification-only; release publication requires separate maintainer approval.
 

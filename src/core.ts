@@ -1,16 +1,36 @@
+import { accessHeaders, redactAccess } from "./access.js";
 import { debugHttp } from "./debug.js";
+import {
+	isRemovalRequest,
+	recordQueueDiscardFailure,
+	removalRequestAllowed,
+	revalidateRemovalRequest,
+} from "./removal-authority.js";
 import { requestSignal } from "./request-context.js";
 import type { InternalError, ServiceError } from "./services/base.js";
 
 export interface HttpOptions extends globalThis.RequestInit {
+	upstream?: object;
 	timeoutMs?: number;
+	maxResponseBytes?: number;
 }
 
 export async function fetchJson<T>(
 	url: string,
 	options: HttpOptions = {},
 ): Promise<T> {
-	const { timeoutMs = 5000, ...fetchOptions } = options;
+	const {
+		timeoutMs = 5000,
+		upstream,
+		maxResponseBytes = 8 * 1024 * 1024,
+		...fetchOptions
+	} = options;
+	if (
+		!Number.isSafeInteger(maxResponseBytes) ||
+		maxResponseBytes < 1 ||
+		maxResponseBytes > 64 * 1024 * 1024
+	)
+		throw createInternalError("Invalid HTTP response byte budget");
 	const method = fetchOptions.method || "GET";
 	const startTime = Date.now();
 
@@ -56,9 +76,30 @@ export async function fetchJson<T>(
 			throw createInternalError("Invalid HTTP URL");
 		const origin = target.origin;
 		const headers = new Headers(fetchOptions.headers);
+		if (
+			headers.has("CF-Access-Client-Id") ||
+			headers.has("CF-Access-Client-Secret")
+		)
+			throw createInternalError(
+				"Cloudflare Access headers require an instance-bound configuration",
+			);
+		for (const [key, value] of Object.entries(accessHeaders(upstream, url)))
+			headers.set(key, value);
 		if (!headers.has("Accept")) headers.set("Accept", "application/json");
 		let response: Response;
 		for (let hop = 0; ; hop++) {
+			if (!removalRequestAllowed(target, method))
+				throw createInternalError(
+					"Authenticated human approval is required for this exact removal target",
+				);
+			if (controller.signal.aborted) await aborted;
+			if (isRemovalRequest(target, method))
+				await Promise.race([
+					requestSignal.run(controller.signal, () =>
+						revalidateRemovalRequest(target, method, fetchOptions.body),
+					),
+					aborted,
+				]);
 			if (controller.signal.aborted) await aborted;
 			response = await Promise.race([
 				fetch(target.toString(), {
@@ -73,7 +114,10 @@ export async function fetchJson<T>(
 			if (![301, 302, 303, 307, 308].includes(response.status)) break;
 			const location = response.headers.get("location");
 			await response.body?.cancel();
-			if (!["GET", "HEAD"].includes(method.toUpperCase()))
+			if (
+				!["GET", "HEAD"].includes(method.toUpperCase()) ||
+				isRemovalRequest(target, method)
+			)
 				throw createInternalError(
 					"Mutation HTTP redirect rejected; not replayed",
 				);
@@ -98,7 +142,7 @@ export async function fetchJson<T>(
 					const { done, value } = await Promise.race([reader.read(), aborted]);
 					if (done) break;
 					bytes += value.byteLength;
-					if (bytes > 8 * 1024 * 1024)
+					if (bytes > maxResponseBytes)
 						throw createInternalError("HTTP response exceeds size limit");
 					text += decoder.decode(value, { stream: true });
 				}
@@ -108,22 +152,39 @@ export async function fetchJson<T>(
 				reader.releaseLock();
 			}
 		}
+		if (
+			headers.has("CF-Access-Client-Id") &&
+			(response.headers
+				.get("content-type")
+				?.toLowerCase()
+				.includes("text/html") ||
+				/^\s*(?:<!doctype\s+html\b|<html\b)/i.test(text))
+		)
+			throw createServiceError(
+				"unknown",
+				response.ok ? 403 : response.status,
+				"Cloudflare Access returned a login page; check Service Auth policy and service-token credentials",
+			);
 		if (!response.ok)
 			throw createServiceError(
 				"unknown",
 				response.status,
-				`HTTP ${response.status}`,
+				headers.has("CF-Access-Client-Id") &&
+					[401, 403].includes(response.status)
+					? `HTTP ${response.status}; check Cloudflare Access Service Auth policy, service token and upstream API credentials`
+					: `HTTP ${response.status}`,
 			);
 		if (!text) {
 			return undefined as T;
 		}
 
 		try {
-			return JSON.parse(text) as T;
+			return redactAccess(JSON.parse(text), upstream) as T;
 		} catch {
 			throw createInternalError("Failed to parse JSON response");
 		}
 	} catch (error) {
+		recordQueueDiscardFailure(serializeError(error));
 		const elapsed = Date.now() - startTime;
 		debugHttp(method, url, undefined, elapsed);
 
@@ -147,6 +208,12 @@ export async function fetchJson<T>(
 }
 
 const trustedErrors = new WeakSet<object>();
+
+export function isTrustedError(error: unknown): boolean {
+	return (
+		typeof error === "object" && error !== null && trustedErrors.has(error)
+	);
+}
 
 export function serializeError(error: unknown): ServiceError | InternalError {
 	let result: ServiceError | InternalError;
@@ -184,7 +251,7 @@ export function createServiceError(
 	message: string,
 	code?: string,
 ): ServiceError {
-	const error = { service, status, message, code };
+	const error = { service, status, message: redactAccess(message), code };
 	trustedErrors.add(error);
 	return error;
 }
@@ -194,7 +261,10 @@ export function createInternalError(
 	cause?: unknown,
 ): InternalError {
 	void cause;
-	const error: InternalError = { kind: "internal", message };
+	const error: InternalError = {
+		kind: "internal",
+		message: redactAccess(message),
+	};
 	trustedErrors.add(error);
 	return error;
 }

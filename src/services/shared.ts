@@ -94,21 +94,26 @@ const SearchArraySchema = z.array(
 	}),
 );
 const HistorySchema = z.object({
-	records: z.array(
-		z.object({
-			id: z.number(),
-			sourceTitle: z.string().nullish(),
-			title: z.string().nullish(),
-			quality: z
-				.object({
-					quality: z.object({ name: z.string().optional() }).nullish(),
-				})
-				.nullish(),
-			date: z.string(),
-			eventType: z.string(),
-		}),
-	),
-	totalRecords: z.number().optional(),
+	records: z
+		.array(
+			z.object({
+				id: z.number().int().positive().safe(),
+				sourceTitle: z.string().nullish(),
+				title: z.string().nullish(),
+				quality: z
+					.object({
+						quality: z.object({ name: z.string().optional() }).nullish(),
+					})
+					.nullish(),
+				date: z.string(),
+				eventType: z.string(),
+			}),
+		)
+		.refine(
+			(records) =>
+				new Set(records.map((record) => record.id)).size === records.length,
+		),
+	totalRecords: z.number().int().nonnegative().safe().optional(),
 });
 const ManualImportSchema = z.array(
 	z
@@ -419,22 +424,24 @@ export abstract class BaseArrService {
 
 	readonly serviceName: string;
 	private readonly baseUrl: string;
+	private readonly upstream: ServiceConfig;
 	// ponytail: process-local replay guard; durable command ledger for multi-process/restart recovery.
 	private readonly submittedImports = new Map<string, ImportSubmission>();
 	private readonly apiKey: string;
 
 	constructor(serviceName: string, config: ServiceConfig) {
+		this.upstream = config;
 		this.serviceName = serviceName;
 		this.baseUrl = config.baseUrl;
 		this.apiKey = config.apiKey;
 	}
 
 	protected parseQueue(response: unknown) {
-		return (
+		const schema: z.ZodType<z.infer<typeof QueueSchema>> =
 			this.apiFamily() === 5
 				? QueueSchema.extend({ records: z.array(V5QueueItemSchema) })
-				: QueueSchema
-		)
+				: QueueSchema;
+		return schema
 			.refine(
 				(queue) =>
 					new Set(queue.records.map((record) => record.id)).size ===
@@ -490,6 +497,7 @@ export abstract class BaseArrService {
 		headers.set("X-Api-Key", this.apiKey);
 		return fetchJson<T>(url, {
 			...options,
+			upstream: this.upstream,
 			headers: Object.fromEntries(headers),
 		});
 	}
@@ -547,11 +555,25 @@ export abstract class BaseArrService {
 			if (options.pageSize) params.pageSize = options.pageSize;
 			if (options.sortKey) params.sortKey = options.sortKey;
 			if (options.sortDirection) params.sortDirection = options.sortDirection;
+			const includeUnknown = options.includeUnknown ?? this.apiFamily() === 3;
+			if (includeUnknown) {
+				if (this.apiFamily() !== 3)
+					throw createInternalError(
+						"Unknown-item safety snapshot is not reviewed for this API family",
+					);
+				params[
+					this.id === "sonarr"
+						? "includeUnknownSeriesItems"
+						: "includeUnknownMovieItems"
+				] = "true";
+			}
 
 			const response = await this.fetchJson(this.buildApiUrl("/queue", params));
 			const data = this.parseQueue(response);
 
 			const items = data.records.map((item) => ({
+				size: item.size,
+				sizeleft: item.sizeleft,
 				id: item.id,
 				title: item.title,
 				status: item.status,
@@ -589,6 +611,8 @@ export abstract class BaseArrService {
 					service: this.serviceName,
 					mediaKind: this.mediaKind,
 					total: data.totalRecords ?? data.records.length,
+					includesUnknownItems:
+						this.apiFamily() === 3 ? includeUnknown : undefined,
 					items,
 					truncated:
 						data.totalRecords === undefined ||
@@ -694,7 +718,7 @@ export abstract class BaseArrService {
 				? response.records.slice(start, start + (options.pageSize ?? 20))
 				: response.records;
 
-			const items = records.slice(0, 20).map((item) => ({
+			const items = records.map((item) => ({
 				id: item.id,
 				title: item.sourceTitle || item.title || "Unknown",
 				quality: item.quality?.quality?.name || "Unknown",
@@ -708,13 +732,12 @@ export abstract class BaseArrService {
 				data: {
 					service: this.serviceName,
 					mediaKind: this.mediaKind,
-					total: response.totalRecords || records.length,
+					total: response.totalRecords ?? records.length,
 					items,
 					truncated:
-						records.length > 20 ||
-						(this.apiFamily() === 5 &&
-							((response.totalRecords ?? records.length) !== items.length ||
-								(options.page ?? 1) !== 1)),
+						response.totalRecords === undefined ||
+						response.totalRecords !== items.length ||
+						(options.page ?? 1) !== 1,
 				},
 			};
 		} catch (error) {
@@ -932,7 +955,7 @@ export abstract class BaseArrService {
 				pct: number;
 			}> = [];
 			let totalLibraryItems = 0;
-			for (const [id, count] of selected.usage) {
+			for (const [_id, count] of selected.usage) {
 				totalLibraryItems += count;
 			}
 			for (const [id, count] of selected.usage) {
@@ -1323,7 +1346,12 @@ export abstract class BaseArrService {
 
 			if (kind === "queue") {
 				const response = await this.fetchJson(
-					this.buildApiUrl("/queue", { pageSize: 250 }),
+					this.buildApiUrl("/queue", {
+						pageSize: 250,
+						[this.id === "sonarr"
+							? "includeUnknownSeriesItems"
+							: "includeUnknownMovieItems"]: "true",
+					}),
 				);
 				const data = this.parseQueue(response);
 				if (
@@ -2004,23 +2032,15 @@ export abstract class BaseArrService {
 			Math.min(options.queueTimeoutMs ?? 5000, 60000),
 		);
 
-		const params: Record<string, string> =
-			this.id === "sonarr"
-				? {
-						removeFromClient: String(removeFromClient),
-						blocklist: String(blocklist),
-						skipRedownload: "false",
-						changeCategory: "false",
-					}
-				: {};
+		// Both ARR controllers bind these safety options from the query, not a DELETE body.
+		const params: Record<string, string> = {
+			removeFromClient: String(removeFromClient),
+			blocklist: String(blocklist),
+			skipRedownload: "false",
+			changeCategory: "false",
+		};
 		await this.fetchJson(this.buildApiUrl(`/queue/${queueId}`, params), {
 			method: "DELETE",
-			...(this.id === "radarr"
-				? {
-						body: JSON.stringify({ removeFromClient, blocklist }),
-						headers: { "Content-Type": "application/json" },
-					}
-				: {}),
 			timeoutMs,
 		});
 	}
@@ -2078,6 +2098,7 @@ export abstract class BaseArrService {
 
 	async previewManualImport(
 		ids: number[],
+		timeoutMs?: number,
 	): Promise<OperationResult<ManualImportPreviewData>> {
 		const operation = withMetrics(
 			this.serviceName,
@@ -2090,7 +2111,10 @@ export abstract class BaseArrService {
 
 				const items: BoundImportPreviewItem[] = [];
 				for (const target of preparation.data.targets) {
-					const candidates = await this.getManualImportCandidates(target);
+					const candidates = await this.getManualImportCandidates(
+						target,
+						timeoutMs,
+					);
 					const previews = candidates.map((candidate) =>
 						this.buildManualImportCandidatePreview(candidate, target),
 					);
@@ -2118,6 +2142,7 @@ export abstract class BaseArrService {
 							.digest("hex"),
 						selectedCandidate,
 						safeToImport: Boolean(selectedCandidate),
+						viableCandidateCount: viable.length,
 						reason,
 					});
 				}
@@ -2356,6 +2381,7 @@ export abstract class BaseArrService {
 
 	private async getManualImportCandidates(
 		target: RemovalTargetDetails,
+		timeoutMs?: number,
 	): Promise<ManualImportResource[]> {
 		if (!target.downloadId) return [];
 		const params: Record<string, string> = { filterExistingFiles: "false" };
@@ -2364,6 +2390,7 @@ export abstract class BaseArrService {
 		if (target.path) params.folder = target.path;
 		const candidates = await this.fetchJson(
 			this.buildApiUrl("/manualimport", params),
+			{ timeoutMs },
 		);
 		const parsed = ManualImportSchema.safeParse(candidates);
 		if (!parsed.success)

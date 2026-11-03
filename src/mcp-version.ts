@@ -15,7 +15,7 @@ export class VersionCheckedServer extends Server {
 	): (request: JSONRPCRequest, ctx: ServerContext) => Promise<Result> {
 		const wrapped = super._wrapHandler(method, handler);
 		return async (request, ctx) => {
-			// npm 2.3.1 declarations erase RequestMetaEnvelope to {}; source/wire retain the keys.
+			// Keep metadata access runtime-checked across SDK declaration revisions.
 			const envelope = ctx.mcpReq.envelope as
 				| Record<string, unknown>
 				| undefined;

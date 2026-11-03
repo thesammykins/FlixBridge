@@ -687,7 +687,7 @@ await describe("Queue Diagnostics - Summary", [
 		assertHasProperty(summary, "requiresManual");
 
 		// Counts should add up correctly
-		const totalIssues = result.data.issuesFound;
+		const _totalIssues = result.data.issuesFound;
 		const totalAttempts = result.data.fixesAttempted.length;
 
 		// If autoFix is on and issues are fixable, attempts should equal fixable issues

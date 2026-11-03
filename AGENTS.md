@@ -3,9 +3,12 @@
 ## Work on the intended artifact
 
 - Keep service-owned checkouts and unrelated changes intact; use an isolated worktree.
-- Node.js 20+ is required. CI verifies Node 20, 22 and 24; it does not publish.
+- Node.js 20+ is required. Verify CI tests Node 20, 22 and 24 without publishing.
+  Separately authorized manual Release npm dispatches on main bind an exact commit,
+  version and approved tarball hash; see `.github/SETUP.md`. Only humans merge.
 - Install with `npm ci --include=dev --ignore-scripts`. Runtime gates are
-  `npm run build`, `npm run check`, and `npm test` (unit runner plus MCP wire/client tests).
+  `npm run build`, `npm run check`, and `npm test` (unit runner plus every top-level
+  `tests/*.test.mjs` integration suite, including real MCP/CLI/approval storage flows).
 - Rebuild and reconnect deliberately: editing source does not refresh an existing
   process or npm installation. Server version comes from `package.json`.
 - Live scripts contact configured services. Inspect them and obtain separate authority;
@@ -19,6 +22,11 @@
   separates ARR instances from SABnzbd. Do not add file configuration implicitly.
 - Shared ARR behavior lives in `src/services/shared.ts`; adapters own reviewed
   differences. HTTP goes through `src/core.ts` for limits, cancellation and errors.
+- Cloudflare Access pairs live outside enumerable config. Carry the selected
+  instance as `HttpOptions.upstream` through every provider read/write/readback;
+  never inject ambient global headers or pass context to cloud/review/webhook URLs.
+  Preserve explicit context with `inheritAccess` if a configuration is copied.
+  Local TLS/stdio auth tests require OpenSSL and use ephemeral fixture certificates.
 - Sonarr policy is per instance: omission stays legacy-v3, explicit pins verify,
   and `auto` follows reviewed maps in `src/services/arr/sonarr.ts`. Freeze workflow
   family, preserve URL prefixes, and never replay writes across families after failure.
@@ -33,6 +41,14 @@
 
 - Diagnostics stay read-only by default. Single-use expiring tokens bind scope/options/
   plans; they are not consent, locks or durable replay prevention.
+- Removal defaults to a durable authenticated human decision outside MCP. The only
+  standing-policy exception is opt-in ARR queue/source discard; see
+  `docs/queue-discard-policy.md`. Keep library/standalone-downloader gates unchanged.
+  Pass the exact original preparation into execution; do not substitute a newly
+  prepared plan after claiming. Reserve each physical job durably before its first
+  DELETE, never replay uncertainty, and leave unattempted independent jobs unreserved.
+  State and callback credentials are opt-in; no
+  background scheduler or listener starts with stdio MCP.
 - Refresh imports before submission and prove media/path/download identity. Retain
   downloads when commands or end-state verification are pending or incomplete.
 - Keep legacy failed counts/status alongside additive pending evidence. Accepted work,
@@ -55,3 +71,7 @@
 - Review Git tree and packed npm artifact separately. Publication, pushes with external
   effects, live writes and history rewriting need their own authority; local gates
   are not release approval.
+- Biome 2 checks the existing JavaScript/TypeScript/JSON scope explicitly; do not
+  auto-format historical changelog/Markdown or workflow YAML as dependency-migration churn.
+- Dependency freshness means latest stable direct packages and latest compatible
+  upstream transitive ranges; document held ranges instead of forcing incompatible majors.

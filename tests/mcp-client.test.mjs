@@ -6,6 +6,41 @@ import { pathToFileURL } from "node:url";
 import { Client } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 
+const expectedNames = [
+	"list_services",
+	"system_status",
+	"queue_list",
+	"queue_grab",
+	"remove_content",
+	"manual_import",
+	"root_folders",
+	"history_detail",
+	"search",
+	"add_new",
+	"import_issues",
+	"quality_profiles",
+	"queue_diagnostics",
+	"all_services_diagnostics",
+	"download_status",
+	"server_metrics",
+	"reported_issues",
+	"remediate_reported_issue",
+	"update_quality_profile",
+	"library_statistics",
+	"library_list",
+	"media_detail",
+	"watch_status",
+	"watch_history",
+	"upcoming_media",
+	"request_approval",
+	"approval_status",
+	"cancel_approval",
+	"update_monitoring",
+	"cleanup_candidates",
+	"retention_rules",
+	"retention_evaluate",
+];
+
 const cases = [
 	["v2 default legacy", Client, StdioClientTransport, {}],
 	[
@@ -65,7 +100,10 @@ for (const [label, ClientClass, Transport, options] of cases) {
 				label.includes("modern") ? "modern" : "legacy",
 			);
 			const list = await client.listTools();
-			assert.equal(list.tools.length, 20);
+			assert.deepEqual(
+				list.tools.map((tool) => tool.name),
+				expectedNames,
+			);
 			assert.equal(list.tools[0].name, "list_services");
 			for (const name of ["list_services", "server_metrics"]) {
 				const result = await client.callTool({ name, arguments: {} });

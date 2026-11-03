@@ -11,6 +11,7 @@ import {
 	type PlexReport,
 	PlexReportsClient,
 } from "../../src/services/plex/reports.js";
+import { withFixtureRemovalAuthority } from "../helpers/removal-authority.js";
 import { describe, test, testRunner } from "../helpers/test-runner.js";
 
 const json = (body: unknown) => new Response(JSON.stringify(body));
@@ -52,7 +53,10 @@ await describe("Release media safety", [
 		await mock(
 			async () => json(responses.shift()),
 			async () => {
-				const result = await sab().removeQueueItems([sabSlot.nzo_id]);
+				const result = await withFixtureRemovalAuthority(
+					[{ url: "https://sab.example/api", ids: [sabSlot.nzo_id] }],
+					() => sab().removeQueueItems([sabSlot.nzo_id]),
+				);
 				assert.equal(result.data?.removed, 0);
 				assert.equal(result.data?.failed, 1);
 			},
@@ -62,7 +66,12 @@ await describe("Release media safety", [
 			async () => {
 				assert.equal((await sab().prepareRemoval([sabSlot.nzo_id])).ok, false);
 				assert.equal(
-					(await sab().removeQueueItems([sabSlot.nzo_id])).ok,
+					(
+						await withFixtureRemovalAuthority(
+							[{ url: "https://sab.example/api", ids: [sabSlot.nzo_id] }],
+							() => sab().removeQueueItems([sabSlot.nzo_id]),
+						)
+					).ok,
 					false,
 				);
 			},
@@ -78,7 +87,15 @@ await describe("Release media safety", [
 			async () => {
 				for (const id of [" fixture-nzo ", "fixture-nzo,other", "", 1.5]) {
 					assert.equal((await sab().prepareRemoval([id])).ok, false);
-					assert.equal((await sab().removeQueueItems([id])).ok, false);
+					assert.equal(
+						(
+							await withFixtureRemovalAuthority(
+								[{ url: "https://sab.example/api", ids: [sabSlot.nzo_id] }],
+								() => sab().removeQueueItems([id]),
+							)
+						).ok,
+						false,
+					);
 				}
 				assert.equal(calls, 0);
 			},
@@ -140,11 +157,15 @@ await describe("Release media safety", [
 				});
 				const prep = await s.prepareRemoval("queue", [1]);
 				assert.ok(prep.data);
-				const result = await s.executeRemoval(prep.data, {
-					attemptManualImport: false,
-					removeFromClient: false,
-					blocklist: false,
-				});
+				const result = await withFixtureRemovalAuthority(
+					["https://arr.example/api/v3/queue/1"],
+					() =>
+						s.executeRemoval(prep.data, {
+							attemptManualImport: false,
+							removeFromClient: false,
+							blocklist: false,
+						}),
+				);
 				assert.equal(result.data?.removed, 1);
 				assert.equal(deletes, 1);
 			},
@@ -176,10 +197,14 @@ await describe("Release media safety", [
 				});
 				const prep = await s.prepareRemoval("queue", [1]);
 				assert.ok(prep.data);
-				const result = await s.executeRemoval(prep.data, {
-					attemptManualImport: false,
-					queueTimeoutMs: 1000,
-				});
+				const result = await withFixtureRemovalAuthority(
+					["https://arr.example/api/v3/queue/1"],
+					() =>
+						s.executeRemoval(prep.data, {
+							attemptManualImport: false,
+							queueTimeoutMs: 1000,
+						}),
+				);
 				assert.equal(result.data?.removed, 0);
 				assert.equal(deletes, 1);
 			},
@@ -690,25 +715,33 @@ await describe("Release media safety", [
 					);
 					assert.ok(plan.data);
 					const token = mintRemoveToken(report.id, plan.data);
-					const result = await executeRemediation(
-						client,
-						report,
-						{
-							action: "remove_and_regrab",
-							service: s.serviceName,
-							confirmationToken: token,
-						},
-						[s],
+					const result = await withFixtureRemovalAuthority(
+						["https://arr.example/api/v3/moviefile/99"],
+						() =>
+							executeRemediation(
+								client,
+								report,
+								{
+									action: "remove_and_regrab",
+									service: s.serviceName,
+									confirmationToken: token,
+								},
+								[s],
+							),
 					);
 					assert.equal(result.ok, commentOk);
 					assert.equal(deletes, 1);
 					assert.equal(searches, 1);
 					if (!result.ok) assert.match(result.error.message, /Partial failure/);
-					const replay = await executeRemediation(
-						client,
-						report,
-						{ action: "re_search", service: s.serviceName },
-						[s],
+					const replay = await withFixtureRemovalAuthority(
+						["https://arr.example/api/v3/moviefile/99"],
+						() =>
+							executeRemediation(
+								client,
+								report,
+								{ action: "re_search", service: s.serviceName },
+								[s],
+							),
 					);
 					assert.equal(replay.ok, false);
 					assert.equal(searches, 1);

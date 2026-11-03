@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { ArrMcpServer, InputSchema } from "../../src/index.js";
 import { serviceRegistry } from "../../src/services/registry.js";
 import {
-	MockRadarrService,
 	createMockServiceConfig,
+	MockRadarrService,
 } from "../helpers/mock-services.js";
 import { describe, test } from "../helpers/test-runner.js";
 

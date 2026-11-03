@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { fetchJson } from "../../src/core.js";
 import { requestSignal } from "../../src/request-context.js";
 import { SonarrService } from "../../src/services/arr/sonarr.js";
+import { withFixtureRemovalAuthority } from "../helpers/removal-authority.js";
 import { describe, test, testRunner } from "../helpers/test-runner.js";
 
 const config = {
@@ -36,9 +37,13 @@ await describe("Route isolation", [
 						);
 					};
 					await assert.rejects(
-						fetchJson("https://fixture.invalid/base/api/v5/command", {
-							method,
-						}),
+						withFixtureRemovalAuthority(
+							["https://fixture.invalid/base/api/v5/command"],
+							() =>
+								fetchJson("https://fixture.invalid/base/api/v5/command", {
+									method,
+								}),
+						),
 						(error: unknown) =>
 							!!error &&
 							typeof error === "object" &&

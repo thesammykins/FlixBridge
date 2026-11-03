@@ -89,6 +89,8 @@ export interface SystemStatusData {
 }
 
 export interface QueueOptions {
+	/** Internal safety snapshot: include unresolved-title rows omitted from default totals. */
+	includeUnknown?: boolean;
 	page?: number;
 	pageSize?: number;
 	sortKey?: string;
@@ -96,6 +98,8 @@ export interface QueueOptions {
 }
 
 export interface QueueItem {
+	size?: number;
+	sizeleft?: number;
 	seriesId?: number;
 	episodeId?: number;
 	seasonNumber?: number;
@@ -129,6 +133,8 @@ export interface QueueData {
 	total: number;
 	items: QueueItem[];
 	truncated: boolean;
+	/** Undefined for API families whose unknown-title coverage is not reviewed. */
+	includesUnknownItems?: boolean;
 }
 
 export interface GrabData {
@@ -343,6 +349,7 @@ export interface ManualImportPreviewItem {
 	candidates: ManualImportCandidatePreview[];
 	selectedCandidate?: ManualImportCandidatePreview;
 	safeToImport: boolean;
+	viableCandidateCount: number;
 	reason: string;
 }
 
@@ -530,6 +537,7 @@ export interface ServiceImplementation {
 	): Promise<OperationResult<QueueDiagnosticsData>>;
 	previewManualImport(
 		ids: number[],
+		timeoutMs?: number,
 	): Promise<OperationResult<ManualImportPreviewData>>;
 	executeManualImport(
 		preview: ManualImportPreviewData,

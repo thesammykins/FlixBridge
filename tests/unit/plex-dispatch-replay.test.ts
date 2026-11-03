@@ -6,10 +6,12 @@ import {
 	PlexReportsClient,
 } from "../../src/services/plex/reports.js";
 import { serviceRegistry } from "../../src/services/registry.js";
+import { withFixtureRemovalAuthority } from "../helpers/removal-authority.js";
 import { describe, test } from "../helpers/test-runner.js";
 
 type DispatchServer = {
 	executeTool(name: string, input: RemediateInput): Promise<unknown>;
+	handleRemediateReportedIssue(input: RemediateInput): Promise<unknown>;
 	toolResult(result: unknown): unknown;
 };
 
@@ -232,8 +234,8 @@ await describe("Plex dispatch replay lifecycle", [
 			await call();
 			assert.equal(counts.searches, 1);
 		})),
-	test("accepted deletion followed by failed search retains safe partial guidance and cannot replay", () =>
-		withDispatch(async ({ server, call, counts }) => {
+	test("post-approval accepted deletion followed by failed search retains safe partial guidance and cannot replay", () =>
+		withDispatch(async ({ server, counts, report }) => {
 			const providerFetch = globalThis.fetch;
 			let deletes = 0;
 			globalThis.fetch = async (url, init) => {
@@ -247,6 +249,18 @@ await describe("Plex dispatch replay lifecycle", [
 				}
 				return providerFetch(url, init);
 			};
+			// This exercises the post-approval handler/client lifecycle, not the
+			// MCP consent gate (covered by approved-dispatch integration tests).
+			const call = (input: RemediateInput) =>
+				withFixtureRemovalAuthority(
+					["https://radarr.invalid/api/v3/moviefile/50"],
+					() =>
+						server.handleRemediateReportedIssue({
+							reportId: report.id,
+							service: "radarr",
+							...input,
+						}),
+				);
 			const action = "remove_and_regrab";
 			const preview = (await call({ action, dryRun: true })) as {
 				data: { confirmationToken: string };

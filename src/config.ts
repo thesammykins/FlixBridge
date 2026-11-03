@@ -4,6 +4,7 @@
 // 1) Slug-based discovery: SONARR_<SLUG>_* or FLIX_BRIDGE_SONARR_<SLUG>_*
 // 2) Single-instance fallbacks: SONARR_URL or FLIX_BRIDGE_SONARR_URL (with API keys)
 
+import { bindAccess, validateAccessEnv } from "./access.js";
 import type { ServiceConfig, SonarrApiPolicy } from "./services/base.js";
 import type { SabnzbdConfig } from "./services/downloaders/sabnzbd.js";
 
@@ -18,6 +19,7 @@ export async function loadConfigFromEnvOnly(): Promise<{
 	services: Record<string, ServiceConfig>;
 	downloaders?: Record<string, SabnzbdConfig>;
 }> {
+	validateAccessEnv();
 	for (const key of Object.keys(process.env)) {
 		if (
 			/^(?:FLIX_BRIDGE_)?(?:RADARR|SABNZBD)(?:_[A-Z0-9_]+)?_API_VERSION$/.test(
@@ -71,6 +73,7 @@ function buildConfigFromSlugBasedEnvVars() {
 				baseUrl: normalizeUrl(config.url),
 				apiKey: config.apiKey,
 			};
+			bindAccess(services[serviceName], `SONARR_${slug}`);
 			logDebug(`Discovered Sonarr service: ${serviceName} (slug: ${slug})`);
 		}
 	}
@@ -86,6 +89,7 @@ function buildConfigFromSlugBasedEnvVars() {
 				apiKey: config.apiKey,
 			};
 			logDebug(`Discovered Radarr service: ${serviceName} (slug: ${slug})`);
+			bindAccess(services[serviceName], `RADARR_${slug}`);
 		}
 	}
 
@@ -103,6 +107,7 @@ function buildConfigFromSlugBasedEnvVars() {
 			logDebug(
 				`Discovered SABnzbd downloader: ${downloaderName} (slug: ${slug})`,
 			);
+			bindAccess(downloaders[downloaderName], `SABNZBD_${slug}`);
 		}
 	}
 
@@ -237,6 +242,7 @@ function buildConfigFromSingleInstanceFallbacks() {
 			apiKey: sonarrApiKey,
 		};
 		logDebug("Discovered single Sonarr instance from fallback env vars");
+		bindAccess(services.sonarr, "SONARR");
 	}
 
 	// Single Radarr instance
@@ -253,6 +259,7 @@ function buildConfigFromSingleInstanceFallbacks() {
 			apiKey: radarrApiKey,
 		};
 		logDebug("Discovered single Radarr instance from fallback env vars");
+		bindAccess(services.radarr, "RADARR");
 	}
 
 	// Single SABnzbd instance
@@ -273,6 +280,7 @@ function buildConfigFromSingleInstanceFallbacks() {
 				"SABnzbd",
 		};
 		logDebug("Discovered single SABnzbd instance from fallback env vars");
+		bindAccess(downloaders.sabnzbd, "SABNZBD");
 	}
 
 	if (

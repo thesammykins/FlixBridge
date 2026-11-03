@@ -16,9 +16,9 @@ import {
 	resolveReportMatches,
 	resolveReports,
 } from "../../src/services/plex/remediation.js";
-import { PlexReportsClient } from "../../src/services/plex/reports.js";
 import {
 	type PlexReport,
+	PlexReportsClient,
 	plexConfigFromEnv,
 } from "../../src/services/plex/reports.js";
 import {
@@ -27,10 +27,10 @@ import {
 	assertPropertyEquals,
 } from "../helpers/assertions.js";
 import {
-	MockRadarrService,
-	MockSonarrService,
 	createMockFetch,
 	createMockServiceConfig,
+	MockRadarrService,
+	MockSonarrService,
 } from "../helpers/mock-services.js";
 import { describe, test } from "../helpers/test-runner.js";
 
@@ -687,7 +687,7 @@ await describe("Plex reported-issues remediation", [
 			}
 			// Usage metadata must surface the library distribution.
 			const top = profiles.data.usage[0];
-			if (!top || top.id !== 1 || top.count !== 3 || top.pct !== 75) {
+			if (top?.id !== 1 || top.count !== 3 || top.pct !== 75) {
 				throw new Error(
 					`expected usage top = {1, 3, 75}, got ${JSON.stringify(top)}`,
 				);

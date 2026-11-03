@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { RadarrService } from "../../src/services/arr/radarr.js";
 import { SonarrService } from "../../src/services/arr/sonarr.js";
 import type { SonarrApiPolicy } from "../../src/services/base.js";
+import { withFixtureRemovalAuthority } from "../helpers/removal-authority.js";
 import { describe, test, testRunner } from "../helpers/test-runner.js";
 
 // Synthetic fixtures derived from Sonarr/Sonarr develop
@@ -1012,13 +1013,21 @@ await describe("Sonarr per-instance API contracts", [
 				assert.equal(prep.data.targets[0]?.seriesId, 2);
 				assert.deepEqual(prep.data.targets[0]?.episodeIds, [3]);
 				assert.equal(
-					(await b.executeRemoval(prep.data, { attemptManualImport: false }))
-						.ok,
+					(
+						await withFixtureRemovalAuthority(
+							["https://sonarr.example/proxy/api/v3/queue/1"],
+							() => b.executeRemoval(prep.data, { attemptManualImport: false }),
+						)
+					).ok,
 					false,
 				);
 				assert.equal(
-					(await a.executeRemoval(prep.data, { attemptManualImport: false }))
-						.data?.removed,
+					(
+						await withFixtureRemovalAuthority(
+							["https://sonarr.example/proxy/api/v3/queue/1"],
+							() => a.executeRemoval(prep.data, { attemptManualImport: false }),
+						)
+					).data?.removed,
 					1,
 				);
 				assert.deepEqual(writes, ["/proxy/api/v3/queue/1"]);

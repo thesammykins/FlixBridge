@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { requestSignal } from "../../src/request-context.js";
 import { RadarrService } from "../../src/services/arr/radarr.js";
 import { SonarrService } from "../../src/services/arr/sonarr.js";
+import { withFixtureRemovalAuthority } from "../helpers/removal-authority.js";
 import { describe, test, testRunner } from "../helpers/test-runner.js";
 
 const config = { baseUrl: "https://fixture.invalid/base", apiKey: "synthetic" };
@@ -53,7 +54,13 @@ await describe("Removal freshness", [
 				assert.ok(preview.ok && preview.data);
 				const preparation = preview.data;
 				const result = await requestSignal.run(controller.signal, () =>
-					service.executeRemoval(preparation, { attemptManualImport: false }),
+					withFixtureRemovalAuthority(
+						["https://fixture.invalid/base/api/v3/queue/7"],
+						() =>
+							service.executeRemoval(preparation, {
+								attemptManualImport: false,
+							}),
+					),
 				);
 				assert.equal(reads, 2);
 				assert.equal(deletes, 0);
@@ -140,9 +147,16 @@ await describe("Removal freshness", [
 				async () => {
 					const preview = await service.prepareRemoval("queue", [7, 8]);
 					assert.ok(preview.ok && preview.data);
-					const result = await service.executeRemoval(preview.data, {
-						attemptManualImport: false,
-					});
+					const result = await withFixtureRemovalAuthority(
+						[
+							"https://fixture.invalid/base/api/v3/queue/7",
+							"https://fixture.invalid/base/api/v3/queue/8",
+						],
+						() =>
+							service.executeRemoval(preview.data, {
+								attemptManualImport: false,
+							}),
+					);
 					assert.deepEqual(deleted, [7]);
 					assert.equal(result.data?.removed, 1);
 					assert.equal(result.data?.failed, 1);
@@ -171,9 +185,13 @@ await describe("Removal freshness", [
 					const preview = await service.prepareRemoval("queue", [7]);
 					assert.ok(preview.ok && preview.data);
 					changed = true;
-					const result = await service.executeRemoval(preview.data, {
-						attemptManualImport: false,
-					});
+					const result = await withFixtureRemovalAuthority(
+						["https://fixture.invalid/base/api/v3/queue/7"],
+						() =>
+							service.executeRemoval(preview.data, {
+								attemptManualImport: false,
+							}),
+					);
 					assert.equal(deletes, 0);
 					assert.equal(result.data?.removed, 0);
 					assert.equal(result.data?.failed, 1);
@@ -223,9 +241,16 @@ await describe("Removal freshness", [
 				async () => {
 					const preview = await service.prepareRemoval("queue", [7, 8]);
 					assert.ok(preview.ok && preview.data);
-					const result = await service.executeRemoval(preview.data, {
-						attemptManualImport: false,
-					});
+					const result = await withFixtureRemovalAuthority(
+						[
+							"https://fixture.invalid/base/api/v3/queue/7",
+							"https://fixture.invalid/base/api/v3/queue/8",
+						],
+						() =>
+							service.executeRemoval(preview.data, {
+								attemptManualImport: false,
+							}),
+					);
 					assert.equal(deletes, 1);
 					assert.equal(result.data?.removed, 2);
 					assert.equal(result.data?.failed, 0);
@@ -268,9 +293,15 @@ await describe("Removal freshness", [
 						const preview = await service.prepareRemoval("library", [7]);
 						assert.ok(preview.ok && preview.data);
 						changed = true;
-						const result = await service.executeRemoval(preview.data, {
-							deleteFiles: true,
-						});
+						const result = await withFixtureRemovalAuthority(
+							[
+								`https://fixture.invalid/base/api/v3/${service.id === "sonarr" ? "series" : "movie"}/7`,
+							],
+							() =>
+								service.executeRemoval(preview.data, {
+									deleteFiles: true,
+								}),
+						);
 						assert.equal(deletes, 0);
 						assert.equal(result.data?.failed, 1);
 					},
@@ -374,9 +405,15 @@ await describe("Removal freshness", [
 						async () => {
 							const preview = await service.prepareRemoval("library", [7]);
 							assert.ok(preview.ok && preview.data);
-							const result = await service.executeRemoval(preview.data, {
-								deleteFiles: true,
-							});
+							const result = await withFixtureRemovalAuthority(
+								[
+									`https://fixture.invalid/base/api/v3/${service.id === "sonarr" ? "series" : "movie"}/7`,
+								],
+								() =>
+									service.executeRemoval(preview.data, {
+										deleteFiles: true,
+									}),
+							);
 							assert.equal(deletes, 1);
 							assert.ok(readbacks > 0);
 							assert.equal(result.data?.removed, outcome === "absent" ? 1 : 0);
@@ -415,9 +452,15 @@ await describe("Removal freshness", [
 						const preview = await service.prepareRemoval("library", [7]);
 						assert.ok(preview.ok && preview.data);
 						changed = true;
-						const result = await service.executeRemoval(preview.data, {
-							deleteFiles: true,
-						});
+						const result = await withFixtureRemovalAuthority(
+							[
+								`https://fixture.invalid/base/api/v3/${service.id === "sonarr" ? "series" : "movie"}/7`,
+							],
+							() =>
+								service.executeRemoval(preview.data, {
+									deleteFiles: true,
+								}),
+						);
 						assert.equal(deletes, 0);
 						assert.equal(result.data?.removed, 0);
 						assert.equal(result.data?.failed, 1);
@@ -461,9 +504,13 @@ await describe("Removal freshness", [
 						const preview = await service.prepareRemoval("queue", [7]);
 						assert.ok(preview.ok && preview.data);
 						changed = true;
-						const result = await service.executeRemoval(preview.data, {
-							attemptManualImport: false,
-						});
+						const result = await withFixtureRemovalAuthority(
+							["https://fixture.invalid/base/api/v3/queue/7"],
+							() =>
+								service.executeRemoval(preview.data, {
+									attemptManualImport: false,
+								}),
+						);
 						assert.equal(deletes, 0, `${service.id}: ${JSON.stringify(drift)}`);
 						assert.equal(result.data?.removed, 0);
 						assert.equal(result.data?.failed, 1);

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { SonarrService } from "../../src/services/arr/sonarr.js";
+import { withFixtureRemovalAuthority } from "../helpers/removal-authority.js";
 import { describe, test, testRunner } from "../helpers/test-runner.js";
 
 const service = () =>
@@ -53,7 +54,10 @@ await describe("ARR safety", [
 				const prep = await s.prepareRemoval("queue", [1]);
 				assert.equal(prep.data?.targets[0]?.manualReviewRequired, true);
 				assert.ok(prep.data);
-				await s.executeRemoval(prep.data, {});
+				await withFixtureRemovalAuthority(
+					["http://mock:8989/api/v3/queue/1"],
+					() => s.executeRemoval(prep.data, {}),
+				);
 				assert.equal(posts, 0);
 			},
 		);
@@ -76,9 +80,13 @@ await describe("ARR safety", [
 			async () => {
 				const prep = await s.prepareRemoval("queue", [1]);
 				assert.ok(prep.data);
-				const result = await s.executeRemoval(prep.data, {
-					attemptManualImport: false,
-				});
+				const result = await withFixtureRemovalAuthority(
+					["http://mock:8989/api/v3/queue/1"],
+					() =>
+						s.executeRemoval(prep.data, {
+							attemptManualImport: false,
+						}),
+				);
 				assert.equal(result.data?.removed, 0);
 				assert.equal(result.data?.failed, 1);
 			},
@@ -124,9 +132,13 @@ await describe("ARR safety", [
 				async () => {
 					const prep = await s.prepareRemoval("queue", [1]);
 					assert.ok(prep.data);
-					const result = await s.executeRemoval(
-						prep.data,
-						discard ? { attemptManualImport: false } : {},
+					const result = await withFixtureRemovalAuthority(
+						["http://mock:8989/api/v3/queue/1"],
+						() =>
+							s.executeRemoval(
+								prep.data,
+								discard ? { attemptManualImport: false } : {},
+							),
 					);
 					assert.equal(deletes, discard ? 1 : 0);
 					assert.equal(result.data?.removed, discard ? 1 : 0);
@@ -216,7 +228,10 @@ await describe("ARR safety", [
 				const s = service();
 				const prep = await s.prepareRemoval("queue", [1]);
 				assert.ok(prep.data);
-				const result = await s.executeRemoval(prep.data, {});
+				const result = await withFixtureRemovalAuthority(
+					["http://mock:8989/api/v3/queue/1"],
+					() => s.executeRemoval(prep.data, {}),
+				);
 				assert.equal(result.data?.failed, 1);
 				assert.equal(deletes, 0);
 			},
@@ -232,9 +247,13 @@ await describe("ARR safety", [
 				const s = service();
 				const prep = await s.prepareRemoval("queue", [1]);
 				assert.ok(prep.data);
-				const result = await s.executeRemoval(prep.data, {
-					attemptManualImport: false,
-				});
+				const result = await withFixtureRemovalAuthority(
+					["http://mock:8989/api/v3/queue/1"],
+					() =>
+						s.executeRemoval(prep.data, {
+							attemptManualImport: false,
+						}),
+				);
 				assert.equal(result.data?.removed, 0);
 				assert.equal(result.data?.failed, 1);
 			},

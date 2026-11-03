@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { fetchJson } from "../../core.js";
+import { createServiceError, fetchJson, serializeError } from "../../core.js";
 import type { InternalError, OperationResult, ServiceError } from "../base.js";
 
 export interface SabnzbdConfig {
@@ -193,7 +193,7 @@ export class SabnzbdService {
 	private readonly baseUrl: string;
 	private readonly apiKey: string;
 
-	constructor(config: SabnzbdConfig) {
+	constructor(private readonly config: SabnzbdConfig) {
 		this.serviceName = config.name || "SABnzbd";
 		this.baseUrl = config.baseUrl.replace(/\/$/, "");
 		this.apiKey = config.apiKey;
@@ -218,7 +218,9 @@ export class SabnzbdService {
 	async serverStats(): Promise<OperationResult<SabnzbdStatusData>> {
 		try {
 			const url = this.buildApiUrl("queue");
-			const { queue } = statsSchema.parse(await fetchJson<unknown>(url));
+			const { queue } = statsSchema.parse(
+				await fetchJson<unknown>(url, { upstream: this.config }),
+			);
 
 			return {
 				ok: true,
@@ -243,7 +245,9 @@ export class SabnzbdService {
 	async queueList(): Promise<OperationResult<SabnzbdQueueData>> {
 		try {
 			const url = this.buildApiUrl("queue");
-			const response = queueSchema.parse(await fetchJson<unknown>(url));
+			const response = queueSchema.parse(
+				await fetchJson<unknown>(url, { upstream: this.config }),
+			);
 
 			const queue = response.queue || {};
 			const slots = queue.slots || [];
@@ -301,7 +305,9 @@ export class SabnzbdService {
 			}
 
 			const url = this.buildApiUrl("history", params);
-			const response = historySchema.parse(await fetchJson<unknown>(url));
+			const response = historySchema.parse(
+				await fetchJson<unknown>(url, { upstream: this.config }),
+			);
 
 			const history = response.history || {};
 			const slots = history.slots || [];
@@ -336,7 +342,7 @@ export class SabnzbdService {
 			}
 
 			const url = this.buildApiUrl("addurl", params);
-			await fetchJson(url);
+			await fetchJson(url, { upstream: this.config });
 
 			return {
 				ok: true,
@@ -491,8 +497,9 @@ export class SabnzbdService {
 				});
 				const response = await fetchJson<{ status?: boolean; error?: string }>(
 					url,
+					{ upstream: this.config },
 				);
-				if (!response || response.status !== true) {
+				if (response?.status !== true) {
 					throw {
 						kind: "internal",
 						message: "SABnzbd did not acknowledge deletion",
@@ -626,20 +633,14 @@ export class SabnzbdService {
 	}
 
 	private mapError(error: unknown): ServiceError | InternalError {
-		if (error && typeof error === "object" && "status" in error) {
-			const errObj = error as { status?: number; message?: string };
-			return {
-				service: this.serviceName,
-				status: errObj.status ?? 500,
-				message: errObj.message ?? "SABnzbd API error",
-				raw: error,
-			};
-		}
-
-		return {
-			kind: "internal",
-			message: `SABnzbd service error: ${String(error)}`,
-			cause: error,
-		};
+		const normalized = serializeError(error);
+		return "status" in normalized
+			? createServiceError(
+					this.serviceName,
+					normalized.status,
+					normalized.message,
+					normalized.code,
+				)
+			: normalized;
 	}
 }

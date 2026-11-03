@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
 import { requestSignal } from "../../src/request-context.js";
 import { SonarrService } from "../../src/services/arr/sonarr.js";
+import { withFixtureRemovalAuthority } from "../helpers/removal-authority.js";
 import { describe, test, testRunner } from "../helpers/test-runner.js";
 
 await describe("Removal workflow cancellation", [
@@ -35,9 +36,13 @@ await describe("Removal workflow cancellation", [
 			assert.ok(plan);
 			const started = performance.now();
 			const result = await requestSignal.run(controller.signal, () =>
-				service.executeRemoval(plan, {
-					attemptManualImport: false,
-				}),
+				withFixtureRemovalAuthority(
+					["https://sonarr.example/api/v3/queue/1"],
+					() =>
+						service.executeRemoval(plan, {
+							attemptManualImport: false,
+						}),
+				),
 			);
 			assert.ok(
 				performance.now() - started < 300,
